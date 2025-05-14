@@ -1,0 +1,33 @@
+{
+    "database_folder": "databases",
+    "last_database": "databases/123.db",
+    "theme": "light",
+    "language": "ru",
+    "auto_load_last_db": true,
+    "ui_scale": 1.0,
+    "default_session_name": "\u001d>20O A5AA8O",
+    "show_splash_screen": true,
+    "check_updates_on_startup": true,
+    "charts": {
+        "default_colors": [
+            "#0d6efd",
+            "#198754",
+            "#fd7e14",
+            "#dc3545",
+            "#6f42c1",
+            "#20c997",
+            "#6c757d",
+            "#ffc107",
+            "#0dcaf0"
+        ],
+        "show_legends": true,
+        "show_grid": true,
+        "animation_speed": 1000
+    },
+    "hero_name": "Hero",
+    "startup_stats": [
+        "positions",
+        "knockouts",
+        "profit"
+    ]
+}
