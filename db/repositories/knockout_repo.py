@@ -72,15 +72,28 @@ class KnockoutRepository(BaseRepository):
             return 0
             
         saved_count = 0
-        for knockout in knockouts:
-            try:
-                self.save_knockout(knockout, tournament_id, session_id)
-                saved_count += 1
-            except Exception as e:
-                self.logger.error(f"Ошибка при сохранении нокаута для турнира {tournament_id}: {e}")
-                # Продолжаем сохранение других нокаутов, несмотря на ошибку
-                
-        return saved_count
+        
+        # Начинаем транзакцию
+        try:
+            self.db_manager.begin_transaction()
+            
+            for knockout in knockouts:
+                try:
+                    self.save_knockout(knockout, tournament_id, session_id)
+                    saved_count += 1
+                except Exception as e:
+                    self.logger.error(f"Ошибка при сохранении нокаута для турнира {tournament_id}: {e}")
+                    # Прерываем сохранение при ошибке и откатываем транзакцию
+                    raise
+                    
+            # Завершаем транзакцию
+            self.db_manager.commit()
+            return saved_count
+        except Exception as e:
+            # Откатываем транзакцию в случае ошибки
+            self.db_manager.rollback()
+            self.logger.error(f"Ошибка при сохранении нокаутов для турнира {tournament_id}. Транзакция отменена: {e}")
+            return 0
     
     def get_knockout_by_id(self, knockout_id: int) -> Optional[Dict]:
         """

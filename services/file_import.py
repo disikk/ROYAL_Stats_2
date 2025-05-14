@@ -16,6 +16,7 @@ from parsers.hand_history import HandHistoryParser
 from parsers.tournament_summary import TournamentSummaryParser
 from models.tournament import Tournament
 from models.knockout import Knockout
+from core.error_handler import log_error, transaction, ImportError
 
 # Настройка логирования
 logger = logging.getLogger('ROYAL_Stats.FileImportService')
@@ -39,6 +40,7 @@ class FileImportService:
         self.hand_history_parser = HandHistoryParser(hero_name=hero_name)
         self.tournament_summary_parser = TournamentSummaryParser(hero_name=hero_name)
     
+    @log_error
     def process_files(self, 
                      file_paths: List[str], 
                      session_id: str,
@@ -160,56 +162,83 @@ class FileImportService:
         """
         processed_tournaments = {}
         
-        # Обрабатываем файлы в пуле потоков
-        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
-            # Отправляем задачи в пул
-            future_to_file = {
-                executor.submit(self._parse_tournament_summary, file_path): file_path
-                for file_path in file_paths
-            }
-            
-            # Обрабатываем результаты по мере их завершения
-            for future in concurrent.futures.as_completed(future_to_file):
-                # Проверка отмены операции
-                if cancel_check and cancel_check():
-                    executor.shutdown(wait=False)
-                    results['cancelled'] = True
-                    return processed_tournaments
-                    
-                file_path = future_to_file[future]
-                try:
-                    tournament = future.result()
-                    
-                    # Проверяем finish_place перед сохранением
-                    if tournament.finish_place >= 10:
-                        logger.info(
-                            f"Турнир {tournament.tournament_id} из файла {file_path} пропущен "
-                            f"(finish_place: {tournament.finish_place} >= 10)."
-                        )
-                        results['skipped_tournaments_high_finish_place'] += 1
-                        continue
-                    
-                    # Устанавливаем session_id
-                    tournament.session_id = session_id
-                    
-                    # Сохраняем турнир в БД
-                    self.db_repository.save_tournament(tournament)
-                    
-                    # Добавляем турнир в словарь обработанных турниров
-                    processed_tournaments[tournament.tournament_id] = tournament
-                    
-                    # Обновляем счетчик обработанных турниров
-                    results['processed_tournaments'] += 1
-                    
-                    logger.debug(f"Турнир {tournament.tournament_id} успешно обработан")
-                    
-                except Exception as e:
-                    logger.error(f"Ошибка при обработке файла {file_path}: {str(e)}", exc_info=True)
-                    results['errors'].append(f"Ошибка при обработке файла {file_path}: {str(e)}")
+        # Создаем отдельное соединение с БД для этого метода
+        db_connection = self.db_repository.db_manager.create_connection()
+        
+        # Создаем временный репозиторий с новым соединением
+        # Это обеспечит потокобезопасность при обработке файлов
+        from db.repositories.tournament_repo import TournamentRepository
+        temp_repository = TournamentRepository(None)
+        temp_repository.db_manager = self.db_repository.db_manager
+        temp_repository.db_manager.connection = db_connection
+        temp_repository.db_manager.cursor = db_connection.cursor()
+        
+        try:
+            # Обрабатываем файлы в пуле потоков
+            with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+                # Отправляем задачи в пул
+                future_to_file = {
+                    executor.submit(self._parse_tournament_summary, file_path): file_path
+                    for file_path in file_paths
+                }
                 
-                # Обновление прогресса
-                if progress_callback:
-                    progress_callback(results['processed_files'], results['total_files'])
+                # Обрабатываем результаты по мере их завершения
+                for future in concurrent.futures.as_completed(future_to_file):
+                    # Проверка отмены операции
+                    if cancel_check and cancel_check():
+                        executor.shutdown(wait=False)
+                        results['cancelled'] = True
+                        return processed_tournaments
+                        
+                    file_path = future_to_file[future]
+                    try:
+                        tournament = future.result()
+                        
+                        # Проверяем finish_place перед сохранением
+                        if tournament.finish_place >= 10:
+                            logger.info(
+                                f"Турнир {tournament.tournament_id} из файла {file_path} пропущен "
+                                f"(finish_place: {tournament.finish_place} >= 10)."
+                            )
+                            results['skipped_tournaments_high_finish_place'] += 1
+                            continue
+                        
+                        # Устанавливаем session_id
+                        tournament.session_id = session_id
+                        
+                        # Начинаем транзакцию
+                        temp_repository.db_manager.begin_transaction()
+                        
+                        try:
+                            # Сохраняем турнир в БД
+                            temp_repository.save_tournament(tournament)
+                            
+                            # Фиксируем транзакцию
+                            temp_repository.db_manager.commit()
+                            
+                            # Добавляем турнир в словарь обработанных турниров
+                            processed_tournaments[tournament.tournament_id] = tournament
+                            
+                            # Обновляем счетчик обработанных турниров
+                            results['processed_tournaments'] += 1
+                            
+                            logger.debug(f"Турнир {tournament.tournament_id} успешно обработан")
+                        except Exception as e:
+                            # Откатываем транзакцию при ошибке
+                            temp_repository.db_manager.rollback()
+                            logger.error(f"Ошибка при сохранении турнира {tournament.tournament_id}: {str(e)}", exc_info=True)
+                            results['errors'].append(f"Ошибка при сохранении турнира {tournament.tournament_id}: {str(e)}")
+                        
+                    except Exception as e:
+                        logger.error(f"Ошибка при обработке файла {file_path}: {str(e)}", exc_info=True)
+                        results['errors'].append(f"Ошибка при обработке файла {file_path}: {str(e)}")
+                    
+                    # Обновление прогресса
+                    if progress_callback:
+                        progress_callback(results['processed_files'], results['total_files'])
+        finally:
+            # Закрываем временное соединение с БД
+            db_connection.close()
         
         return processed_tournaments
     
@@ -258,56 +287,89 @@ class FileImportService:
         """
         processed_knockouts = []
         
-        # Обрабатываем файлы в пуле потоков
-        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
-            # Отправляем задачи в пул
-            future_to_file = {
-                executor.submit(self._parse_hand_history, file_path): file_path
-                for file_path in file_paths
-            }
-            
-            # Обрабатываем результаты по мере их завершения
-            for future in concurrent.futures.as_completed(future_to_file):
-                # Проверка отмены операции
-                if cancel_check and cancel_check():
-                    executor.shutdown(wait=False)
-                    results['cancelled'] = True
-                    return processed_knockouts
-                    
-                file_path = future_to_file[future]
-                try:
-                    hand_history_data = future.result()
-                    
-                    # Если есть ID турнира и нокауты
-                    tournament_id = hand_history_data.get('tournament_id')
-                    if tournament_id and hand_history_data.get('knockouts'):
-                        # Для каждого нокаута устанавливаем session_id
-                        for knockout in hand_history_data['knockouts']:
-                            knockout.session_id = session_id
-                            
-                        # Сохраняем нокауты в БД
-                        self.db_repository.save_knockouts(hand_history_data['knockouts'])
-                        
-                        # Добавляем нокауты в список обработанных
-                        processed_knockouts.extend(hand_history_data['knockouts'])
-                        
-                        # Обновляем счетчик обработанных нокаутов
-                        results['processed_knockouts'] += len(hand_history_data['knockouts'])
-                        
-                        # Обновляем средний начальный стек для турнира, если он есть в processed_tournaments
-                        if tournament_id in processed_tournaments and hand_history_data.get('average_initial_stack', 0) > 0:
-                            tournament = processed_tournaments[tournament_id]
-                            tournament.average_initial_stack = hand_history_data['average_initial_stack']
-                            self.db_repository.update_tournament(tournament)
-                    
-                except Exception as e:
-                    logger.error(f"Ошибка при обработке файла {file_path}: {str(e)}", exc_info=True)
-                    results['errors'].append(f"Ошибка при обработке файла {file_path}: {str(e)}")
-                
-                # Обновление прогресса
-                if progress_callback:
-                    progress_callback(results['processed_files'], results['total_files'])
+        # Создаем отдельное соединение с БД для этого метода
+        db_connection = self.db_repository.db_manager.create_connection()
         
+        # Создаем временный репозиторий с новым соединением
+        from db.repositories.knockout_repo import KnockoutRepository
+        from db.repositories.tournament_repo import TournamentRepository
+        
+        ko_repository = KnockoutRepository(None)
+        ko_repository.db_manager = self.db_repository.db_manager
+        ko_repository.db_manager.connection = db_connection
+        ko_repository.db_manager.cursor = db_connection.cursor()
+        
+        tournament_repository = TournamentRepository(None)
+        tournament_repository.db_manager = self.db_repository.db_manager
+        tournament_repository.db_manager.connection = db_connection
+        tournament_repository.db_manager.cursor = db_connection.cursor()
+        
+        try:
+            # Обрабатываем файлы в пуле потоков
+            with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+                # Отправляем задачи в пул
+                future_to_file = {
+                    executor.submit(self._parse_hand_history, file_path): file_path
+                    for file_path in file_paths
+                }
+                
+                # Обрабатываем результаты по мере их завершения
+                for future in concurrent.futures.as_completed(future_to_file):
+                    # Проверка отмены операции
+                    if cancel_check and cancel_check():
+                        executor.shutdown(wait=False)
+                        results['cancelled'] = True
+                        return processed_knockouts
+                        
+                    file_path = future_to_file[future]
+                    try:
+                        hand_history_data = future.result()
+                        
+                        # Если есть ID турнира и нокауты
+                        tournament_id = hand_history_data.get('tournament_id')
+                        if tournament_id and hand_history_data.get('knockouts'):
+                            # Для каждого нокаута устанавливаем session_id
+                            for knockout in hand_history_data['knockouts']:
+                                knockout.session_id = session_id
+                                
+                            # Начинаем транзакцию
+                            ko_repository.db_manager.begin_transaction()
+                            
+                            try:
+                                # Сохраняем нокауты в БД
+                                ko_repository.save_knockouts(hand_history_data['knockouts'], tournament_id, session_id)
+                                
+                                # Добавляем нокауты в список обработанных
+                                processed_knockouts.extend(hand_history_data['knockouts'])
+                                
+                                # Обновляем счетчик обработанных нокаутов
+                                results['processed_knockouts'] += len(hand_history_data['knockouts'])
+                                
+                                # Обновляем средний начальный стек для турнира, если он есть в processed_tournaments
+                                if tournament_id in processed_tournaments and hand_history_data.get('average_initial_stack', 0) > 0:
+                                    tournament = processed_tournaments[tournament_id]
+                                    tournament.average_initial_stack = hand_history_data['average_initial_stack']
+                                    tournament_repository.update_tournament(tournament)
+                                
+                                # Фиксируем транзакцию
+                                ko_repository.db_manager.commit()
+                            except Exception as e:
+                                # Откатываем транзакцию при ошибке
+                                ko_repository.db_manager.rollback()
+                                logger.error(f"Ошибка при сохранении нокаутов для турнира {tournament_id}: {str(e)}", exc_info=True)
+                                results['errors'].append(f"Ошибка при сохранении нокаутов для турнира {tournament_id}: {str(e)}")
+                        
+                    except Exception as e:
+                        logger.error(f"Ошибка при обработке файла {file_path}: {str(e)}", exc_info=True)
+                        results['errors'].append(f"Ошибка при обработке файла {file_path}: {str(e)}")
+                    
+                    # Обновление прогресса
+                    if progress_callback:
+                        progress_callback(results['processed_files'], results['total_files'])
+        finally:
+            # Закрываем временное соединение с БД
+            db_connection.close()
+            
         return processed_knockouts
     
     def _parse_hand_history(self, file_path: str) -> Dict[str, Any]:

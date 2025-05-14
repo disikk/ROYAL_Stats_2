@@ -10,7 +10,7 @@ import re
 import os
 import logging
 from pathlib import Path
-from typing import Dict, List, Set, Tuple, Optional, Any, Union, Callable
+from typing import Dict, List, Set, Tuple, Optional, Any, Union
 
 from parsers.base_parser import BaseParser
 from models.knockout import Knockout

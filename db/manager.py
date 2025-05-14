@@ -38,12 +38,13 @@ class DatabaseManager:
         self.cursor = None
         self.current_db_path = None
         
-    def connect(self, db_path: str) -> None:
+    def connect(self, db_path: str, check_tables: bool = True) -> None:
         """
         Подключается к указанной базе данных.
         
         Args:
             db_path: Путь к файлу базы данных
+            check_tables: Проверять и инициализировать таблицы, если отсутствуют
         """
         try:
             # Закрываем текущее соединение, если оно открыто
@@ -57,14 +58,15 @@ class DatabaseManager:
             self.current_db_path = db_path
             
             # Проверяем наличие необходимых таблиц и инициализируем БД при необходимости
-            self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            tables = [row[0] for row in self.cursor.fetchall()]
-            required_tables = ['sessions', 'tournaments', 'knockouts', 'places_distribution']
-            
-            # Если нет всех необходимых таблиц, инициализируем БД
-            if not all(table in tables for table in required_tables):
-                logger.info(f"Инициализация базы данных: {db_path}")
-                self.initialize_db(db_path)
+            if check_tables:
+                self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                tables = [row[0] for row in self.cursor.fetchall()]
+                required_tables = ['sessions', 'tournaments', 'knockouts', 'places_distribution']
+                
+                # Если нет всех необходимых таблиц, инициализируем БД
+                if not all(table in tables for table in required_tables):
+                    logger.info(f"Инициализация базы данных: {db_path}")
+                    self.initialize_db(db_path)
             
             logger.info(f"Подключено к базе данных: {db_path}")
         except Exception as e:
@@ -95,11 +97,18 @@ class DatabaseManager:
         # Формируем путь к новой БД
         db_path = os.path.join(self.db_folder, db_name)
         
-        # Подключаемся к новой БД (она будет создана автоматически)
-        self.connect(db_path)
-        
-        # Возвращаем путь к БД
-        return db_path
+        try:
+            # Создаем пустое соединение без проверки таблиц
+            self.connect(db_path, check_tables=False)
+            
+            # Инициализируем БД (создаем таблицы)
+            self.initialize_db(db_path)
+            
+            # Возвращаем путь к БД
+            return db_path
+        except Exception as e:
+            logger.error(f"Ошибка при создании базы данных {db_name}: {str(e)}")
+            raise
         
     def get_available_databases(self) -> List[str]:
         """
@@ -254,8 +263,8 @@ class DatabaseManager:
             db_path: Путь к базе данных
         """
         try:
-            # Подключаемся к базе данных
-            self.connect(db_path)
+            # Убираем повторный вызов connect, т.к. соединение уже должно быть установлено
+            # к моменту вызова этого метода
             
             # Определяем структуру таблиц
             table_queries = [

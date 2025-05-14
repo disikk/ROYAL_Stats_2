@@ -11,6 +11,15 @@ import json
 import logging
 from typing import Any, Dict, Optional
 
+# Константы приложения
+APP_NAME = "ROYAL_Stats"
+APP_VERSION = "2.0"
+DB_FOLDER = "databases"
+LOGS_FOLDER = "logs"
+DEFAULT_HERO_NAME = "Hero"
+DEFAULT_LANGUAGE = "ru"
+MAX_THREADS = 4  # Максимальное количество потоков для обработки файлов
+
 
 class AppSettings:
     """
@@ -30,8 +39,8 @@ class AppSettings:
         
         # Настройки по умолчанию
         self.default_settings = {
-            "db_folder": "databases",
-            "hero_name": "Hero",
+            "db_folder": DB_FOLDER,
+            "hero_name": DEFAULT_HERO_NAME,
             "recent_databases": [],
             "active_modules": ["positions", "knockouts", "large_knockouts", "profit"],
             "ui": {

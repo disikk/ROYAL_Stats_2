@@ -270,7 +270,7 @@ class TournamentSummaryParser(BaseParser):
         """
         Возвращает количество нокаутов х2, х10, х100, х1000, х10000.
 
-        Алгоритм: начинаем с самого крупного (10k) и по убыванию; каждая
+        Алгоритм: начинаем с самых маленьких (x2) и идем по возрастанию; каждая
         «выкупленная» категория вычитается из *bounty*.
         Макс. нокаутов любого класса за турнир — (игроков - 1).
         
@@ -288,10 +288,6 @@ class TournamentSummaryParser(BaseParser):
         # Проверка чтобы не было деления на ноль
         if buy_in <= 0:
             return 0, 0, 0, 0, 0  # Если buy-in 0 или отрицателен, нокауты невозможны
-
-        # Проверка на случай, если bounty слишком мал
-        if bounty < 2 * buy_in:
-            return 0, 0, 0, 0, 0  # Нет даже x2 нокаутов
 
         def _extract(remaining_bounty: float, multiplier: int) -> tuple[int, float]:
             # Цена одного нокаута данного типа
@@ -313,18 +309,18 @@ class TournamentSummaryParser(BaseParser):
             
             return qty, new_remaining
 
-        # Начинаем считать с самых больших нокаутов
-        x10k, remainder = _extract(bounty, 10_000)
-        x1k, remainder = _extract(remainder, 1_000)
-        x100, remainder = _extract(remainder, 100)
+        # Начинаем с наименее ценных (от маленьких к большим)
+        x2, remainder = _extract(bounty, 2)
         x10, remainder = _extract(remainder, 10)
-        x2, _ = _extract(remainder, 2)  # Остаток от x2 нас не интересует для других категорий
+        x100, remainder = _extract(remainder, 100)
+        x1k, remainder = _extract(remainder, 1000)
+        x10k, remainder = _extract(remainder, 10000)
         
         # Проверяем ограничение на максимальное количество нокаутов
-        total_kos = x10k + x1k + x100 + x10 + x2
+        total_kos = x2 + x10 + x100 + x1k + x10k
         if total_kos > max_possible_kos:
             # Если сумма всех нокаутов превышает возможное количество, корректируем
-            # Начинаем с самых маленьких множителей
+            # Начинаем с наименее ценных множителей
             excess = total_kos - max_possible_kos
             
             if excess > 0 and x2 > 0:

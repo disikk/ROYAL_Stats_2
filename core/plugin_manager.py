@@ -25,10 +25,14 @@ class PluginManager:
     Отвечает за обнаружение, загрузку, регистрацию и выполнение модулей статистики.
     """
     
-    def __init__(self):
+    def __init__(self, db_manager=None):
         """
         Инициализация менеджера модулей.
+        
+        Args:
+            db_manager: Менеджер базы данных для доступа к данным.
         """
+        self.db_manager = db_manager
         self.modules: Dict[str, BaseStat] = {}
         self.active_modules: Dict[str, BaseStat] = {}
         self.discover_modules()
@@ -77,6 +81,60 @@ class PluginManager:
         except Exception as e:
             logger.error(f"Ошибка при обнаружении модулей: {e}", exc_info=True)
             return []
+            
+    def initialize_modules(self) -> None:
+        """
+        Инициализирует модули статистики.
+        
+        Выполняет дополнительные действия по инициализации модулей после их обнаружения:
+        - Регистрирует модули в базе данных
+        - Загружает настройки модулей
+        - Обновляет активные модули
+        """
+        try:
+            # Если нет доступа к базе данных, просто пропускаем инициализацию
+            if self.db_manager is None:
+                logger.warning("Не задан db_manager, инициализация модулей пропущена")
+                return
+                
+            # Проверяем, есть ли у db_manager репозиторий сессий
+            if not hasattr(self.db_manager, 'session_repository'):
+                logger.warning("У db_manager нет атрибута session_repository, инициализация модулей пропущена")
+                return
+            
+            # Получаем список модулей из базы данных
+            db_modules = self.db_manager.session_repository.get_stat_modules(enabled_only=False)
+            
+            # Словарь соответствия имя->enabled для модулей в БД
+            db_modules_enabled = {m['name']: bool(m['enabled']) for m in db_modules}
+            
+            # Для каждого модуля
+            for module_name, module in self.modules.items():
+                # Проверяем, есть ли модуль в БД
+                if module_name in db_modules_enabled:
+                    # Если модуль в БД отключен, а у нас активен - деактивируем его
+                    if not db_modules_enabled[module_name] and module_name in self.active_modules:
+                        self.deactivate_module(module_name)
+                    # Если модуль в БД включен, а у нас не активен - активируем его
+                    elif db_modules_enabled[module_name] and module_name not in self.active_modules:
+                        self.activate_module(module_name)
+                else:
+                    # Регистрируем модуль в БД
+                    try:
+                        self.db_manager.session_repository.register_stat_module(
+                            module_name, 
+                            module.display_name,
+                            module.is_enabled_by_default(),
+                            module.get_sort_order()
+                        )
+                        logger.info(f"Модуль {module_name} зарегистрирован в БД")
+                    except Exception as e:
+                        logger.error(f"Ошибка при регистрации модуля {module_name} в БД: {e}", exc_info=True)
+                        
+            logger.info(f"Модули инициализированы: {len(self.active_modules)} активных, {len(self.modules)} всего")
+        except Exception as e:
+            logger.error(f"Ошибка при инициализации модулей: {e}", exc_info=True)
+            # В случае ошибки не критично, продолжаем работу
     
     def register_module(self, module: BaseStat) -> bool:
         """
@@ -208,7 +266,7 @@ class PluginManager:
         """
         return self.modules.get(module_name)
     
-    def calculate_statistics(self, db_repository, session_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
+    def calculate_statistics(self, db_repository=None, session_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
         """
         Вычисляет статистику для всех активных модулей.
         
@@ -220,6 +278,10 @@ class PluginManager:
             Словарь {имя_модуля: результаты_расчета} для всех активных модулей.
         """
         results = {}
+        
+        # Если репозиторий не передан, используем db_manager
+        if db_repository is None and self.db_manager is not None:
+            db_repository = self.db_manager
         
         for module_name, module in self.active_modules.items():
             try:

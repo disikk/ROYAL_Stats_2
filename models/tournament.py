@@ -87,19 +87,13 @@ class Tournament:
     @property
     def normalized_finish_place(self) -> int:
         """
-        Возвращает место, нормированное к диапазону 1-9.
-        """
-        # Защита от деления на ноль
-        if self.players_count <= 1:
-            return 1
-            
-        # Линейная нормализация в диапазон [1,9]
-        # Если place=1, то получится 1 место (первое)
-        # Если place=players_count, то получится 9 место (последнее)
-        normalized = round((self.finish_place - 1) * 8 / (self.players_count - 1) + 1)
+        Возвращает место без нормализации, так как
+        в файлах tournament summary уже указано реальное место.
         
-        # Ограничиваем значение диапазоном [1, 9]
-        return max(1, min(9, normalized))
+        Returns:
+            Место, занятое игроком в турнире.
+        """
+        return self.finish_place
         
     @property
     def is_itm(self) -> bool:

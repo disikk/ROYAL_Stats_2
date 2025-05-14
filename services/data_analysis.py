@@ -23,13 +23,13 @@ class DataAnalysisService:
     для получения различных статистических показателей.
     """
     
-    def __init__(self, db_repository, plugin_manager: PluginManager):
+    def __init__(self, db_repository, plugin_manager=None):
         """
         Инициализирует сервис анализа данных.
         
         Args:
             db_repository: Репозиторий для доступа к данным.
-            plugin_manager: Менеджер модулей статистики.
+            plugin_manager: Менеджер модулей статистики (опционально).
         """
         self.db_repository = db_repository
         self.plugin_manager = plugin_manager
@@ -44,6 +44,10 @@ class DataAnalysisService:
         Returns:
             Словарь {имя_модуля: результаты_расчета} для всех активных модулей.
         """
+        if self.plugin_manager is None:
+            logger.warning("plugin_manager не задан, расчет статистики невозможен")
+            return {}
+            
         return self.plugin_manager.calculate_statistics(self.db_repository, session_id)
     
     def calculate_module_statistics(self, module_name: str, session_id: Optional[str] = None) -> Dict[str, Any]:
@@ -58,6 +62,10 @@ class DataAnalysisService:
             Словарь с результатами расчета статистики модуля.
             Пустой словарь, если модуль не найден или не активен.
         """
+        if self.plugin_manager is None:
+            logger.warning("plugin_manager не задан, расчет статистики невозможен")
+            return {}
+            
         module = self.plugin_manager.get_module(module_name)
         if not module or module_name not in self.plugin_manager.active_modules:
             logger.warning(f"Модуль '{module_name}' не найден или не активен")
@@ -80,6 +88,10 @@ class DataAnalysisService:
             Список словарей с конфигурацией карточек для статистики модуля.
             Пустой список, если модуль не найден.
         """
+        if self.plugin_manager is None:
+            logger.warning("plugin_manager не задан, получение конфигурации карточек невозможно")
+            return []
+            
         module = self.plugin_manager.get_module(module_name)
         if not module:
             logger.warning(f"Модуль '{module_name}' не найден")
@@ -102,6 +114,10 @@ class DataAnalysisService:
             Словарь с конфигурацией графика для статистики модуля.
             Пустой словарь, если модуль не найден.
         """
+        if self.plugin_manager is None:
+            logger.warning("plugin_manager не задан, получение конфигурации графика невозможно")
+            return {}
+            
         module = self.plugin_manager.get_module(module_name)
         if not module:
             logger.warning(f"Модуль '{module_name}' не найден")
