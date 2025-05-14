@@ -32,7 +32,7 @@ class FileImportAdapter:
             
         original_method = getattr(service, method_name)
         
-        def adapted_process_files(file_paths, session_id, progress_callback=None, cancel_check=None, worker_signals=None, **kwargs):
+        def adapted_process_files(file_paths, session_id, progress_callback=None, cancel_check=None, worker_signals=None, is_cancelled=None, **kwargs):
             """
             Адаптированная версия метода process_files, поддерживающая worker_signals.
             
@@ -41,14 +41,33 @@ class FileImportAdapter:
                 session_id: ID сессии
                 progress_callback: Функция обратного вызова для обновления прогресса
                 cancel_check: Функция для проверки отмены операции
-                worker_signals: Сигналы рабочего потока (игнорируются)
+                worker_signals: Сигналы рабочего потока
+                is_cancelled: Функция для проверки отмены операции
                 **kwargs: Дополнительные аргументы
                 
             Returns:
                 Результат вызова оригинального метода
             """
-            # Пропускаем worker_signals и оставляем только нужные параметры
-            return original_method(file_paths, session_id, progress_callback, cancel_check, **kwargs)
+            # Создаем новую функцию для проверки отмены, если есть оба параметра
+            effective_cancel_check = cancel_check
+            if is_cancelled and not cancel_check:
+                effective_cancel_check = is_cancelled
+                
+            # Если есть worker_signals, настраиваем функцию обновления прогресса
+            effective_progress_callback = progress_callback
+            if worker_signals and hasattr(worker_signals, 'progress') and not progress_callback:
+                effective_progress_callback = worker_signals.progress.emit
+                
+            # Передаем все параметры в оригинальный метод
+            return original_method(
+                file_paths, 
+                session_id, 
+                effective_progress_callback, 
+                effective_cancel_check,
+                worker_signals=worker_signals,
+                is_cancelled=is_cancelled,
+                **kwargs
+            )
         
         # Заменяем оригинальный метод на адаптированный
         setattr(service, method_name, adapted_process_files)

@@ -69,6 +69,37 @@ def log_error(func: F) -> F:
                         extra=e.details, 
                         exc_info=True)
             raise
+        except AttributeError as e:
+            # Атрибуты могут отсутствовать из-за ошибок в структуре кода
+            # Логируем ошибку, но пытаемся продолжить работу
+            logger.error(f"Ошибка доступа к атрибуту в {func.__name__}: {str(e)}", 
+                       exc_info=True)
+            
+            # Получаем имя класса, если функция является методом
+            class_name = args[0].__class__.__name__ if args else "Unknown"
+            details = {
+                'function': func.__name__,
+                'class': class_name,
+                'args': str(args[1:]) if args else "",
+                'kwargs': str(kwargs),
+                'attribute': str(e),
+                'traceback': traceback.format_exc()
+            }
+            
+            # Формируем результат для некоторых известных паттернов
+            if "db_manager" in str(e):
+                # Возвращаем пустой результат для методов базы данных
+                if func.__name__.startswith('get_'):
+                    return []
+                elif "tournament" in func.__name__ or "knockout" in func.__name__:
+                    # Для операций с турнирами или нокаутами
+                    return {'error': 'Database access error', 'details': str(e)}
+                else:
+                    # Для общих случаев
+                    raise AppError(f"Ошибка доступа к базе данных: {str(e)}", details)
+            else:
+                # Для всех других ошибок атрибутов
+                raise AppError(f"Ошибка в структуре приложения: {str(e)}", details)
         except Exception as e:
             # Логируем неожиданную ошибку и преобразуем ее в AppError
             logger.error(f"Неожиданная ошибка в {func.__name__}: {str(e)}", 

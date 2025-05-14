@@ -45,7 +45,9 @@ class FileImportService:
                      file_paths: List[str], 
                      session_id: str,
                      progress_callback: Optional[Callable[[int, int], None]] = None,
-                     cancel_check: Optional[Callable[[], bool]] = None) -> Dict[str, Any]:
+                     cancel_check: Optional[Callable[[], bool]] = None,
+                     worker_signals=None,
+                     is_cancelled=None) -> Dict[str, Any]:
         """
         Обрабатывает файлы истории рук и сводки турниров.
         
@@ -162,16 +164,19 @@ class FileImportService:
         """
         processed_tournaments = {}
         
-        # Создаем отдельное соединение с БД для этого метода
-        db_connection = self.db_repository.db_manager.create_connection()
-        
-        # Создаем временный репозиторий с новым соединением
-        # Это обеспечит потокобезопасность при обработке файлов
-        from db.repositories.tournament_repo import TournamentRepository
-        temp_repository = TournamentRepository(None)
-        temp_repository.db_manager = self.db_repository.db_manager
-        temp_repository.db_manager.connection = db_connection
-        temp_repository.db_manager.cursor = db_connection.cursor()
+        # Используем уже существующий репозиторий/соединение с БД
+        try:
+            # Создаем временный репозиторий на основе текущего
+            # ThreadLocalConnection обеспечит потокобезопасность
+            from db.repositories.tournament_repo import TournamentRepository
+            temp_repository = TournamentRepository(self.db_repository)
+            
+            # Переменная для отслеживания закрытия соединения
+            db_connection = None
+        except Exception as e:
+            logger.error(f"Ошибка при создании соединения: {e}", exc_info=True)
+            # Создаем репозиторий на основе текущего
+            temp_repository = TournamentRepository(self.db_repository)
         
         try:
             # Обрабатываем файлы в пуле потоков
@@ -206,15 +211,25 @@ class FileImportService:
                         # Устанавливаем session_id
                         tournament.session_id = session_id
                         
-                        # Начинаем транзакцию
-                        temp_repository.db_manager.begin_transaction()
-                        
                         try:
-                            # Сохраняем турнир в БД
-                            temp_repository.save_tournament(tournament)
+                            # Пытаемся начать транзакцию, если метод доступен
+                            try:
+                                if hasattr(temp_repository.db_manager, 'begin_transaction'):
+                                    temp_repository.db_manager.begin_transaction()
+                                    transaction_started = True
+                                else:
+                                    logger.warning("Метод begin_transaction не найден, продолжаем без явной транзакции")
+                                    transaction_started = False
+                            except Exception as tx_e:
+                                logger.warning(f"Не удалось начать транзакцию: {str(tx_e)}")
+                                transaction_started = False
+                                
+                            # Сохраняем турнир в БД, преобразуя объект Tournament в словарь
+                            temp_repository.save_tournament(tournament.to_dict(), session_id)
                             
-                            # Фиксируем транзакцию
-                            temp_repository.db_manager.commit()
+                            # Фиксируем транзакцию, если она была начата
+                            if transaction_started and hasattr(temp_repository.db_manager, 'commit'):
+                                temp_repository.db_manager.commit()
                             
                             # Добавляем турнир в словарь обработанных турниров
                             processed_tournaments[tournament.tournament_id] = tournament
@@ -224,8 +239,13 @@ class FileImportService:
                             
                             logger.debug(f"Турнир {tournament.tournament_id} успешно обработан")
                         except Exception as e:
-                            # Откатываем транзакцию при ошибке
-                            temp_repository.db_manager.rollback()
+                            # Откатываем транзакцию при ошибке, если она была начата
+                            if transaction_started and hasattr(temp_repository.db_manager, 'rollback'):
+                                try:
+                                    temp_repository.db_manager.rollback()
+                                except Exception as rb_e:
+                                    logger.warning(f"Не удалось отменить транзакцию: {str(rb_e)}")
+                                    
                             logger.error(f"Ошибка при сохранении турнира {tournament.tournament_id}: {str(e)}", exc_info=True)
                             results['errors'].append(f"Ошибка при сохранении турнира {tournament.tournament_id}: {str(e)}")
                         
@@ -237,8 +257,9 @@ class FileImportService:
                     if progress_callback:
                         progress_callback(results['processed_files'], results['total_files'])
         finally:
-            # Закрываем временное соединение с БД
-            db_connection.close()
+            # Закрываем временное соединение с БД, если оно существует
+            if db_connection is not None:
+                db_connection.close()
         
         return processed_tournaments
     
@@ -287,22 +308,29 @@ class FileImportService:
         """
         processed_knockouts = []
         
-        # Создаем отдельное соединение с БД для этого метода
-        db_connection = self.db_repository.db_manager.create_connection()
-        
-        # Создаем временный репозиторий с новым соединением
-        from db.repositories.knockout_repo import KnockoutRepository
-        from db.repositories.tournament_repo import TournamentRepository
-        
-        ko_repository = KnockoutRepository(None)
-        ko_repository.db_manager = self.db_repository.db_manager
-        ko_repository.db_manager.connection = db_connection
-        ko_repository.db_manager.cursor = db_connection.cursor()
-        
-        tournament_repository = TournamentRepository(None)
-        tournament_repository.db_manager = self.db_repository.db_manager
-        tournament_repository.db_manager.connection = db_connection
-        tournament_repository.db_manager.cursor = db_connection.cursor()
+        # Используем уже существующий репозиторий/соединение с БД
+        try:
+            # Импортируем необходимые классы репозиториев
+            from db.repositories.knockout_repo import KnockoutRepository
+            from db.repositories.tournament_repo import TournamentRepository
+            
+            # Создаем репозитории на основе существующего
+            # ThreadLocalConnection в db_repository обеспечит потокобезопасность
+            ko_repository = KnockoutRepository(self.db_repository)
+            tournament_repository = TournamentRepository(self.db_repository)
+            
+            # Переменная для отслеживания закрытия соединения
+            db_connection = None
+                
+        except Exception as e:
+            logger.error(f"Ошибка при создании соединения: {e}", exc_info=True)
+            # Создаем репозитории на основе текущего db_repository
+            from db.repositories.knockout_repo import KnockoutRepository
+            from db.repositories.tournament_repo import TournamentRepository
+            
+            ko_repository = KnockoutRepository(self.db_repository)
+            tournament_repository = TournamentRepository(self.db_repository)
+            db_connection = None
         
         try:
             # Обрабатываем файлы в пуле потоков
@@ -332,8 +360,17 @@ class FileImportService:
                             for knockout in hand_history_data['knockouts']:
                                 knockout.session_id = session_id
                                 
-                            # Начинаем транзакцию
-                            ko_repository.db_manager.begin_transaction()
+                            # Пытаемся начать транзакцию
+                            try:
+                                if hasattr(ko_repository.db_manager, 'begin_transaction'):
+                                    ko_repository.db_manager.begin_transaction()
+                                    transaction_started = True
+                                else:
+                                    logger.warning("Метод begin_transaction не найден, продолжаем без явной транзакции")
+                                    transaction_started = False
+                            except Exception as tx_e:
+                                logger.warning(f"Не удалось начать транзакцию: {str(tx_e)}")
+                                transaction_started = False
                             
                             try:
                                 # Сохраняем нокауты в БД
@@ -349,13 +386,20 @@ class FileImportService:
                                 if tournament_id in processed_tournaments and hand_history_data.get('average_initial_stack', 0) > 0:
                                     tournament = processed_tournaments[tournament_id]
                                     tournament.average_initial_stack = hand_history_data['average_initial_stack']
-                                    tournament_repository.update_tournament(tournament)
+                                    tournament_data = tournament.to_dict()
+                                    tournament_repository.update_tournament(tournament_data["id"], tournament_data)
                                 
-                                # Фиксируем транзакцию
-                                ko_repository.db_manager.commit()
+                                # Фиксируем транзакцию, если она была начата
+                                if transaction_started and hasattr(ko_repository.db_manager, 'commit'):
+                                    ko_repository.db_manager.commit()
                             except Exception as e:
-                                # Откатываем транзакцию при ошибке
-                                ko_repository.db_manager.rollback()
+                                # Откатываем транзакцию при ошибке, если она была начата
+                                if transaction_started and hasattr(ko_repository.db_manager, 'rollback'):
+                                    try:
+                                        ko_repository.db_manager.rollback()
+                                    except Exception as rb_e:
+                                        logger.warning(f"Не удалось отменить транзакцию: {str(rb_e)}")
+                                
                                 logger.error(f"Ошибка при сохранении нокаутов для турнира {tournament_id}: {str(e)}", exc_info=True)
                                 results['errors'].append(f"Ошибка при сохранении нокаутов для турнира {tournament_id}: {str(e)}")
                         
@@ -367,8 +411,9 @@ class FileImportService:
                     if progress_callback:
                         progress_callback(results['processed_files'], results['total_files'])
         finally:
-            # Закрываем временное соединение с БД
-            db_connection.close()
+            # Закрываем временное соединение с БД, если оно существует
+            if db_connection is not None:
+                db_connection.close()
             
         return processed_knockouts
     

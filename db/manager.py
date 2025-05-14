@@ -10,6 +10,7 @@ import os
 import sqlite3
 import logging
 import uuid
+import threading
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -257,6 +258,67 @@ class KnockoutRepositoryAdapter:
         return self.db_manager.execute_query(query, params) or []
 
 
+class ThreadLocalConnection:
+    """
+    Класс для создания потокобезопасных соединений с SQLite.
+    Каждый поток получает свое собственное соединение с базой данных.
+    """
+    def __init__(self, db_path):
+        """
+        Инициализирует менеджер потокобезопасных соединений.
+        
+        Args:
+            db_path: Путь к файлу базы данных
+        """
+        self.db_path = db_path
+        self.local = threading.local()
+    
+    def get_connection(self):
+        """
+        Возвращает соединение SQLite для текущего потока.
+        
+        Returns:
+            Соединение SQLite для текущего потока
+        """
+        if not hasattr(self.local, 'connection') or self.local.connection is None:
+            self.local.connection = sqlite3.connect(self.db_path)
+            self.local.connection.row_factory = sqlite3.Row
+            self.local.cursor = self.local.connection.cursor()
+            current_thread = threading.current_thread()
+            logger.debug(f"Создано новое соединение для потока {current_thread.name} (id: {current_thread.ident})")
+        return self.local.connection
+    
+    def get_cursor(self):
+        """
+        Возвращает курсор SQLite для текущего потока.
+        
+        Returns:
+            Курсор SQLite для текущего потока
+        """
+        connection = self.get_connection()
+        if not hasattr(self.local, 'cursor') or self.local.cursor is None:
+            self.local.cursor = connection.cursor()
+        return self.local.cursor
+    
+    def close(self):
+        """
+        Закрывает соединение SQLite для текущего потока.
+        """
+        if hasattr(self.local, 'connection') and self.local.connection is not None:
+            self.local.connection.close()
+            self.local.connection = None
+            self.local.cursor = None
+            current_thread = threading.current_thread()
+            logger.debug(f"Соединение закрыто для потока {current_thread.name} (id: {current_thread.ident})")
+    
+    def close_all(self):
+        """
+        Этот метод должен быть вызван перед удалением объекта,
+        но он не может закрыть соединения в других потоках.
+        """
+        self.close()  # Закрываем соединение только в текущем потоке
+
+
 class DatabaseManager:
     """
     Класс для управления подключением к базе данных SQLite.
@@ -276,15 +338,38 @@ class DatabaseManager:
         if not os.path.exists(db_folder):
             os.makedirs(db_folder)
             
-        # Объявляем атрибуты для соединения и курсора
-        self.connection = None
-        self.cursor = None
+        # Объявляем атрибуты для соединения и потокобезопасного хранилища
+        self.conn_manager = None
         self.current_db_path = None
         
         # Репозитории для работы с данными
         self.session_repository = SessionRepositoryAdapter(self)
         self.tournament_repository = TournamentRepositoryAdapter(self)
         self.knockout_repository = KnockoutRepositoryAdapter(self)
+        
+    @property
+    def connection(self):
+        """
+        Свойство для доступа к соединению SQLite для текущего потока.
+        
+        Returns:
+            Соединение SQLite для текущего потока или None, если соединение не установлено
+        """
+        if self.conn_manager is not None:
+            return self.conn_manager.get_connection()
+        return None
+        
+    @property
+    def cursor(self):
+        """
+        Свойство для доступа к курсору SQLite для текущего потока.
+        
+        Returns:
+            Курсор SQLite для текущего потока или None, если соединение не установлено
+        """
+        if self.conn_manager is not None:
+            return self.conn_manager.get_cursor()
+        return None
         
     def connect(self, db_path: str, check_tables: bool = True) -> None:
         """
@@ -296,19 +381,19 @@ class DatabaseManager:
         """
         try:
             # Закрываем текущее соединение, если оно открыто
-            if self.connection:
-                self.close()
+            self.close()
                 
-            # Создаем новое соединение
-            self.connection = sqlite3.connect(db_path)
-            self.connection.row_factory = sqlite3.Row  # Для доступа к результатам по имени столбца
-            self.cursor = self.connection.cursor()
+            # Создаем новый менеджер соединений
+            self.conn_manager = ThreadLocalConnection(db_path)
             self.current_db_path = db_path
+            
+            # Получаем курсор из менеджера соединений
+            cursor = self.cursor
             
             # Проверяем наличие необходимых таблиц и инициализируем БД при необходимости
             if check_tables:
-                self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-                tables = [row[0] for row in self.cursor.fetchall()]
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                tables = [row[0] for row in cursor.fetchall()]
                 required_tables = ['sessions', 'tournaments', 'knockouts', 'places_distribution']
                 
                 # Если нет всех необходимых таблиц, инициализируем БД
@@ -323,14 +408,18 @@ class DatabaseManager:
             
     def close(self) -> None:
         """
-        Закрывает соединение с базой данных.
+        Закрывает соединение с базой данных в текущем потоке.
         """
-        if self.connection:
-            self.connection.close()
-            self.connection = None
-            self.cursor = None
-            self.current_db_path = None
-            logger.debug("Соединение с базой данных закрыто")
+        if self.conn_manager:
+            try:
+                self.conn_manager.close()
+                logger.debug("Соединение с базой данных закрыто в текущем потоке")
+            except Exception as e:
+                logger.warning(f"Ошибка при закрытии соединения: {str(e)}")
+        
+        # Оставляем conn_manager и current_db_path без изменений,
+        # чтобы другие потоки могли продолжать работу
+        # Они будут удалены при следующем вызове connect
         
     def create_database(self, db_name: str) -> str:
         """
@@ -388,22 +477,27 @@ class DatabaseManager:
         Returns:
             Результат запроса
         """
-        if not self.connection:
+        if not self.conn_manager:
             raise ValueError("База данных не подключена")
             
         try:
+            # Получаем соединение и курсор для текущего потока
+            connection = self.connection
+            cursor = self.cursor
+            
+            # Выполняем запрос
             if params:
-                self.cursor.execute(query, params)
+                cursor.execute(query, params)
             else:
-                self.cursor.execute(query)
+                cursor.execute(query)
                 
             # Если запрос изменяет данные, фиксируем изменения
             if query.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
-                self.connection.commit()
+                connection.commit()
                 
             # Если запрос выбирает данные, возвращаем результаты
             if query.strip().upper().startswith("SELECT"):
-                return self.cursor.fetchall()
+                return cursor.fetchall()
                 
             return None
         except Exception as e:
@@ -421,17 +515,21 @@ class DatabaseManager:
         Returns:
             Количество затронутых строк
         """
-        if not self.connection:
+        if not self.conn_manager:
             raise ValueError("База данных не подключена")
             
         try:
+            # Получаем соединение и курсор для текущего потока
+            connection = self.connection
+            cursor = self.cursor
+            
             if params:
-                self.cursor.execute(query, params)
+                cursor.execute(query, params)
             else:
-                self.cursor.execute(query)
+                cursor.execute(query)
                 
-            self.connection.commit()
-            return self.cursor.rowcount
+            connection.commit()
+            return cursor.rowcount
         except Exception as e:
             logger.error(f"Ошибка выполнения запроса обновления: {e}")
             raise
@@ -446,12 +544,16 @@ class DatabaseManager:
         Returns:
             None
         """
-        if not self.connection:
+        if not self.conn_manager:
             raise ValueError("База данных не подключена")
             
         try:
-            self.cursor.executescript(script)
-            self.connection.commit()
+            # Получаем соединение и курсор для текущего потока
+            connection = self.connection
+            cursor = self.cursor
+            
+            cursor.executescript(script)
+            connection.commit()
         except Exception as e:
             logger.error(f"Ошибка выполнения скрипта: {e}")
             raise
@@ -502,6 +604,122 @@ class DatabaseManager:
             True, если соединение активно, иначе False
         """
         return self.connection is not None
+    
+    def create_connection(self):
+        """
+        Создает новый потокобезопасный объект соединения с текущей базой данных.
+        
+        Returns:
+            Новый объект ThreadLocalConnection для текущей базы данных
+        """
+        if not self.current_db_path:
+            raise ValueError("Нет активной базы данных для создания соединения")
+            
+        # Создаем новый ThreadLocalConnection, который будет использоваться в потоке
+        # Этот объект будет создавать отдельное соединение для каждого потока
+        return ThreadLocalConnection(self.current_db_path)
+        
+    def set_connection(self, connection):
+        """
+        Устанавливает соединение для текущего потока через локальный объект ThreadLocalConnection.
+        Это безопасная альтернатива прямому доступу к свойству connection.
+        
+        Args:
+            connection: Объект соединения SQLite, который нужно установить
+        """
+        if not self.conn_manager:
+            # Если соединение еще не было инициализировано, создаем новый ThreadLocalConnection
+            if not self.current_db_path:
+                raise ValueError("Нет активной базы данных для установки соединения")
+            self.conn_manager = ThreadLocalConnection(self.current_db_path)
+            
+        # Устанавливаем соединение в локальный объект потока
+        self.conn_manager.local.connection = connection
+        self.conn_manager.local.cursor = connection.cursor()
+        current_thread = threading.current_thread()
+        logger.debug(f"Установлено новое соединение для потока {current_thread.name} (id: {current_thread.ident})")
+    
+    def begin_transaction(self):
+        """
+        Начинает новую транзакцию в текущем потоке.
+        """
+        if not self.conn_manager:
+            raise ValueError("База данных не подключена")
+            
+        # Получаем соединение и курсор для текущего потока
+        cursor = self.cursor
+            
+        # SQLite по умолчанию начинает транзакцию при первом изменении,
+        # но мы можем явно начать транзакцию для согласованности
+        cursor.execute("BEGIN TRANSACTION")
+        current_thread = threading.current_thread()
+        logger.debug(f"Транзакция начата в потоке {current_thread.name} (id: {current_thread.ident})")
+        
+    def commit(self):
+        """
+        Фиксирует текущую транзакцию в текущем потоке.
+        """
+        if not self.conn_manager:
+            raise ValueError("База данных не подключена")
+            
+        # Получаем соединение для текущего потока
+        connection = self.connection
+            
+        connection.commit()
+        current_thread = threading.current_thread()
+        logger.debug(f"Транзакция зафиксирована в потоке {current_thread.name} (id: {current_thread.ident})")
+        
+    def rollback(self):
+        """
+        Откатывает текущую транзакцию в текущем потоке.
+        """
+        if not self.conn_manager:
+            raise ValueError("База данных не подключена")
+            
+        # Получаем соединение для текущего потока
+        connection = self.connection
+            
+        connection.rollback()
+        current_thread = threading.current_thread()
+        logger.debug(f"Транзакция отменена в потоке {current_thread.name} (id: {current_thread.ident})")
+    
+    # Для обратной совместимости, делаем db_manager ссылаться на себя же
+    @property
+    def db_manager(self):
+        """Для обратной совместимости с кодом, который ожидает репозиторий с атрибутом db_manager"""
+        return self
+    
+    # Методы-прокси для прямого доступа к репозиториям
+    def get_tournaments(self, session_id=None):
+        """Прокси-метод для доступа к tournament_repository.get_tournaments"""
+        if hasattr(self, 'tournament_repository'):
+            return self.tournament_repository.get_tournaments(session_id)
+        return []  # Возвращаем пустой список вместо исключения
+    
+    def get_knockouts(self, session_id=None):
+        """Прокси-метод для доступа к knockout_repository.get_knockouts"""
+        if hasattr(self, 'knockout_repository'):
+            return self.knockout_repository.get_knockouts(session_id)
+        return []  # Возвращаем пустой список вместо исключения
+    
+    def get_places_distribution(self, session_id=None):
+        """Прокси-метод для доступа к tournament_repository.get_places_distribution"""
+        if hasattr(self, 'tournament_repository'):
+            return self.tournament_repository.get_places_distribution(session_id)
+        return {i: 0 for i in range(1, 10)}  # Возвращаем пустое распределение
+    
+    def update_session_stats(self, session_id):
+        """Прокси-метод для доступа к session_repository.update_session_stats"""
+        if hasattr(self, 'session_repository'):
+            return self.session_repository.update_session_stats(session_id)
+        return False  # Возвращаем False вместо исключения
+        
+    def update_overall_statistics(self, session_id=None):
+        """Метод для обновления общей статистики."""
+        if hasattr(self, 'session_repository'):
+            # Обновляем статистику для всех сессий, если session_id не указан
+            return self.update_session_stats(session_id)
+        return False
         
     def initialize_db(self, db_path: str) -> None:
         """

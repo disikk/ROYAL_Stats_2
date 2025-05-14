@@ -81,9 +81,34 @@ class UIExtender:
         Адаптирует FileImportService для работы с сигналами потоков.
         """
         try:
+            # Импортируем адаптер
             from ui.file_import_adapter import FileImportAdapter
-            FileImportAdapter.initialize()
+            
+            # Проверяем импорт FileImportService
+            from services.file_import import FileImportService
+            
+            # Адаптируем все экземпляры FileImportService в MainWindow
+            try:
+                # Поскольку мы вызываемся во время инициализации приложения,
+                # создаем явный прототип для адаптации всех будущих экземпляров
+                original_init = FileImportService.__init__
+                
+                def patched_init(self, *args, **kwargs):
+                    result = original_init(self, *args, **kwargs)
+                    # Адаптируем метод process_files сразу после создания экземпляра
+                    FileImportAdapter.adapt_process_files(self)
+                    return result
+                
+                # Заменяем конструктор
+                FileImportService.__init__ = patched_init
+                logger.info("FileImportService.__init__ успешно переопределен для автоматической адаптации")
+                
+            except Exception as e:
+                logger.error(f"Не удалось переопределить FileImportService.__init__: {e}", exc_info=True)
+                # Используем запасной метод
+                FileImportAdapter.initialize()
+                
         except ImportError as e:
-            logger.error(f"Не удалось импортировать FileImportAdapter: {e}", exc_info=True)
+            logger.error(f"Не удалось импортировать необходимые модули: {e}", exc_info=True)
         except Exception as e:
             logger.error(f"Ошибка при адаптации FileImportService: {e}", exc_info=True)
