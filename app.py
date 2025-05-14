@@ -10,7 +10,7 @@ ROYAL_Stats 2.0 - Покерный трекер для анализа стати
 Функциональность:
 1. Подсчет нокаутов (когда Hero выбил другого игрока)
 2. Подсчет среднего места, с которого игрок вылетел (1-9)
-3. Подсчет количества x10, x100, x1000, x10000 нокаутов
+3. Подсчет количества крупных нокаутов (x2, x10, x100, x1000, x10000)
 4. Построение гистограммы распределения позиций
 5. Модульная система для легкого добавления новых типов статистики
 6. Управление несколькими базами данных
@@ -32,6 +32,9 @@ from ui.main_window import MainWindow
 from core.plugin_manager import PluginManager
 from db.manager import DatabaseManager
 from config.settings import AppSettings
+
+# Инициализируем UI расширения
+from ui_extender import UIExtender
 
 # Настройка кодировки
 import io
@@ -96,6 +99,11 @@ def main():
         
         # Загружаем доступные модули статистики
         plugin_manager.discover_modules()
+        
+        # Инициализируем расширения UI-компонентов
+        UIExtender.initialize()
+        
+        # Инициализируем модули
         plugin_manager.initialize_modules()
         
         # Создаем главное окно приложения

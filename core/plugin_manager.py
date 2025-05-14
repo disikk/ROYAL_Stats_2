@@ -35,7 +35,7 @@ class PluginManager:
         self.db_manager = db_manager
         self.modules: Dict[str, BaseStat] = {}
         self.active_modules: Dict[str, BaseStat] = {}
-        self.discover_modules()
+        # Удаляем автоматический вызов discover_modules() для избежания дублирования
     
     def discover_modules(self) -> List[Type[BaseStat]]:
         """
@@ -286,7 +286,43 @@ class PluginManager:
         for module_name, module in self.active_modules.items():
             try:
                 logger.debug(f"Расчет статистики модуля '{module_name}'")
-                results[module_name] = module.calculate(db_repository, session_id)
+                
+                # Решение проблемы: вместо передачи session_id напрямую в метод calculate модуля,
+                # мы создаем адаптер репозитория, который обрабатывает запросы к данным
+                # и переадресовывает их к соответствующим репозиториям в db_manager
+                
+                if hasattr(db_repository, 'tournament_repository') and hasattr(db_repository, 'knockout_repository'):
+                    # Используем адаптеры репозиториев
+                    results[module_name] = module.calculate(db_repository, session_id)
+                else:
+                    # Создаем временный адаптер репозитория, который будет перенаправлять вызовы
+                    class RepoAdapter:
+                        def __init__(self, db_repo, sess_id):
+                            self.db_repo = db_repo
+                            self.session_id = sess_id
+                        
+                        def get_places_distribution(self, _=None):
+                            if hasattr(self.db_repo, 'tournament_repository'):
+                                return self.db_repo.tournament_repository.get_places_distribution(self.session_id)
+                            logger.warning(f"Репозиторий не имеет метода get_places_distribution")
+                            return {i: 0 for i in range(1, 10)}
+                        
+                        def get_knockouts(self, _=None):
+                            if hasattr(self.db_repo, 'knockout_repository'):
+                                return self.db_repo.knockout_repository.get_knockouts(self.session_id)
+                            logger.warning(f"Репозиторий не имеет метода get_knockouts")
+                            return []
+                        
+                        def get_tournaments(self, _=None):
+                            if hasattr(self.db_repo, 'tournament_repository'):
+                                return self.db_repo.tournament_repository.get_tournaments(self.session_id)
+                            logger.warning(f"Репозиторий не имеет метода get_tournaments")
+                            return []
+                    
+                    # Используем адаптер для вызова метода calculate модуля
+                    adapter = RepoAdapter(db_repository, session_id)
+                    results[module_name] = module.calculate(adapter, None)
+                    
             except Exception as e:
                 logger.error(f"Ошибка при расчете статистики модуля '{module_name}': {e}", exc_info=True)
                 results[module_name] = {}  # Пустой результат в случае ошибки

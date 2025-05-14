@@ -129,6 +129,79 @@ class DataAnalysisService:
             logger.error(f"Ошибка при получении конфигурации графика модуля '{module_name}': {e}", exc_info=True)
             return {}
     
+    def get_sessions(self) -> List[Dict]:
+        """
+        Получает список всех сессий.
+        
+        Returns:
+            Список словарей с информацией о сессиях.
+            Пустой список, если возникла ошибка или нет доступа к репозиторию.
+        """
+        try:
+            if hasattr(self.db_repository, 'session_repository') and hasattr(self.db_repository.session_repository, 'get_all_sessions'):
+                return self.db_repository.session_repository.get_all_sessions()
+            elif hasattr(self.db_repository, 'get_all_sessions'):
+                return self.db_repository.get_all_sessions()
+            else:
+                logger.warning("У db_repository нет метода get_all_sessions")
+                return []
+        except Exception as e:
+            logger.error(f"Ошибка при получении списка сессий: {e}", exc_info=True)
+            return []
+    
+    def get_session_tournaments(self, session_id: Optional[str] = None) -> List[Dict]:
+        """
+        Получает список турниров для определенной сессии.
+        
+        Args:
+            session_id: ID сессии для фильтрации данных (опционально).
+            
+        Returns:
+            Список словарей с информацией о турнирах.
+        """
+        try:
+            if hasattr(self.db_repository, 'tournament_repository') and hasattr(self.db_repository.tournament_repository, 'get_tournaments'):
+                return self.db_repository.tournament_repository.get_tournaments(session_id)
+            elif hasattr(self.db_repository, 'get_tournaments'):
+                return self.db_repository.get_tournaments(session_id)
+            else:
+                logger.warning("У db_repository нет метода get_tournaments")
+                return []
+        except Exception as e:
+            logger.error(f"Ошибка при получении турниров сессии {session_id}: {e}", exc_info=True)
+            return []
+    
+    def update_statistics(self, session_id: Optional[str] = None) -> bool:
+        """
+        Обновляет статистику в базе данных.
+        
+        Args:
+            session_id: ID сессии для обновления статистики конкретной сессии (опционально).
+                        Если не указан, обновляется общая статистика.
+            
+        Returns:
+            True в случае успеха, False в случае ошибки.
+        """
+        try:
+            # Проверяем наличие необходимых методов в репозитории
+            if session_id:
+                # Обновляем статистику для конкретной сессии
+                if hasattr(self.db_repository, 'update_session_stats'):
+                    return self.db_repository.update_session_stats(session_id)
+                else:
+                    logger.warning("У db_repository нет метода update_session_stats")
+                    return False
+            else:
+                # Обновляем общую статистику
+                if hasattr(self.db_repository, 'update_overall_statistics'):
+                    return self.db_repository.update_overall_statistics()
+                else:
+                    logger.warning("У db_repository нет метода update_overall_statistics")
+                    return False
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении статистики: {e}", exc_info=True)
+            return False
+    
     def generate_report(self, session_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Генерирует полный отчет по статистике.

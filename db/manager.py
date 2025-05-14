@@ -9,10 +9,253 @@
 import os
 import sqlite3
 import logging
-from typing import Optional, List, Dict
+import uuid
+from typing import Optional, List, Dict, Any
+from datetime import datetime
 
 # Настройка логирования
 logger = logging.getLogger('ROYAL_Stats.Database')
+
+
+# Адаптеры репозиториев
+class SessionRepositoryAdapter:
+    """Адаптер для работы с сессиями через DatabaseManager"""
+    
+    def __init__(self, db_manager):
+        self.db_manager = db_manager
+    
+    def get_all_sessions(self) -> List[Dict]:
+        """Возвращает список всех сессий"""
+        if not self.db_manager.is_connected():
+            return []
+            
+        query = "SELECT * FROM sessions ORDER BY created_at DESC"
+        return self.db_manager.execute_query(query) or []
+    
+    def create_session(self, session_name: str) -> str:
+        """Создает новую сессию и возвращает ее ID"""
+        if not self.db_manager.is_connected():
+            raise ValueError("База данных не подключена")
+            
+        session_id = str(uuid.uuid4())
+        query = """
+        INSERT INTO sessions (
+            id, session_id, session_name, tournaments_count, knockouts_count,
+            avg_finish_place, total_prize, avg_initial_stack
+        ) VALUES (?, ?, ?, 0, 0, 0.0, 0.0, 0.0)
+        """
+        
+        self.db_manager.execute_query(query, (session_id, session_id, session_name))
+        return session_id
+    
+    def update_session_stats(self, session_id: str) -> bool:
+        """Обновляет статистику сессии"""
+        if not self.db_manager.is_connected():
+            return False
+            
+        # Получаем количество турниров в сессии
+        tournaments_query = "SELECT COUNT(*) as count FROM tournaments WHERE session_id = ?"
+        tournaments_result = self.db_manager.execute_query(tournaments_query, (session_id,))
+        tournaments_count = tournaments_result[0]['count'] if tournaments_result else 0
+        
+        # Получаем количество нокаутов в сессии
+        knockouts_query = "SELECT COUNT(*) as count FROM knockouts WHERE session_id = ?"
+        knockouts_result = self.db_manager.execute_query(knockouts_query, (session_id,))
+        knockouts_count = knockouts_result[0]['count'] if knockouts_result else 0
+        
+        # Рассчитываем среднее место
+        avg_place_query = """
+        SELECT AVG(finish_place) as avg_place 
+        FROM tournaments 
+        WHERE session_id = ? AND finish_place IS NOT NULL
+        """
+        avg_place_result = self.db_manager.execute_query(avg_place_query, (session_id,))
+        avg_finish_place = avg_place_result[0]['avg_place'] if avg_place_result and avg_place_result[0]['avg_place'] is not None else 0.0
+        
+        # Получаем общий выигрыш
+        prize_query = "SELECT SUM(prize) as total FROM tournaments WHERE session_id = ? AND prize IS NOT NULL"
+        prize_result = self.db_manager.execute_query(prize_query, (session_id,))
+        total_prize = prize_result[0]['total'] if prize_result and prize_result[0]['total'] is not None else 0.0
+        
+        # Получаем общую сумму бай-инов
+        buyin_query = """
+        SELECT SUM(total_buy_in) as total 
+        FROM tournaments 
+        WHERE session_id = ? AND total_buy_in IS NOT NULL
+        """
+        buyin_result = self.db_manager.execute_query(buyin_query, (session_id,))
+        total_buy_in = buyin_result[0]['total'] if buyin_result and buyin_result[0]['total'] is not None else 0.0
+        
+        # Получаем средний начальный стек
+        stack_query = """
+        SELECT AVG(average_initial_stack) as avg_stack 
+        FROM tournaments 
+        WHERE session_id = ? AND average_initial_stack IS NOT NULL AND average_initial_stack > 0
+        """
+        stack_result = self.db_manager.execute_query(stack_query, (session_id,))
+        avg_initial_stack = stack_result[0]['avg_stack'] if stack_result and stack_result[0]['avg_stack'] is not None else 0.0
+        
+        # Обновляем статистику сессии
+        update_query = """
+        UPDATE sessions SET
+            tournaments_count = ?,
+            knockouts_count = ?,
+            avg_finish_place = ?,
+            total_prize = ?,
+            avg_initial_stack = ?,
+            total_buy_in = ?
+        WHERE session_id = ?
+        """
+        
+        params = (
+            tournaments_count, 
+            knockouts_count, 
+            avg_finish_place, 
+            total_prize, 
+            avg_initial_stack,
+            total_buy_in,
+            session_id
+        )
+        
+        self.db_manager.execute_query(update_query, params)
+        return True
+    
+    def get_stat_modules(self, enabled_only: bool = False) -> List[Dict]:
+        """
+        Получает список зарегистрированных модулей статистики.
+        
+        Args:
+            enabled_only: Возвращать только включенные модули
+            
+        Returns:
+            Список словарей с информацией о модулях
+        """
+        if not self.db_manager.is_connected():
+            return []
+            
+        query = "SELECT * FROM stat_modules"
+        
+        if enabled_only:
+            query += " WHERE enabled = 1"
+            
+        query += " ORDER BY position"
+        
+        return self.db_manager.execute_query(query) or []
+    
+    def register_stat_module(self, name: str, display_name: str, enabled: bool = True, position: int = 0) -> Optional[int]:
+        """
+        Регистрирует модуль статистики в базе данных.
+        
+        Args:
+            name: Уникальное имя модуля
+            display_name: Отображаемое имя
+            enabled: Включен ли модуль
+            position: Позиция в UI
+            
+        Returns:
+            ID модуля или None в случае ошибки
+        """
+        if not self.db_manager.is_connected():
+            return None
+            
+        query = """
+        INSERT INTO stat_modules (name, display_name, enabled, position)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(name) DO UPDATE SET
+            display_name = excluded.display_name,
+            enabled = excluded.enabled,
+            position = excluded.position
+        """
+        
+        try:
+            self.db_manager.execute_query(query, (name, display_name, 1 if enabled else 0, position))
+            
+            # Получаем ID модуля
+            id_query = "SELECT id FROM stat_modules WHERE name = ?"
+            result = self.db_manager.execute_query(id_query, (name,))
+            return result[0]['id'] if result else None
+        except Exception as e:
+            logger.error(f"Ошибка при регистрации модуля статистики {name}: {e}")
+            return None
+
+
+class TournamentRepositoryAdapter:
+    """Адаптер для работы с турнирами через DatabaseManager"""
+    
+    def __init__(self, db_manager):
+        self.db_manager = db_manager
+    
+    def get_tournaments(self, session_id: Optional[str] = None) -> List[Dict]:
+        """Возвращает список турниров, опционально фильтруя по сессии"""
+        if not self.db_manager.is_connected():
+            return []
+            
+        query = "SELECT * FROM tournaments"
+        params = None
+        
+        if session_id:
+            query += " WHERE session_id = ?"
+            params = (session_id,)
+            
+        query += " ORDER BY start_time DESC"
+        
+        return self.db_manager.execute_query(query, params) or []
+    
+    def get_places_distribution(self, session_id: Optional[str] = None) -> Dict[int, int]:
+        """Возвращает распределение мест в турнирах"""
+        if not self.db_manager.is_connected():
+            return {i: 0 for i in range(1, 10)}
+            
+        if session_id:
+            # Распределение мест для конкретной сессии
+            query = """
+            SELECT finish_place as place, COUNT(*) as count 
+            FROM tournaments 
+            WHERE session_id = ? AND finish_place BETWEEN 1 AND 9
+            GROUP BY finish_place
+            ORDER BY finish_place
+            """
+            result = self.db_manager.execute_query(query, (session_id,))
+        else:
+            # Общее распределение мест
+            query = """
+            SELECT place, count 
+            FROM places_distribution 
+            ORDER BY place
+            """
+            result = self.db_manager.execute_query(query)
+        
+        # Преобразуем результат в словарь
+        distribution = {i: 0 for i in range(1, 10)}
+        if result:
+            for row in result:
+                place = row['place']
+                if 1 <= place <= 9:
+                    distribution[place] = row['count']
+        
+        return distribution
+
+
+class KnockoutRepositoryAdapter:
+    """Адаптер для работы с нокаутами через DatabaseManager"""
+    
+    def __init__(self, db_manager):
+        self.db_manager = db_manager
+    
+    def get_knockouts(self, session_id: Optional[str] = None) -> List[Dict]:
+        """Возвращает список нокаутов, опционально фильтруя по сессии"""
+        if not self.db_manager.is_connected():
+            return []
+            
+        query = "SELECT * FROM knockouts"
+        params = None
+        
+        if session_id:
+            query += " WHERE session_id = ?"
+            params = (session_id,)
+            
+        return self.db_manager.execute_query(query, params) or []
+
 
 class DatabaseManager:
     """
@@ -37,6 +280,11 @@ class DatabaseManager:
         self.connection = None
         self.cursor = None
         self.current_db_path = None
+        
+        # Репозитории для работы с данными
+        self.session_repository = SessionRepositoryAdapter(self)
+        self.tournament_repository = TournamentRepositoryAdapter(self)
+        self.knockout_repository = KnockoutRepositoryAdapter(self)
         
     def connect(self, db_path: str, check_tables: bool = True) -> None:
         """
