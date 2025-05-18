@@ -474,7 +474,12 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 with open(p, "r", encoding="utf-8", errors="ignore") as f:
                     first_chunk = f.read(512)
-                if "Poker Hand #" in first_chunk:
+
+                # Определяем тип файла более гибко: ищем паттерн "Hand #123".
+                # Старое условие искало конкретно "Poker Hand #", из-за чего
+                # hand history от PokerStars и других румов классифицировались
+                # как summary и KO не подсчитывались.
+                if re.search(r"Hand #\d+", first_chunk):
                     hh_files.append(p)
                 else:
                     summary_files.append(p)
@@ -495,7 +500,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 with open(path, "r", encoding="utf-8", errors="ignore") as f:
                     content = f.read()
 
-                is_hh = "Poker Hand #" in content
+                # Аналогичное определение типа файла, как и при сортировке
+                # по списку: ищем наличие шаблона "Hand #<цифры>" в первых строках
+                is_hh = bool(re.search(r"Hand #\d+", content))
                 if is_hh:
                     res = hh_parser.parse(content)
                     ko_count = res.get("hero_ko_count", 0)
