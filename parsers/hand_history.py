@@ -15,6 +15,12 @@ import re
 from typing import Dict, List, Set, Tuple, Optional
 import config
 
+# Минимальный BB по умолчанию (50/100 уровень → BB=100)
+MIN_BB_DEFAULT = config.MIN_FINAL_TABLE_BLIND * 2
+
+# Паттерн поиска блайндов вида "50/100"
+RE_BLINDS_HEADER = re.compile(r"(\d+(?:\.\d+)?)/(\d+(?:\.\d+)?)")
+
 class Pot:
     """
     Представляет основной/сайд-пот: eligible (кто имеет право), winners (кто выиграл), размер.
@@ -27,14 +33,16 @@ class Pot:
 
 class Hand:
     """
-    Одна раздача: начальные стеки, итоговые вклады, выигрыши, банки.
+    Одна раздача: начальные стеки, итоговые вклады, выигрыши, банки, BB.
     """
-    __slots__ = ('seats', 'contrib', 'collects', 'pots')
-    def __init__(self, seats: Dict[str, int], contrib: Dict[str, int], collects: Dict[str, int], pots: List[Pot]):
+    __slots__ = ('seats', 'contrib', 'collects', 'pots', 'bb')
+
+    def __init__(self, seats: Dict[str, int], contrib: Dict[str, int], collects: Dict[str, int], pots: List[Pot], bb: float):
         self.seats = seats
         self.contrib = contrib
         self.collects = collects
         self.pots = pots
+        self.bb = bb
 
 class HandHistoryParser:
     def __init__(self, hero_name: str = None, min_final_players: int = 6, min_final_blind: int = 50):
@@ -105,7 +113,7 @@ class HandHistoryParser:
         for idx, hand in enumerate(chronological):
             next_hand = chronological[idx+1] if idx+1 < len(chronological) else None
             eliminated = self._eliminated(hand, next_hand)
-            ko_this_hand = self._ko_in_hand(hand, eliminated, self.hero_name)
+            ko_this_hand = self._ko_in_hand(hand, eliminated, self.hero_name, MIN_BB_DEFAULT)
             if ko_this_hand > 0:
                 result['hero_ko_count'] += ko_this_hand
                 result['hero_ko_players'].extend(eliminated)
@@ -120,6 +128,9 @@ class HandHistoryParser:
         return result
 
     def _parse_hand(self, lines: List[str], idx: int) -> Tuple[int, Hand]:
+        header = lines[idx]
+        m = RE_BLINDS_HEADER.search(header)
+        bb = float(m.group(2)) if m else MIN_BB_DEFAULT
         seats: Dict[str, int] = {}
         idx += 1
         while idx < len(lines) and not lines[idx].startswith('*** HOLE'):
@@ -148,7 +159,7 @@ class HandHistoryParser:
             idx += 1
         pots = self._build_pots(contrib)
         self._assign_winners(pots, collects)
-        return idx, Hand(seats, contrib, collects, pots)
+        return idx, Hand(seats, contrib, collects, pots, bb)
 
     def _parse_actions(self, lines: List[str], idx: int) -> Tuple[int, Dict[str, int]]:
         contrib: Dict[str, int] = {}
@@ -218,17 +229,25 @@ class HandHistoryParser:
 
     def _eliminated(self, curr: Hand, nxt: Optional[Hand]) -> List[str]:
         if nxt is None:
-            return []
-        return [p for p in curr.seats if p not in nxt.seats]
+            remaining = curr.collects
+        else:
+            remaining = nxt.seats
+        return [p for p in curr.seats if p not in remaining]
 
-    def _ko_in_hand(self, hand: Hand, eliminated: List[str], hero: str) -> int:
-        # TEMP DEBUGGING LOGIC: Simpler KO check
-        if eliminated and hero in hand.collects and hand.collects[hero] > 0:
-            # Check if Hero won any pot at all
-            for pot in hand.pots:
-                if hero in pot.winners:
-                    return len(eliminated) # Count all eliminations if Hero won any pot in this hand
-        return 0
+    def _ko_in_hand(self, hand: Hand, eliminated: List[str], hero: str, min_bb: float) -> int:
+        if hand.bb < min_bb or not eliminated or hero not in hand.seats:
+            return 0
+        hero_stack = hand.seats[hero]
+        seat_pot = {p: pot for pot in sorted(hand.pots, key=lambda p: len(p.eligible)) for p in pot.eligible}
+        kos = 0
+        for bust in eliminated:
+            if bust == hero:
+                continue
+            pot = seat_pot.get(bust)
+            covered = hero_stack >= hand.seats.get(bust, 0)
+            if pot and hero in pot.winners and covered:
+                kos += 1
+        return kos
 
     def _chip(self, s: str) -> int:
         return int(s.replace(',', '')) if s else 0
