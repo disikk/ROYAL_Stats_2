@@ -72,6 +72,5 @@ class TournamentSummaryParser:
             "place": place,
             "payout": payout,
             "buyin": buyin,
-            "tournament_id": tournament_id,
             "date": date_str,
         }
