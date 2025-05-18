@@ -23,20 +23,33 @@ class TournamentView(QtWidgets.QWidget):
         self.title_label.setStyleSheet("font-size: 20px; font-weight: bold; margin: 10px;")
         header_layout.addWidget(self.title_label)
         
-        # Фильтры (по дате, типу турнира и т.д.)
-        self.date_filter = QtWidgets.QComboBox()
-        self.date_filter.addItems(["Все даты", "Последний месяц", "Последние 3 месяца", "Текущий год"])
-        self.date_filter.setToolTip("Фильтр по дате")
-        self.date_filter.currentIndexChanged.connect(self.reload)
+        # Детальный диапазон дат
+        self.date_from = QtWidgets.QDateTimeEdit()
+        self.date_from.setDisplayFormat("yyyy/MM/dd HH:mm:ss")
+        self.date_from.setCalendarPopup(True)
+        self.date_from.setToolTip("Начальная дата")
+        self.date_from.setDateTime(QtCore.QDateTime(QtCore.QDate(2000,1,1), QtCore.QTime(0,0)))
+        self.date_from.dateTimeChanged.connect(self.reload)
+
+        self.date_to = QtWidgets.QDateTimeEdit()
+        self.date_to.setDisplayFormat("yyyy/MM/dd HH:mm:ss")
+        self.date_to.setCalendarPopup(True)
+        self.date_to.setToolTip("Конечная дата")
+        self.date_to.setDateTime(QtCore.QDateTime.currentDateTime())
+        self.date_to.dateTimeChanged.connect(self.reload)
         
+        filter_layout = QtWidgets.QHBoxLayout()
+        filter_layout.addWidget(QtWidgets.QLabel("C:"))
+        filter_layout.addWidget(self.date_from)
+        filter_layout.addWidget(QtWidgets.QLabel("по:"))
+        filter_layout.addWidget(self.date_to)
+        
+        # Фильтр по результату
         self.tournament_filter = QtWidgets.QComboBox()
         self.tournament_filter.addItems(["Все турниры", "Только ITM", "Только победы"])
         self.tournament_filter.setToolTip("Фильтр по результату")
         self.tournament_filter.currentIndexChanged.connect(self.reload)
-        
-        filter_layout = QtWidgets.QHBoxLayout()
-        filter_layout.addWidget(QtWidgets.QLabel("Дата:"))
-        filter_layout.addWidget(self.date_filter)
+
         filter_layout.addWidget(QtWidgets.QLabel("Результат:"))
         filter_layout.addWidget(self.tournament_filter)
         
@@ -83,7 +96,7 @@ class TournamentView(QtWidgets.QWidget):
         layout.addWidget(separator)
         
         # Таблица турниров
-        self.table = QtWidgets.QTableWidget(0, 7)  # Добавлена колонка для прибыли
+        self.table = QtWidgets.QTableWidget(0, 8)  # Corrected column count to 8
         self.table.setHorizontalHeaderLabels(["ID", "Турнир", "Место", "Выплата", "KO", "Бай-ин", "Прибыль", "Дата"])
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -183,7 +196,8 @@ class TournamentView(QtWidgets.QWidget):
             self.table.setItem(row, 6, profit_item)
             
             # Дата
-            date_item = QtWidgets.QTableWidgetItem(str(t.get("date", ""))) if "date" in t else QtWidgets.QTableWidgetItem("")
+            date_val = t.get("date", "") # Get value first
+            date_item = QtWidgets.QTableWidgetItem(str(date_val)) # Ensure it's a string
             date_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(row, 7, date_item)
         
@@ -195,19 +209,25 @@ class TournamentView(QtWidgets.QWidget):
         # Копия списка для фильтрации
         filtered = tournaments.copy()
         
-        # Фильтр по дате
-        date_filter = self.date_filter.currentText()
-        if date_filter != "Все даты":
-            # Здесь должна быть логика фильтрации по дате
-            # Для примера просто вернем исходный список
-            pass
+        # Фильтр по точному диапазону дат
+        def _parse_dt(s:str):
+            try:
+                return QtCore.QDateTime.fromString(s, "yyyy/MM/dd HH:mm:ss")
+            except Exception:
+                return QtCore.QDateTime()
+
+        date_from_qt = self.date_from.dateTime()
+        date_to_qt = self.date_to.dateTime()
+        if date_from_qt.isValid() and date_to_qt.isValid():
+            filtered = [t for t in filtered if t.get("date") and date_from_qt <= _parse_dt(t.get("date")) <= date_to_qt]
         
         # Фильтр по результату турнира
         tournament_filter = self.tournament_filter.currentText()
         if tournament_filter == "Только ITM":
-            filtered = [t for t in filtered if isinstance(t.get("place", 0), int) and t.get("place", 0) <= 9]
+            # Ensure place is an int for comparison, and handle if it's not (e.g. None or empty string)
+            filtered = [t for t in filtered if isinstance(t.get("place"), int) and 1 <= t.get("place", 0) <= 9]
         elif tournament_filter == "Только победы":
-            filtered = [t for t in filtered if t.get("place", 0) == 1]
+            filtered = [t for t in filtered if t.get("place") == 1]
             
         return filtered
 
@@ -217,13 +237,13 @@ class TournamentView(QtWidgets.QWidget):
         self.tournament_count.setText(f"Всего турниров: {len(tournaments)}")
         
         # Среднее место
-        places = [t.get("place", 0) for t in tournaments if isinstance(t.get("place", 0), int)]
+        places = [t.get("place") for t in tournaments if isinstance(t.get("place"), int) and t.get("place") is not None and t.get("place") > 0]
         avg_place = sum(places) / len(places) if places else 0
         self.avg_place.setText(f"Среднее место: {avg_place:.2f}")
         
         # Общая прибыль
-        total_buyin = sum(float(t.get("buyin", 0)) for t in tournaments)
-        total_payout = sum(float(t.get("payout", 0)) for t in tournaments)
+        total_buyin = sum(float(t.get("buyin", 0.0) or 0.0) for t in tournaments)
+        total_payout = sum(float(t.get("payout", 0.0) or 0.0) for t in tournaments)
         profit = total_payout - total_buyin
         self.total_profit.setText(f"Общая прибыль: {format_money(profit, with_plus=True)}")
         

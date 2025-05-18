@@ -115,7 +115,7 @@ def format_money(value, with_plus=False):
     try:
         val = float(value)
         prefix = "+" if with_plus and val > 0 else ""
-        return f"{prefix}{val:.2f} ₽"
+        return f"{prefix}{val:.2f} $"
     except (ValueError, TypeError):
         return str(value)
 

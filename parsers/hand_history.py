@@ -13,6 +13,7 @@
 
 import re
 from typing import Dict, List, Set, Tuple, Optional
+import config
 
 class Pot:
     """
@@ -36,8 +37,9 @@ class Hand:
         self.pots = pots
 
 class HandHistoryParser:
-    def __init__(self, hero_name: str = "Hero", min_final_players: int = 6, min_final_blind: int = 50):
-        self.hero_name = hero_name
+    def __init__(self, hero_name: str = None, min_final_players: int = 6, min_final_blind: int = 50):
+        # Если имя героя не передано явно, берём из конфигурации
+        self.hero_name = hero_name or config.HERO_NAME
         self.min_final_players = min_final_players
         self.min_final_blind = min_final_blind
         # --- Регулярки для парсинга HH ---
@@ -49,6 +51,14 @@ class HandHistoryParser:
         self.re_collected = re.compile(r'^([^:]+) collected ([\d,]+) from pot')
         self.re_summary = re.compile(r'^\*\*\* SUMMARY \*\*\*')
         self.re_blinds = re.compile(r'Level\d+\(([\d,]+)/([\d,]+)\)')
+        # Regex for Tournament ID (example, might need adjustment for different HH formats)
+        # PokerStars: PokerStars Hand #...: Tournament #TID, ...
+        # GG: Tournament #TID (Hold'em)... (this is often in filename for GG)
+        # For a generic approach, let's try to find "Tournament #" followed by numbers.
+        self.re_tournament_id = re.compile(r"Tournament #(\d+)")
+        tournament_id = None
+        hand_date = None  # Дата/время турнира (первое упоминание в HH)
+        re_date = re.compile(r"(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})")
 
     def parse(self, file_content: str) -> Dict:
         """
@@ -57,6 +67,23 @@ class HandHistoryParser:
         lines = file_content.splitlines()
         hands: List[Hand] = []
         i = 0
+        tournament_id = None
+        hand_date = None  # Дата/время турнира (первое упоминание в HH)
+        re_date = re.compile(r"(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})")
+
+        # Try to find tournament_id early in the file
+        for line_idx in range(min(len(lines), 50)): # Check first 50 lines
+            line_cur = lines[line_idx]
+            m_tid = self.re_tournament_id.search(line_cur)
+            if m_tid:
+                tournament_id = m_tid.group(1)
+            if not hand_date:
+                m_dt = re_date.search(line_cur)
+                if m_dt:
+                    hand_date = m_dt.group(1)
+            if tournament_id and hand_date:
+                break
+
         # --- Парсим все раздачи ---
         while i < len(lines):
             if self.re_hand_start.match(lines[i]):
@@ -65,36 +92,31 @@ class HandHistoryParser:
             else:
                 i += 1
         result = {
+            'tournament_id': tournament_id,
             'hero_ko_count': 0,
             'hero_ko_players': [],
             'hands_count': len(hands),
             'hands': [],
         }
-        # --- Определяем финалку по правилам: >=6 игроков, блайнды >=50/100 ---
-        in_final = False
-        for idx, hand in enumerate(hands):
-            # Извлекаем блайнды из текста раздачи
-            blinds = self._extract_blinds(lines, idx)
-            if len(hand.seats) >= self.min_final_players and blinds[0] >= self.min_final_blind:
-                in_final = True
-            else:
-                in_final = False
-            if not in_final:
-                continue
-            # --- Анализируем KO в этой раздаче для Hero ---
-            next_hand = hands[idx+1] if idx+1 < len(hands) else None
+        # GG-Poker HH обычно идут от последней к первой раздаче.
+        # Чтобы корректно определить, кто был устранён, анализируем в хронологическом порядке.
+        chronological = list(reversed(hands))
+
+        for idx, hand in enumerate(chronological):
+            next_hand = chronological[idx+1] if idx+1 < len(chronological) else None
             eliminated = self._eliminated(hand, next_hand)
             ko_this_hand = self._ko_in_hand(hand, eliminated, self.hero_name)
             if ko_this_hand > 0:
                 result['hero_ko_count'] += ko_this_hand
                 result['hero_ko_players'].extend(eliminated)
-            # Для отладки — инфа по руке
             result['hands'].append({
                 'hand_idx': idx,
                 'eliminated': eliminated,
                 'hero_ko': ko_this_hand,
                 'players': list(hand.seats.keys()),
             })
+        if hand_date:
+            result['date'] = hand_date
         return result
 
     def _parse_hand(self, lines: List[str], idx: int) -> Tuple[int, Hand]:
@@ -200,19 +222,13 @@ class HandHistoryParser:
         return [p for p in curr.seats if p not in nxt.seats]
 
     def _ko_in_hand(self, hand: Hand, eliminated: List[str], hero: str) -> int:
-        if not eliminated or hero not in hand.collects or hand.collects[hero] <= 0:
-            return 0
-        pot_order = sorted(hand.pots, key=lambda p: len(p.eligible), reverse=False)
-        player_pot: Dict[str, Pot] = {}
-        for pot in pot_order:
-            for p in pot.eligible:
-                player_pot.setdefault(p, pot)
-        kos = 0
-        for bust in eliminated:
-            pot = player_pot.get(bust)
-            if pot and hero in pot.winners:
-                kos += 1
-        return kos
+        # TEMP DEBUGGING LOGIC: Simpler KO check
+        if eliminated and hero in hand.collects and hand.collects[hero] > 0:
+            # Check if Hero won any pot at all
+            for pot in hand.pots:
+                if hero in pot.winners:
+                    return len(eliminated) # Count all eliminations if Hero won any pot in this hand
+        return 0
 
     def _chip(self, s: str) -> int:
         return int(s.replace(',', '')) if s else 0

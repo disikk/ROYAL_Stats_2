@@ -5,11 +5,17 @@ HERO_NAME = "Hero"
 APP_VERSION = "16.05.2025"
 
 # Текущий путь к БД (по умолчанию, можно менять в интерфейсе)
-DB_PATH = "royal_stats.db"
+# Все базы храним в подпапке `databases` для удобства.
+DEFAULT_DB_DIR = "databases"
+# Создаём каталог, если его ещё нет
+os.makedirs(DEFAULT_DB_DIR, exist_ok=True)
+
+# Устанавливаем путь по умолчанию внутри каталога
+DB_PATH = os.path.join(DEFAULT_DB_DIR, "royal_stats.db")
 
 # Список недавних баз (может использоваться для быстрого переключения в GUI)
 RECENT_DATABASES = [
-    "royal_stats.db",
+    DB_PATH,
     # Добавлять новые файлы через GUI или вручную
 ]
 

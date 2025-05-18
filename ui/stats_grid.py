@@ -13,7 +13,7 @@ class StatCard(QtWidgets.QGroupBox):
         
         self.value_label = QtWidgets.QLabel(self._format_value(value))
         font = self.value_label.font()
-        font.setPointSize(18)
+        font.setPointSize(14)
         font.setBold(True)
         self.value_label.setFont(font)
         self.value_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -47,7 +47,7 @@ class StatCard(QtWidgets.QGroupBox):
         layout = QtWidgets.QVBoxLayout()
         layout.addLayout(top_layout)
         self.setLayout(layout)
-        self.setFixedHeight(100)  # Увеличена высота для лучшего вида
+        self.setFixedHeight(60)  # Компактнее
         
         # Тень для карточки
         shadow = QtWidgets.QGraphicsDropShadowEffect()
@@ -141,7 +141,7 @@ class StatsGrid(QtWidgets.QWidget):
         scroll_layout.addWidget(chart_header)
 
         # --- Гистограмма распределения мест ---
-        self.figure = Figure(figsize=(8, 4))
+        self.figure = Figure(figsize=(6, 3))
         # Устанавливаем фон в соответствии с темной темой
         self.figure.patch.set_facecolor('#353535')
         self.canvas = FigureCanvas(self.figure)
@@ -170,20 +170,46 @@ class StatsGrid(QtWidgets.QWidget):
         # Определяем, какие статы являются денежными значениями
         money_stats = ["ROI", "Доход", "Прибыль", "Выплата", "Бай-ин"]
 
+        # Отображаем только необходимые показатели
+        required_keys = {
+            "ITM": ["itm_percent"],
+            "ROI": ["roi"],
+            "Total KO": ["total_ko"],
+            "Big KO": ["x1.5", "x2", "x10", "x100"],
+        }
+
         for plugin in plugins:
             try:
                 result = plugin.compute(tournaments, knockouts, sessions)
+
+                # Какие ключи из результата нужно показать
+                need_keys = required_keys.get(plugin.name, [])
+
                 if isinstance(result, dict):
                     for k, v in result.items():
+                        if k not in need_keys:
+                            continue  # пропускаем лишние данные
                         # Проверяем, является ли стат денежным показателем
                         is_money = any(money_term in plugin.name or money_term in k for money_term in money_stats)
-                        stats_flat.append((f"{plugin.name}: {k}", v, is_money))
-                        self.card_names.append(f"{plugin.name}: {k}")
+                        # Удобно отобразить человеко-читаемый заголовок
+                        display_name = {
+                            ("ITM", "itm_percent"): "ITM%",
+                            ("ROI", "roi"): "ROI%",
+                            ("Total KO", "total_ko"): "Нокауты",
+                        }.get((plugin.name, k), f"{k}")
+                        # Для Big KO выводим как x1.5 и т.п.
+                        if plugin.name == "Big KO":
+                            display_name = k
+                        stats_flat.append((display_name, v, is_money))
+                        self.card_names.append(display_name)
                 else:
-                    # Проверяем, является ли стат денежным показателем
+                    if not need_keys:
+                        continue
+                    # Если результат не словарь, но метрика одна (не используется сейчас)
                     is_money = any(money_term in plugin.name for money_term in money_stats)
-                    stats_flat.append((plugin.name, result, is_money))
-                    self.card_names.append(plugin.name)
+                    display_name = plugin.name
+                    stats_flat.append((display_name, result, is_money))
+                    self.card_names.append(display_name)
             except Exception as e:
                 stats_flat.append((plugin.name, f"Ошибка: {e}", False))
                 self.card_names.append(plugin.name)
@@ -197,7 +223,23 @@ class StatsGrid(QtWidgets.QWidget):
                 widget.deleteLater()
         self.cards = []
 
-        cols = 4  # Сколько карточек в ряду
+        # Dynamically determine columns based on available width
+        # StatCard has fixed height 100, let's assume a min/avg width for calculation
+        # Min card width might be around 200-250px with title and value.
+        # Spacing is 16px.
+        card_min_width_plus_spacing = 140 + self.cards_grid.spacing() 
+        
+        # Use the width of the container for cards, or StatsGrid itself as a fallback
+        container_width = self.cards_widget.width()
+        if container_width <= 0: # If not yet sized (e.g. during init)
+            container_width = self.width()
+        if container_width <= 0: # Still not sized (e.g. hidden tab)
+            container_width = 800 # Default reasonable width
+            
+        cols = max(1, int(container_width / card_min_width_plus_spacing))
+        # Cap columns to a reasonable max, e.g., 5 or 6, to avoid tiny cards if width is huge
+        cols = min(cols, 6) 
+
         for i, (name, value, is_money) in enumerate(stats_flat):
             card = StatCard(name, value, is_money=is_money, with_plus="ROI" in name)
             self.cards.append(card)

@@ -12,6 +12,6 @@ class ITMStat(BaseStat):
         total = len(tournaments)
         if total == 0:
             return {"itm_percent": 0.0, "itm_count": 0, "total": 0}
-        itm_count = sum(1 for t in tournaments if t.place in (1, 2, 3))
-        itm_percent = itm_count / total * 100.0
+        itm_count = sum(1 for t in tournaments if t.get('place') in (1, 2, 3))
+        itm_percent = itm_count / total * 100.0 if total > 0 else 0.0
         return {"itm_percent": round(itm_percent, 2), "itm_count": itm_count, "total": total}
