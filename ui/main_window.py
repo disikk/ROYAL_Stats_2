@@ -518,6 +518,17 @@ class MainWindow(QtWidgets.QMainWindow):
                             continue
                     
                     current_tournament_id = parsed_tournament_id
+
+                    # Record individual knockouts for statistics
+                    for hand in res.get("hands", []):
+                        hero_ko = hand.get("hero_ko", 0)
+                        hand_idx = hand.get("hand_idx")
+                        if hero_ko and hand_idx is not None:
+                            for _ in range(hero_ko):
+                                self.knockout_repo.add_knockout(
+                                    parsed_tournament_id,
+                                    hand_idx,
+                                )
                     
                     existing = self.tournament_repo.get_hero_tournament(current_tournament_id) if hasattr(self.tournament_repo, "get_hero_tournament") else None
                     self.tournament_repo.add_or_update_tournament(
