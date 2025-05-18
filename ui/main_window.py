@@ -530,6 +530,13 @@ class MainWindow(QtWidgets.QMainWindow):
                         ko_count=ko_count,
                         date=res.get("date", existing.get("date") if existing else None),
                     )
+                    # Insert hero knockouts for this HH file
+                    for hand in res.get("hands", []):
+                        hero_ko = hand.get("hero_ko", 0)
+                        hand_idx = hand.get("hand_idx")
+                        if hero_ko and hand_idx is not None:
+                            for _ in range(hero_ko):
+                                self.knockout_repo.add_knockout(current_tournament_id, hand_idx)
                 else:
                     res = sum_parser.parse(content, filename=os.path.basename(path))
                     parsed_tournament_id = res.get("tournament_id") # Summary parser already tries filename then content
