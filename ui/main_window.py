@@ -470,6 +470,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Сначала обрабатываем HH-файлы, затем summary, чтобы итоговые выплаты перекрыли данные KO
         hh_files = []
         summary_files = []
+        file_types = {}
         for p in files:
             try:
                 with open(p, "r", encoding="utf-8", errors="ignore") as f:
@@ -479,12 +480,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 # искало только "Poker Hand #" и пропускало форматы вроде
                 # "Poker Hand #BR123" от разных румов, из-за чего HH могли
                 # ошибочно классифицироваться как summary.
-                if re.search(r"Hand #[A-Za-z0-9]+", first_chunk):
+                is_hh = bool(re.search(r"Hand #[A-Za-z0-9]+", first_chunk))
+                file_types[p] = is_hh
+                if is_hh:
                     hh_files.append(p)
                 else:
                     summary_files.append(p)
             except Exception:
                 summary_files.append(p)
+                file_types[p] = False
 
         ordered_files = hh_files + summary_files
 
@@ -500,9 +504,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 with open(path, "r", encoding="utf-8", errors="ignore") as f:
                     content = f.read()
 
-                # Аналогичное определение типа файла, как и при сортировке:
-                # ищем наличие шаблона "Hand #<id>" в первых строках
-                is_hh = bool(re.search(r"Hand #[A-Za-z0-9]+", content))
+                is_hh = file_types.get(path, False)
                 if is_hh:
                     res = hh_parser.parse(content)
                     ko_count = res.get("hero_ko_count", 0)
