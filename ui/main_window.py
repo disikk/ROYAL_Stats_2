@@ -475,11 +475,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 with open(p, "r", encoding="utf-8", errors="ignore") as f:
                     first_chunk = f.read(512)
 
-                # Определяем тип файла более гибко: ищем паттерн "Hand #123".
-                # Старое условие искало конкретно "Poker Hand #", из-за чего
-                # hand history от PokerStars и других румов классифицировались
-                # как summary и KO не подсчитывались.
-                if re.search(r"Hand #\d+", first_chunk):
+                # Определяем тип файла по наличию "Hand #<id>". Старое условие
+                # искало только "Poker Hand #" и пропускало форматы вроде
+                # "Poker Hand #BR123" от разных румов, из-за чего HH могли
+                # ошибочно классифицироваться как summary.
+                if re.search(r"Hand #[A-Za-z0-9]+", first_chunk):
                     hh_files.append(p)
                 else:
                     summary_files.append(p)
@@ -500,9 +500,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 with open(path, "r", encoding="utf-8", errors="ignore") as f:
                     content = f.read()
 
-                # Аналогичное определение типа файла, как и при сортировке
-                # по списку: ищем наличие шаблона "Hand #<цифры>" в первых строках
-                is_hh = bool(re.search(r"Hand #\d+", content))
+                # Аналогичное определение типа файла, как и при сортировке:
+                # ищем наличие шаблона "Hand #<id>" в первых строках
+                is_hh = bool(re.search(r"Hand #[A-Za-z0-9]+", content))
                 if is_hh:
                     res = hh_parser.parse(content)
                     ko_count = res.get("hero_ko_count", 0)
@@ -544,7 +544,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.tournament_repo.add_or_update_tournament(
                         current_tournament_id,
                         place=(res.get("place") if res.get("place") is not None else (existing.get("place", 0) if existing else 0)),
-                        payout=res.get("payout", 0.0),
+                        payout=(res.get("payout") if res.get("payout") is not None else (existing.get("payout", 0.0) if existing else 0.0)),
                         buyin=res.get("buyin", existing.get("buyin", 0.0) if existing else 0.0),
                         ko_count=ko_existing,
                         date=res.get("date", existing.get("date") if existing else None),
