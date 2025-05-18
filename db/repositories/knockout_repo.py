@@ -22,9 +22,15 @@ class KnockoutRepository:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     tournament_id TEXT NOT NULL,
                     hand_idx INTEGER NOT NULL,
-                    split BOOLEAN DEFAULT 0
+                    split BOOLEAN DEFAULT 0,
+                    UNIQUE(tournament_id, hand_idx)
                 )
             """)
+            # For databases created before the UNIQUE constraint was introduced
+            c.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS "
+                "idx_hero_knockouts_unique ON hero_knockouts(tournament_id, hand_idx)"
+            )
             conn.commit()
 
     def add_knockout(self, tournament_id, hand_idx, split=False):
@@ -33,10 +39,13 @@ class KnockoutRepository:
         """
         with self.db.get_connection() as conn:
             c = conn.cursor()
-            c.execute("""
-                INSERT INTO hero_knockouts (tournament_id, hand_idx, split)
+            c.execute(
+                """
+                INSERT OR IGNORE INTO hero_knockouts (tournament_id, hand_idx, split)
                 VALUES (?, ?, ?)
-            """, (tournament_id, hand_idx, int(split)))
+                """,
+                (tournament_id, hand_idx, int(split)),
+            )
             conn.commit()
 
     def get_hero_knockouts(self, tournament_id=None):
