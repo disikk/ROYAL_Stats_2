@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS tournaments (
 )
 """
 
-# Таблица для хранения информации о накаутах
+# Таблица для хранения информации о нокаутах
 CREATE_KNOCKOUTS_TABLE = """
 CREATE TABLE IF NOT EXISTS knockouts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
