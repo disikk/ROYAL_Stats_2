@@ -1,13 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
-ROYAL_Stats - Модели данных для покерного трекера.
-Данный модуль служит для импорта всех моделей.
+Пакет моделей данных (dataclass) для Royal Stats (Hero-only).
 """
 
-from models.tournament import Tournament
-from models.knockout import Knockout
-from models.session import Session
-
-__all__ = ['Tournament', 'Knockout', 'Session']
+from .knockout import Knockout
+from .tournament import HeroTournament
+from .session import HeroSession
+from .stats import HeroStats

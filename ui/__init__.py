@@ -1,13 +1,11 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
-Пакет пользовательского интерфейса для покерного трекера ROYAL_Stats.
-Содержит классы для создания и управления интерфейсом приложения.
+GUI-пакет Royal Stats (Hero-only).
+Импортирует основные компоненты интерфейса.
 """
 
-# Импорт основных классов для удобства использования
-from ui.main_window import MainWindow
-
-# Версия UI
-__version__ = "2.0.0"
+from .main_window import MainWindow
+from .stats_grid import StatsGrid
+from .tournament_view import TournamentView
+from .session_view import SessionView
+from .knockout_table import KnockoutTable
+# Добавляй свои компоненты, если будут новые

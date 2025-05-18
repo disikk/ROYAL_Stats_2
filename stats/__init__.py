@@ -1,30 +1,20 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
-ROYAL_Stats - Модули статистики для покерного трекера.
-Данный модуль служит для импорта всех модулей статистики.
+Пакет стат-плагинов Royal Stats.
+Автоматически импортирует все плагины, унаследованные от BaseStat.
 """
 
-from stats.base_stat import BaseStat
-from stats.positions_stat import PositionsStat
-from stats.knockouts_stat import KnockoutsStat
-from stats.large_ko_stat import LargeKOStat
-from stats.profit_stat import ProfitStat
+import pkgutil
+import importlib
+from .base import BaseStat
 
-# Список всех доступных модулей статистики
-AVAILABLE_STATS = [
-    PositionsStat,
-    KnockoutsStat,
-    LargeKOStat,
-    ProfitStat
-]
+# Автоматический импорт всех модулей в папке stats, кроме base и __init__
+__all__ = []
+for loader, module_name, is_pkg in pkgutil.iter_modules(__path__):
+    if module_name not in ("base", "__init__"):
+        mod = importlib.import_module(f"{__name__}.{module_name}")
+        for attr in dir(mod):
+            obj = getattr(mod, attr)
+            if isinstance(obj, type) and issubclass(obj, BaseStat) and obj is not BaseStat:
+                __all__.append(obj.__name__)
 
-__all__ = [
-    'BaseStat',
-    'PositionsStat',
-    'KnockoutsStat',
-    'LargeKOStat',
-    'ProfitStat',
-    'AVAILABLE_STATS'
-]
+# После этого во внешнем коде: from stats import MyStatPlugin (если MyStatPlugin наследник BaseStat)

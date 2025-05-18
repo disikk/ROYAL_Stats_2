@@ -35,6 +35,7 @@ bin/
 obj/
 .gradle/
 vendor/
+ui_bak/
 __pycache__/
 *.py[cod]
 *$py.class
