@@ -6,7 +6,7 @@
 Экспортирует классы и функции для работы с базой данных.
 """
 
-from .manager import DatabaseManager
+from .database import DatabaseManager
 from . import schema
 
 __all__ = [
