@@ -232,14 +232,17 @@ GET_TOURNAMENTS_BY_SESSION = """
 SELECT * FROM tournaments WHERE session_id = ? ORDER BY start_time DESC
 """
 
-# Получение накаутов конкретной сессии
+# Получение нокаутов конкретной сессии (из hero_knockouts)
 GET_KNOCKOUTS_BY_SESSION = """
-SELECT * FROM knockouts WHERE session_id = ?
+SELECT hk.*
+FROM hero_knockouts hk
+JOIN tournaments t ON hk.tournament_id = t.tournament_id
+WHERE t.session_id = ?
 """
 
-# Получение общего количества накаутов
+# Получение общего количества нокаутов (из hero_knockouts)
 GET_TOTAL_KNOCKOUTS = """
-SELECT COUNT(*) FROM knockouts
+SELECT COUNT(*) FROM hero_knockouts
 """
 
 # Получение турниров по диапазону дат
@@ -264,14 +267,16 @@ SELECT key, value FROM module_settings WHERE module_id = ?
 # Удаление данных сессии
 DELETE_SESSION_DATA = """
 DELETE FROM tournaments WHERE session_id = ?;
-DELETE FROM knockouts WHERE session_id = ?;
+DELETE FROM hero_knockouts WHERE tournament_id IN (
+    SELECT tournament_id FROM tournaments WHERE session_id = ?
+);
 DELETE FROM sessions WHERE session_id = ?;
 """
 
 # Удаление всех данных из базы
 DELETE_ALL_DATA = """
 DELETE FROM tournaments;
-DELETE FROM knockouts;
+DELETE FROM hero_knockouts;
 DELETE FROM sessions;
 DELETE FROM places_distribution;
 UPDATE statistics SET
