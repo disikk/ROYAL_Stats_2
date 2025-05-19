@@ -59,10 +59,30 @@ class SessionRepositoryAdapter:
         tournaments_result = self.db_manager.execute_query(tournaments_query, (session_id,))
         tournaments_count = tournaments_result[0]['count'] if tournaments_result else 0
         
-        # Получаем количество нокаутов в сессии
-        knockouts_query = "SELECT COUNT(*) as count FROM knockouts WHERE session_id = ?"
-        knockouts_result = self.db_manager.execute_query(knockouts_query, (session_id,))
-        knockouts_count = knockouts_result[0]['count'] if knockouts_result else 0
+        # Получаем количество нокаутов в сессии из hero_knockouts или hero_tournaments
+        tables = self.db_manager.get_table_names()
+        knockouts_count = 0
+
+        if 'hero_knockouts' in tables:
+            knockouts_query = """
+            SELECT COUNT(hk.id) as count
+            FROM hero_knockouts hk
+            JOIN tournaments t ON hk.tournament_id = t.tournament_id
+            WHERE t.session_id = ?
+            """
+            result = self.db_manager.execute_query(knockouts_query, (session_id,))
+            if result:
+                knockouts_count = result[0]['count'] or 0
+        elif 'hero_tournaments' in tables:
+            knockouts_query = """
+            SELECT SUM(ht.ko_count) as count
+            FROM hero_tournaments ht
+            JOIN tournaments t ON ht.tournament_id = t.tournament_id
+            WHERE t.session_id = ?
+            """
+            result = self.db_manager.execute_query(knockouts_query, (session_id,))
+            if result and result[0]['count'] is not None:
+                knockouts_count = result[0]['count']
         
         # Рассчитываем среднее место
         avg_place_query = """
