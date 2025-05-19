@@ -175,7 +175,8 @@ class SessionView(QtWidgets.QWidget):
             
             # KO
             ko = s.get("total_ko", 0)
-            ko_item = QtWidgets.QTableWidgetItem(format_money(ko))
+            # KO is a count, so display it as a plain number without currency
+            ko_item = QtWidgets.QTableWidgetItem(str(ko))
             ko_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
             apply_cell_color_by_value(ko_item, ko)
             self.table.setItem(row, 5, ko_item)
