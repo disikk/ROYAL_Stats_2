@@ -89,11 +89,10 @@ class StatsGrid(QtWidgets.QWidget):
     Дашборд Hero: все ключевые статы в виде карточек + гистограмма мест
     """
 
-    def __init__(self, stats_repo, tournament_repo, knockout_repo, session_repo, parent=None):
+    def __init__(self, stats_repo, tournament_repo, session_repo, parent=None):
         super().__init__(parent)
         self.stats_repo = stats_repo
         self.tournament_repo = tournament_repo
-        self.knockout_repo = knockout_repo
         self.session_repo = session_repo
 
         self.cards = []
@@ -154,8 +153,8 @@ class StatsGrid(QtWidgets.QWidget):
 
     def reload(self):
         tournaments = self.tournament_repo.get_all_hero_tournaments()
-        knockouts = self.knockout_repo.get_hero_knockouts() if hasattr(self.knockout_repo, 'get_hero_knockouts') else []
         sessions = self.session_repo.get_all_hero_sessions() if hasattr(self.session_repo, 'get_all_hero_sessions') else []
+        knockouts = []  # KO details are no longer stored separately
 
         # --- Считаем все статы через плагины ---
         from stats.itm import ITMStat

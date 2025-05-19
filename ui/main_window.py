@@ -5,14 +5,12 @@ import config
 from db.database import DatabaseManager
 from db.repositories import (
     TournamentRepository,
-    KnockoutRepository,
     SessionRepository,
     StatsRepository,
 )
 import os
 from ui.stats_grid import StatsGrid
 from ui.tournament_view import TournamentView
-from ui.knockout_table import KnockoutTable
 from ui.session_view import SessionView
 
 # --- Парсеры ---
@@ -150,7 +148,6 @@ class MainWindow(QtWidgets.QMainWindow):
         """Создаёт менеджер БД и репозитории (пересоздаётся при смене БД)"""
         self.db_manager = DatabaseManager(self.db_path)
         self.tournament_repo = TournamentRepository(self.db_manager)
-        self.knockout_repo = KnockoutRepository(self.db_manager)
         self.session_repo = SessionRepository(self.db_manager)
         self.stats_repo = StatsRepository(self.db_manager)
 
@@ -205,18 +202,14 @@ class MainWindow(QtWidgets.QMainWindow):
         main_layout.addWidget(self.tabs)
 
         # 1. Дашборд Hero (статы и гистограмма)
-        self.stats_grid = StatsGrid(self.stats_repo, self.tournament_repo, self.knockout_repo, self.session_repo)
+        self.stats_grid = StatsGrid(self.stats_repo, self.tournament_repo, self.session_repo)
         self.tabs.addTab(self.stats_grid, QtGui.QIcon.fromTheme("office-chart-bar"), "Дашборд")
 
         # 2. Турниры Hero
         self.tournament_view = TournamentView(self.tournament_repo)
         self.tabs.addTab(self.tournament_view, QtGui.QIcon.fromTheme("view-list-details"), "Турниры")
 
-        # 3. KO Hero
-        self.knockout_table = KnockoutTable(self.knockout_repo)
-        self.tabs.addTab(self.knockout_table, QtGui.QIcon.fromTheme("view-media-artist"), "Нокауты")
-
-        # 4. Сессии Hero
+        # 3. Сессии Hero
         self.session_view = SessionView(self.session_repo)
         self.tabs.addTab(self.session_view, QtGui.QIcon.fromTheme("x-office-calendar"), "Сессии")
 
@@ -240,14 +233,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if hasattr(self, 'stats_grid'):
             self.stats_grid.stats_repo = self.stats_repo
             self.stats_grid.tournament_repo = self.tournament_repo
-            self.stats_grid.knockout_repo = self.knockout_repo
             self.stats_grid.session_repo = self.session_repo
         
         if hasattr(self, 'tournament_view') and self.tournament_view:
             self.tournament_view.tournament_repo = self.tournament_repo
         
-        if hasattr(self, 'knockout_table') and self.knockout_table:
-            self.knockout_table.knockout_repo = self.knockout_repo
             
         if hasattr(self, 'session_view') and self.session_view:
             self.session_view.session_repo = self.session_repo
@@ -380,7 +370,6 @@ class MainWindow(QtWidgets.QMainWindow):
         # Обновить все вкладки
         self.stats_grid.reload()
         self.tournament_view.reload()
-        self.knockout_table.reload()
         self.session_view.reload()
         
         # Обновляем информацию в тулбаре
@@ -522,21 +511,15 @@ class MainWindow(QtWidgets.QMainWindow):
                     current_tournament_id = parsed_tournament_id
                     
                     existing = self.tournament_repo.get_hero_tournament(current_tournament_id) if hasattr(self.tournament_repo, "get_hero_tournament") else None
+                    new_ko_count = ko_count + (existing.get("ko_count", 0) if existing else 0)
                     self.tournament_repo.add_or_update_tournament(
                         current_tournament_id,
                         place=existing.get("place", 0) if existing else 0,
                         payout=existing.get("payout", 0.0) if existing else 0.0,
                         buyin=existing.get("buyin", 0.0) if existing else 0.0,
-                        ko_count=ko_count,
+                        ko_count=new_ko_count,
                         date=res.get("date", existing.get("date") if existing else None),
                     )
-                    # Insert hero knockouts for this HH file
-                    for hand in res.get("hands", []):
-                        hero_ko = hand.get("hero_ko", 0)
-                        hand_idx = hand.get("hand_idx")
-                        if hero_ko and hand_idx is not None:
-                            for _ in range(hero_ko):
-                                self.knockout_repo.add_knockout(current_tournament_id, hand_idx)
                 else:
                     res = sum_parser.parse(content, filename=os.path.basename(path))
                     parsed_tournament_id = res.get("tournament_id") # Summary parser already tries filename then content
