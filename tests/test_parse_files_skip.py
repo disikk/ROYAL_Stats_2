@@ -72,12 +72,11 @@ def load_main_window_with_stubs():
     class Repo:
         pass
     repo_mod.TournamentRepository = Repo
-    repo_mod.KnockoutRepository = Repo
     repo_mod.SessionRepository = Repo
     repo_mod.StatsRepository = Repo
     sys.modules['db.repositories'] = repo_mod
 
-    for name in ['ui.stats_grid', 'ui.tournament_view', 'ui.knockout_table', 'ui.session_view']:
+    for name in ['ui.stats_grid', 'ui.tournament_view', 'ui.session_view']:
         mod = types.ModuleType(name)
         setattr(mod, name.split('.')[-1].title().replace('_', ''), type('X', (), {}))
         sys.modules[name] = mod
