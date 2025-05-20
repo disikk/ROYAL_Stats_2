@@ -9,6 +9,7 @@ from PyQt6 import QtWidgets, QtGui, QtCore
 from typing import List, Optional
 from ui.app_style import setup_table_widget, format_money, apply_cell_color_by_value, format_percentage
 from application_service import ApplicationService # Импортируем сервис
+from models.tournament import Tournament # Импортируем модель Tournament
 import config # Для доступа к имени Hero
 
 import logging

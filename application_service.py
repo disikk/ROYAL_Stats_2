@@ -68,6 +68,11 @@ class ApplicationService:
 
         self.hh_parser = HandHistoryParser()
         self.ts_parser = TournamentSummaryParser()
+        
+    @property
+    def db_path(self) -> str:
+        """Возвращает путь к текущей базе данных."""
+        return self.db.db_path
 
     def get_available_databases(self) -> List[str]:
         """Возвращает список доступных файлов баз данных."""

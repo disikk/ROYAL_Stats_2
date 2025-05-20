@@ -207,6 +207,34 @@ class DatabaseManager:
             return 0 # В случае проброса исключения, эта строка недостижима
 
 
+    def get_available_databases(self) -> List[str]:
+        """
+        Возвращает список доступных баз данных в папке по умолчанию.
+        
+        Returns:
+            Список путей к файлам баз данных SQLite (.db)
+        """
+        db_files = []
+        try:
+            # Проверяем существование директории
+            if os.path.exists(config.DEFAULT_DB_DIR) and os.path.isdir(config.DEFAULT_DB_DIR):
+                # Получаем список всех файлов с расширением .db
+                for file_name in os.listdir(config.DEFAULT_DB_DIR):
+                    if file_name.endswith('.db'):
+                        full_path = os.path.join(config.DEFAULT_DB_DIR, file_name)
+                        if os.path.isfile(full_path):
+                            db_files.append(full_path)
+                
+                logger.debug(f"Найдено {len(db_files)} баз данных в {config.DEFAULT_DB_DIR}")
+            else:
+                logger.warning(f"Директория {config.DEFAULT_DB_DIR} не существует или не является директорией")
+                # Создаем директорию, если она не существует
+                os.makedirs(config.DEFAULT_DB_DIR, exist_ok=True)
+        except Exception as e:
+            logger.error(f"Ошибка при получении списка баз данных: {e}")
+        
+        return db_files
+        
     def initialize_db(self, conn: sqlite3.Connection) -> None:
         """
         Инициализирует базу данных, создавая необходимые таблицы и начальные записи.

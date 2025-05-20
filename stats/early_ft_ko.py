@@ -60,19 +60,19 @@ class EarlyFTKOStat(BaseStat):
             # В таком случае, лучше вернуть только count и, возможно, warning.
             # Но в нашей архитектуре OverallStats всегда доступен.
 
-             # Получаем количество турниров, достигших финалки (нужно для расчета "на турнир")
-             # В ApplicationService это OverallStats.total_final_tables.
-             # Здесь в плагине, если нет OverallStats, мы не можем получить это число надежно.
-             # Поэтому плагин *должен* использовать OverallStats.
-             # Если ApplicationService не передаст OverallStats, плагин должен уметь это обработать.
+            # Получаем количество турниров, достигших финалки (нужно для расчета "на турнир")
+            # В ApplicationService это OverallStats.total_final_tables.
+            # Здесь в плагине, если нет OverallStats, мы не можем получить это число надежно.
+            # Поэтому плагин *должен* использовать OverallStats.
+            # Если ApplicationService не передаст OverallStats, плагин должен уметь это обработать.
 
-             # Исправим compute signature в BaseStat, чтобы OverallStats был обязательным параметром,
-             # или обрабатывать случай его отсутствия в плагинах, как сделано здесь.
+            # Исправим compute signature в BaseStat, чтобы OverallStats был обязательным параметром,
+            # или обрабатывать случай его отсутствия в плагинах, как сделано здесь.
 
-             # Предполагая, что OverallStats всегда передается (по нашей архитектуре):
-             total_final_tables = overall_stats.total_final_tables if overall_stats else 0
-             early_ft_ko_per_tournament = early_ft_ko_count / total_final_tables if total_final_tables > 0 else 0.0
-             early_ft_ko_per_tournament = round(early_ft_ko_per_tournament, 2)
+            # Предполагая, что OverallStats всегда передается (по нашей архитектуре):
+            total_final_tables = overall_stats.total_final_tables if overall_stats else 0
+            early_ft_ko_per_tournament = early_ft_ko_count / total_final_tables if total_final_tables > 0 else 0.0
+            early_ft_ko_per_tournament = round(early_ft_ko_per_tournament, 2)
 
 
         return {

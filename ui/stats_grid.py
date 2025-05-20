@@ -13,6 +13,11 @@ import numpy as np # Для работы с массивами в графике
 from typing import Any, Dict, Optional
 from ui.app_style import format_money, format_percentage, apply_cell_color_by_value # Используем форматтеры
 from application_service import ApplicationService # Импортируем сервис
+from stats.itm import ITMStat
+from stats.final_table_reach import FinalTableReachStat
+import logging
+
+logger = logging.getLogger('ROYAL_Stats.StatsGrid')
 
 # Вспомогательный виджет для отображения одного стата в виде карточки
 class StatCard(QtWidgets.QGroupBox):
@@ -153,21 +158,21 @@ class StatsGrid(QtWidgets.QWidget):
 
         # Определяем, какие статы отображать и как их форматировать/красить
         # Имена ключей соответствуют полям OverallStats или ключам из compute() плагинов
-        stats_to_display = [
+        self.stats_to_display = [
             ("Всего турниров", "total_tournaments", str, None),
             ("Всего финалок", "total_final_tables", str, None),
             ("Всего KO", "total_knockouts", str, None),
-            ("Среднее место (все)", "avg_finish_place", lambda v: f"{v:.2f}" if v is not None else "-", None),
-            ("Среднее место (FT)", "avg_finish_place_ft", lambda v: f"{v:.2f}" if v is not None else "-", None),
+            ("Среднее место (все)", "avg_finish_place", lambda v: f"{float(v):.2f}" if v is not None and str(v) != "- " else "-", None),
+            ("Среднее место (FT)", "avg_finish_place_ft", lambda v: f"{float(v):.2f}" if v is not None and str(v) != "- " else "-", None),
             ("Общая прибыль", lambda stats: stats.total_prize - stats.total_buy_in if stats else 0.0, format_money, 0.0),
             ("Общий ROI", lambda stats: (stats.total_prize - stats.total_buy_in) / stats.total_buy_in * 100 if stats and stats.total_buy_in > 0 else 0.0, format_percentage, 0.0),
-            ("Среднее KO / турнир", "avg_ko_per_tournament", lambda v: f"{v:.2f}" if v is not None else "-", None),
+            ("Среднее KO / турнир", "avg_ko_per_tournament", lambda v: f"{float(v):.2f}" if v is not None and str(v) != "- " else "-", None),
             ("Процент попадания в ITM", lambda stats: ITMStat().compute([], [], [], stats).get('itm_percent', 0.0) if stats else 0.0, format_percentage, 0.0), # ITM% из плагина
             ("Процент попадания на FT", lambda stats: FinalTableReachStat().compute([], [], [], stats).get('final_table_reach_percent', 0.0) if stats else 0.0, format_percentage, 0.0), # % Reach FT из плагина
-            ("Средний стек FT (фишки)", "avg_ft_initial_stack_chips", lambda v: f"{v:.2f}" if v is not None else "-", None),
-            ("Средний стек FT (BB)", "avg_ft_initial_stack_bb", lambda v: f"{v:.2f}" if v is not None else "-", None),
+            ("Средний стек FT (фишки)", "avg_ft_initial_stack_chips", lambda v: f"{float(v):.2f}" if v is not None and str(v) != "- " else "-", None),
+            ("Средний стек FT (BB)", "avg_ft_initial_stack_bb", lambda v: f"{float(v):.2f}" if v is not None and str(v) != "- " else "-", None),
             ("KO в ранней финалке (9-6)", "early_ft_ko_count", str, None),
-            ("Среднее KO в ранней финалке / турнир", "early_ft_ko_per_tournament", lambda v: f"{v:.2f}" if v is not None else "-", None),
+            ("Среднее KO в ранней финалке / турнир", "early_ft_ko_per_tournament", lambda v: f"{float(v):.2f}" if v is not None and str(v) != "- " else "-", None),
             ("Big KO (x1.5)", "big_ko_x1_5", str, None),
             ("Big KO (x2)", "big_ko_x2", str, None),
             ("Big KO (x10)", "big_ko_x10", str, None),
@@ -181,7 +186,7 @@ class StatsGrid(QtWidgets.QWidget):
         cols = 4
 
         # Создаем карточки и добавляем их в грид
-        for i, (name, key_or_lambda, format_func, color_threshold) in enumerate(stats_to_display):
+        for i, (name, key_or_lambda, format_func, color_threshold) in enumerate(self.stats_to_display):
             # Изначальное значение - прочерк или 0
             initial_value = "- " if isinstance(key_or_lambda, str) else 0.0
             card = StatCard(name, initial_value, format_func=format_func, value_color_threshold=color_threshold)
@@ -210,7 +215,7 @@ class StatsGrid(QtWidgets.QWidget):
              try:
                  # Находим исходное определение стата, чтобы получить key_or_lambda
                  stat_def = next(
-                     (item for item in stats_to_display if item[0] == name),
+                     (item for item in self.stats_to_display if item[0] == name),
                      None
                  )
                  if stat_def:

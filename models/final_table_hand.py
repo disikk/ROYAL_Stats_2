@@ -43,19 +43,40 @@ class FinalTableHand:
         }
 
     @staticmethod
-    def from_dict(data: dict) -> 'FinalTableHand':
+    def from_dict(data) -> 'FinalTableHand':
         """
-        Создает объект FinalTableHand из словаря (например, полученного из БД).
+        Создает объект FinalTableHand из словаря или sqlite3.Row (например, полученного из БД).
         """
-        return FinalTableHand(
-            tournament_id=data.get("tournament_id"), # Предполагаем, что tournament_id всегда есть
-            hand_id=data.get("hand_id"), # Предполагаем, что hand_id всегда есть
-            hand_number=data.get("hand_number", 0),
-            table_size=data.get("table_size", 0),
-            bb=data.get("bb", 0.0),
-            hero_stack=data.get("hero_stack", 0.0),
-            hero_ko_this_hand=data.get("hero_ko_this_hand", 0),
-            session_id=data.get("session_id"),
-            is_early_final=bool(data.get("is_early_final", 0)), # SQLite хранит BOOLEAN как 0/1
-            id=data.get("id")
-        )
+        try:
+            # Проверяем, имеет ли объект метод get (dict)
+            if hasattr(data, 'get'):
+                return FinalTableHand(
+                    tournament_id=data.get("tournament_id"), # Предполагаем, что tournament_id всегда есть
+                    hand_id=data.get("hand_id"), # Предполагаем, что hand_id всегда есть
+                    hand_number=data.get("hand_number", 0),
+                    table_size=data.get("table_size", 0),
+                    bb=data.get("bb", 0.0),
+                    hero_stack=data.get("hero_stack", 0.0),
+                    hero_ko_this_hand=data.get("hero_ko_this_hand", 0),
+                    session_id=data.get("session_id"),
+                    is_early_final=bool(data.get("is_early_final", 0)), # SQLite хранит BOOLEAN как 0/1
+                    id=data.get("id")
+                )
+            else:
+                # Предполагаем, что это sqlite3.Row (доступ по имени колонки как к элементу словаря)
+                return FinalTableHand(
+                    tournament_id=data["tournament_id"] if "tournament_id" in data.keys() else None,
+                    hand_id=data["hand_id"] if "hand_id" in data.keys() else None,
+                    hand_number=data["hand_number"] if "hand_number" in data.keys() else 0,
+                    table_size=data["table_size"] if "table_size" in data.keys() else 0,
+                    bb=data["bb"] if "bb" in data.keys() else 0.0,
+                    hero_stack=data["hero_stack"] if "hero_stack" in data.keys() else 0.0,
+                    hero_ko_this_hand=data["hero_ko_this_hand"] if "hero_ko_this_hand" in data.keys() else 0,
+                    session_id=data["session_id"] if "session_id" in data.keys() else None,
+                    is_early_final=bool(data["is_early_final"]) if "is_early_final" in data.keys() else False, # SQLite хранит BOOLEAN как 0/1
+                    id=data["id"] if "id" in data.keys() else None
+                )
+        except Exception as e:
+            # В случае ошибки возвращаем базовый объект
+            print(f"Error in FinalTableHand.from_dict: {e}")
+            return FinalTableHand(tournament_id="error", hand_id="error", hand_number=0, table_size=0, bb=0.0, hero_stack=0.0)

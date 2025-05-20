@@ -10,13 +10,14 @@ import sys
 import os
 import logging
 from typing import List
+from datetime import datetime
 
 import config
 # Импортируем синглтон ApplicationService
-from application_service import application_service
+from application_service import application_service, ApplicationService
 
 # Импортируем UI компоненты
-from ui.app_style import apply_dark_theme, format_money, format_percentage
+from ui.app_style import apply_dark_theme, format_money, format_percentage, apply_cell_color_by_value
 from ui.stats_grid import StatsGrid
 from ui.tournament_view import TournamentView
 from ui.session_view import SessionView
@@ -105,7 +106,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.total_ko_label.setStyleSheet("font-weight: bold; margin: 0 10px;")
         toolbar.addWidget(self.total_ko_label)
 
-        toolbar.addStretch() # Растягиватель для прижимания элементов влево
+        # QToolBar doesn't have addStretch method, use spacer widget instead
+        spacer = QtWidgets.QWidget()
+        spacer.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
+        toolbar.addWidget(spacer)
 
         # QTabWidget
         self.tabs = QtWidgets.QTabWidget()
