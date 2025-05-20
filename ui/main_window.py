@@ -9,6 +9,7 @@ from PyQt6 import QtWidgets, QtGui, QtCore
 import sys
 import os
 import logging
+from typing import List
 
 import config
 # Импортируем синглтон ApplicationService
@@ -212,10 +213,12 @@ class MainWindow(QtWidgets.QMainWindow):
     def _cancel_import(self):
         """Обработка отмены импорта."""
         logger.info("Импорт отменен пользователем.")
-        # TODO: Реализовать логику отмены в ApplicationService и/или парсерах
-        # Для простоты сейчас просто прерываем поток, но это может быть небезопасно
         if self.import_thread and self.import_thread.isRunning():
-             self.import_thread.terminate() # Небезопасный способ, но простой
+            # Используем безопасный метод отмены через флаг
+            self.import_thread.cancel()
+            # Обновляем диалог прогресса
+            self.progress_dialog.setLabelText("Отмена импорта, пожалуйста подождите...")
+            self.statusBar().showMessage("Импорт отменен пользователем", 3000)
 
     @QtCore.pyqtSlot()
     def _import_finished(self):
@@ -281,17 +284,22 @@ class ImportThread(QtCore.QThread):
         """Метод, выполняемый в потоке."""
         logger.info(f"Поток импорта запущен для {len(self.paths)} путей.")
         try:
-            # Передаем progress_update в ApplicationService
+            # Передаем progress_update и is_cancelled в ApplicationService
             self.app_service.import_files(
                 self.paths,
                 self.session_name,
-                progress_callback=self._report_progress
+                progress_callback=self._report_progress,
+                is_canceled_callback=self._is_import_canceled
             )
         except Exception as e:
             logger.critical(f"Критическая ошибка в потоке импорта: {e}")
             # Можно отправить сигнал об ошибке в UI
             self.progress_update.emit(0, 1, f"Ошибка импорта: {e}")
         logger.info("Поток импорта завершает работу.")
+        
+    def _is_import_canceled(self):
+        """Возвращает статус отмены импорта."""
+        return self._is_canceled
 
 
     def _report_progress(self, current: int, total: int, text: str):

@@ -4,6 +4,7 @@
 Точка входа в приложение Royal Stats (Hero-only).
 """
 
+import os
 import sys
 from PyQt6 import QtWidgets
 from ui.main_window import MainWindow # Импортируем главное окно

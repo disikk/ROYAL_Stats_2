@@ -4,8 +4,12 @@
 Модуль для стилизации приложения с помощью QSS (CSS для Qt).
 Содержит темную тему и вспомогательные функции для форматирования/стилизации виджетов.
 """
+import logging
 from PyQt6 import QtWidgets, QtGui
 from PyQt6.QtCore import Qt, QLocale # Импортируем QLocale для форматирования денег
+from typing import Optional
+
+logger = logging.getLogger('ROYAL_Stats.AppStyle')
 
 def apply_dark_theme(app: QtWidgets.QApplication):
     """Применяет темную тему ко всему приложению"""
@@ -244,55 +248,67 @@ def apply_dark_theme(app: QtWidgets.QApplication):
 def format_money(value: Optional[float], with_plus: bool = False) -> str:
     """
     Форматирует денежное значение с символом валюты и локалью.
-    Использует QLocale для региональных особенностей форматирования.
+    Всегда использует US English локаль для форматирования в формате "$X.XX".
     """
     if value is None:
-        return "-.-- $"
+        return "$-.--"
 
     try:
-        # Используем QLocale для форматирования числа с учетом разделителей
-        locale = QLocale(QLocale.Language.English, QLocale.Country.UnitedStates) # Используем US локаль для знака $ и точки
-        formatted_value = locale.toString(value, 'f', 2) # Формат 'f' для float, 2 знака после запятой
+        # Используем US English локаль для постоянного форматирования в формате $X.XX
+        locale = QLocale(QLocale.Language.English, QLocale.Country.UnitedStates)
+        # Отключаем стандартный символ валюты локали, чтобы добавить $ вручную
+        locale.setNumberOptions(QLocale.NumberOption.OmitGroupSeparator | QLocale.NumberOption.OmitLeadingZeroInExponent)
+        formatted_value = locale.toString(value, 'f', 2)  # 2 знака после запятой
 
         prefix = "+" if with_plus and value > 0 else ""
-        # Возвращаем отформатированное значение с символом валюты
-        return f"{prefix}{formatted_value} $"
+        # Возвращаем отформатированное значение с символом валюты в начале
+        return f"{prefix}${formatted_value}"
     except (ValueError, TypeError):
-        return str(value) # Возвращаем исходное значение как строку, если форматирование не удалось
+        return str(value)  # Возвращаем исходное значение как строку, если форматирование не удалось
 
 def format_percentage(value: Optional[float], decimals: int = 2) -> str:
     """
     Форматирует значение как процент.
+    Всегда использует US English локаль для постоянного форматирования.
     """
     if value is None:
         return "-.-- %"
     try:
         locale = QLocale(QLocale.Language.English, QLocale.Country.UnitedStates)
+        # Отключаем разделители групп для обеспечения единообразного форматирования
+        locale.setNumberOptions(QLocale.NumberOption.OmitGroupSeparator | QLocale.NumberOption.OmitLeadingZeroInExponent)
         formatted_value = locale.toString(value, 'f', decimals)
         return f"{formatted_value} %"
     except (ValueError, TypeError):
          return str(value)
 
 
-def apply_cell_color_by_value(table_item: QtWidgets.QTableWidgetItem, value: Optional[float]):
+def apply_cell_color_by_value(item, value: Optional[float]):
     """
-    Применяет цвет текста к ячейке в зависимости от значения (для прибыли/убытка).
+    Применяет цвет текста к виджету в зависимости от значения (для прибыли/убытка).
+    Поддерживает как QTableWidgetItem, так и QLabel.
     """
     if value is None:
-        table_item.setForeground(QtGui.QBrush(QtGui.QColor(200, 200, 200))) # Серый для None
-        return
-
-    try:
-        val = float(value)
-        if val > 0:
-            table_item.setForeground(QtGui.QBrush(QtGui.QColor(46, 204, 113)))  # Зеленый
-        elif val < 0:
-            table_item.setForeground(QtGui.QBrush(QtGui.QColor(231, 76, 60)))  # Красный
-        else:
-            table_item.setForeground(QtGui.QBrush(QtGui.QColor(255, 255, 255))) # Белый или нейтральный
-    except (ValueError, TypeError):
-        table_item.setForeground(QtGui.QBrush(QtGui.QColor(200, 200, 200))) # Серый для нечисловых
-        pass
+        color = QtGui.QColor(200, 200, 200)  # Серый для None
+    else:
+        try:
+            val = float(value)
+            if val > 0:
+                color = QtGui.QColor(46, 204, 113)  # Зеленый
+            elif val < 0:
+                color = QtGui.QColor(231, 76, 60)  # Красный
+            else:
+                color = QtGui.QColor(255, 255, 255)  # Белый или нейтральный
+        except (ValueError, TypeError):
+            color = QtGui.QColor(200, 200, 200)  # Серый для нечисловых
+            
+    # Применяем цвет в зависимости от типа виджета
+    if isinstance(item, QtWidgets.QTableWidgetItem):
+        item.setForeground(QtGui.QBrush(color))
+    elif isinstance(item, QtWidgets.QLabel):
+        item.setStyleSheet(f"color: rgb({color.red()}, {color.green()}, {color.blue()});")
+    else:
+        logger.warning(f"Неподдерживаемый тип виджета для apply_cell_color_by_value: {type(item)}")
 
 def setup_table_widget(table: QtWidgets.QTableWidget):
     """

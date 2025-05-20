@@ -95,7 +95,7 @@ class ApplicationService:
         logger.info(f"Создана и выбрана новая база данных: {new_db_path}")
 
 
-    def import_files(self, paths: List[str], session_name: str, progress_callback=None):
+    def import_files(self, paths: List[str], session_name: str, progress_callback=None, is_canceled_callback=None):
         """
         Импортирует файлы/папки, парсит их и сохраняет данные в БД.
         Обновляет статистику после импорта.
@@ -104,6 +104,7 @@ class ApplicationService:
             paths: Список путей к файлам или папкам.
             session_name: Имя новой сессии для этого импорта.
             progress_callback: Optional function(current, total, text) for UI progress.
+            is_canceled_callback: Optional function() that returns True if the import should be cancelled.
         """
         all_files_to_process = []
         for path in paths:
@@ -154,6 +155,13 @@ class ApplicationService:
         files_ordered = hh_files + ts_files # HH first, then TS
 
         for file_path in files_ordered:
+            # Проверяем флаг отмены
+            if is_canceled_callback and is_canceled_callback():
+                logger.info("Импорт отменен пользователем. Прерываем обработку файлов.")
+                if progress_callback:
+                    progress_callback(processed_count, total_files, "Импорт отменен пользователем")
+                return
+                
             if progress_callback:
                 progress_callback(processed_count, total_files, f"Обработка: {os.path.basename(file_path)}")
 
@@ -175,34 +183,32 @@ class ApplicationService:
                         # Добавляем данные из HH к временной записи турнира
                         parsed_tournaments_data[tourney_id]['start_time'] = parsed_tournaments_data[tourney_id].get('start_time') or hh_data.get('start_time')
                         # Общее KO в турнире - это сумма KO по всем HH файлам для этого турнира
-                        # Это неправильно. KO Count должен быть общим KO Hero в турнире, подсчитанным парсером HH.
-                        # Парсер HH уже возвращает 'total_ko_in_file'.
-                        # parsed_tournaments_data[tourney_id]['ko_count'] += hh_data.get('total_ko_in_file', 0) # Это суммирует КО из разных HH файлов одного турнира - неверно
-
-                        # Правильно: ko_count в parsed_tournaments_data[tourney_id] должен быть
-                        # ОБЩИМ KO в этом турнире. Парсер HH возвращает total_ko_in_file,
-                        # который является суммой KO в ЭТОМ КОНКРЕТНОМ файле HH.
-                        # ApplicationService должен найти турнир в БД, взять его текущий ko_count,
-                        # добавить ko_count из этого файла HH.
-                        # Но если файлов HH для одного турнира много? Это сложно.
-                        # Давайте вернемся к идее, что ko_count в таблице tournaments
-                        # это ОБЩИЙ ko count для турнира, и он обновляется при парсинге ЛЮБОГО HH файла этого турнира.
-                        # Парсер HH должен возвращать total_ko_in_tournament, а не total_ko_in_file.
-                        # Но парсер HH работает с одним файлом.
+                        # Обновленная версия HandHistoryParser теперь:                        
+                        # 1. Обрабатывает руки в хронологическом порядке
+                        # 2. Отслеживает временные метки для каждой раздачи
+                        # 3. Идентифицирует выбывших игроков, сравнивая последовательные раздачи
+                        # 4. Записывает информацию о нокаутах, основываясь на выбывших игроках
+                        #
                         # **Решение**: ko_count в таблице tournaments - это сумма hero_ko_this_hand
                         # из всех строк hero_final_table_hands для этого турнира.
                         # Это будет пересчитываться при обновлении статистики.
-                        # Парсер HH просто заполняет hero_final_table_hands и возвращает факт достижения финалки
-                        # и стек на старте финалки.
+                        # Парсер HH теперь точно определяет нокауты путем отслеживания выбывших игроков
+                        # между последовательными раздачами и заполняет hero_final_table_hands
+                        # с правильной информацией о нокаутах.
 
                         # Обновляем временные данные турнира из HH
                         # Если это первый HH файл для турнира, который достиг финалки
+                        # Обновленный HandHistoryParser теперь точно определяет первую раздачу финального стола
+                        # благодаря хронологической обработке раздач
                         if hh_data.get('reached_final_table', False):
                              parsed_tournaments_data[tourney_id]['reached_final_table'] = True
                              parsed_tournaments_data[tourney_id]['final_table_initial_stack_chips'] = hh_data.get('final_table_initial_stack_chips')
                              parsed_tournaments_data[tourney_id]['final_table_initial_stack_bb'] = hh_data.get('final_table_initial_stack_bb')
 
                         # Собираем данные финальных раздач
+                        # Обновленный HandHistoryParser обрабатывает раздачи в хронологическом порядке,
+                        # определяет выбывших игроков путем сравнения списков игроков между соседними раздачами,
+                        # и корректно подсчитывает hero_ko_this_hand для каждой раздачи финалки.
                         ft_hands_data = hh_data.get('final_table_hands_data', [])
                         for hand_data in ft_hands_data:
                              hand_data['session_id'] = session_id # Добавляем session_id к каждой руке
@@ -236,6 +242,13 @@ class ApplicationService:
 
 
         # --- Сохранение данных в БД ---
+        # Проверяем флаг отмены перед сохранением в БД
+        if is_canceled_callback and is_canceled_callback():
+            logger.info("Импорт отменен пользователем. Пропускаем сохранение данных в БД.")
+            if progress_callback:
+                progress_callback(processed_count, total_files, "Импорт отменен пользователем")
+            return
+            
         logger.info("Сохранение обработанных данных в БД...")
         total_saved = 0
 
@@ -271,14 +284,14 @@ class ApplicationService:
                  final_tourney_data.update(data) # Override with data from parsed file batch
 
                  # Специальная логика для полей, которые должны объединяться, а не перезаписываться
-                 # ko_count теперь вычисляется в ApplicationService, здесь просто сохраняем факт из HH если есть
+                 # ko_count теперь вычисляется в ApplicationService на основе hero_ko_this_hand из рук финалки
                  # reached_final_table = Existing OR New
                  if existing_tourney and existing_tourney.reached_final_table:
                      final_tourney_data['reached_final_table'] = True # Если хоть раз достигли финалки, флаг остается TRUE
 
                  # final_table_initial_stack - сохраняем только если это первая раздача финалки в истории парсинга этого турнира
-                 # HH parser уже определил first_ft_hand для ЭТОГО файла.
-                 # ApplicationService должен решить, является ли это первой FT рукой ВООБЩЕ для турнира.
+                 # Обновленный HandHistoryParser теперь корректно определяет first_ft_hand благодаря хронологической
+                 # обработке раздач. ApplicationService должен решить, является ли это первой FT рукой ВООБЩЕ для турнира.
                  # Это можно сделать, проверив наличие initial_stack в БД перед обновлением.
                  if existing_tourney and existing_tourney.final_table_initial_stack_chips is not None:
                       # Если стек уже сохранен в БД, не перезаписываем его
@@ -302,6 +315,13 @@ class ApplicationService:
 
 
         # --- Обновление статистики ---
+        # Проверяем флаг отмены перед обновлением статистики
+        if is_canceled_callback and is_canceled_callback():
+            logger.info("Импорт отменен пользователем. Пропускаем обновление статистики.")
+            if progress_callback:
+                progress_callback(total_files, total_files, "Импорт отменен пользователем")
+            return
+            
         logger.info("Обновление агрегированной статистики...")
         try:
              self._update_all_statistics(session_id)
@@ -376,8 +396,9 @@ class ApplicationService:
         ft_places = [t.finish_place for t in final_table_tournaments if t.finish_place is not None and 1 <= t.finish_place <= 9]
         stats.avg_finish_place_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
 
-        # Общее количество KO (суммируем ko_count из турниров, который уже должен быть суммой hero_ko_this_hand)
-        # Или лучше посчитать напрямую из hero_final_table_hands? Да, надежнее из рук финалки.
+        # Общее количество KO - суммируем hero_ko_this_hand из всех рук финального стола
+        # Обновленный HandHistoryParser точно определяет выбывших игроков путем сравнения
+        # списков игроков между соседними раздачами в хронологическом порядке
         stats.total_knockouts = sum(hand.hero_ko_this_hand for hand in all_ft_hands)
 
         # Avg KO / Tournament (по всем турнирам, включая не финалку)

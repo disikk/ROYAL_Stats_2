@@ -10,6 +10,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import numpy as np # Для работы с массивами в графике
+from typing import Any, Dict, Optional
 from ui.app_style import format_money, format_percentage, apply_cell_color_by_value # Используем форматтеры
 from application_service import ApplicationService # Импортируем сервис
 

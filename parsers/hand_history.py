@@ -45,9 +45,9 @@ class Pot:
 
 class HandData:
     """Внутреннее представление данных раздачи для парсинга KO."""
-    __slots__ = ('hand_id', 'hand_number', 'tournament_id', 'table_size', 'bb', 'seats', 'contrib', 'collects', 'pots', 'hero_stack', 'hero_ko_this_hand', 'is_early_final')
+    __slots__ = ('hand_id', 'hand_number', 'tournament_id', 'table_size', 'bb', 'seats', 'contrib', 'collects', 'pots', 'hero_stack', 'hero_ko_this_hand', 'is_early_final', 'timestamp', 'players', 'eliminated_players')
 
-    def __init__(self, hand_id: str, hand_number: int, tournament_id: str, table_size: int, bb: float, seats: Dict[str, int]):
+    def __init__(self, hand_id: str, hand_number: int, tournament_id: str, table_size: int, bb: float, seats: Dict[str, int], timestamp: str = None):
         self.hand_id = hand_id
         self.hand_number = hand_number
         self.tournament_id = tournament_id
@@ -60,6 +60,9 @@ class HandData:
         self.hero_stack = seats.get(config.HERO_NAME) # Стек Hero в начале раздачи
         self.hero_ko_this_hand = 0 # KO Hero в этой раздаче
         self.is_early_final = False # Флаг ранней стадии финалки
+        self.timestamp = timestamp  # Время начала раздачи
+        self.players = list(seats.keys())  # Список игроков за столом в этой раздаче
+        self.eliminated_players = set()  # Игроки, выбывшие в этой раздаче
 
 class HandHistoryParser(BaseParser):
     def __init__(self, hero_name: str = config.HERO_NAME):
@@ -86,169 +89,104 @@ class HandHistoryParser(BaseParser):
         lines = file_content.splitlines()
         self._reset() # Сброс состояния парсера для нового файла
 
-        hand_number_counter = 0
-        i = 0
-        first_ft_hand_data: Optional[HandData] = None # Временная переменная для первой руки финалки
-
-        # Пробуем найти Tournament ID и Start Time в первых строках файла
-        for line in lines[:20]: # Проверяем первые 20 строк
-             if not self._tournament_id:
-                 m_tid = RE_HAND_START.search(line)
-                 if m_tid:
-                     self._tournament_id = m_tid.group('tournament_id')
-             if not self._start_time:
-                  m_dt = RE_DATE.search(line)
-                  if m_dt:
-                       self._start_time = m_dt.group(1)
-             if self._tournament_id and self._start_time:
-                 break
-
+        # Сначала определим все начала раздач в файле
+        hand_chunks = self._split_file_into_hand_chunks(lines)
+        
+        # Если не нашли ни одной руки, вернем пустой результат
+        if not hand_chunks:
+            logger.warning(f"Не найдено раздач в файле: {filename}")
+            return {'tournament_id': None}
+            
+        # Определяем Tournament ID из первой найденной раздачи
+        first_chunk = hand_chunks[0]
+        for line in first_chunk[:10]:  # Ищем в первых строках первой раздачи
+            m_tid = RE_HAND_START.search(line)
+            if m_tid:
+                self._tournament_id = m_tid.group('tournament_id')
+                break
+                
+        # Если не нашли Tournament ID, попробуем извлечь из имени файла
         if not self._tournament_id:
-             # Попытка извлечь Tournament ID из имени файла как fallback
-             m_tid_fn = re.search(r"Tournament #(\d+)", filename)
-             if m_tid_fn:
-                 self._tournament_id = m_tid_fn.group(1)
-                 logger.debug(f"Турнир ID из имени файла: {self._tournament_id}")
-
+            m_tid_fn = re.search(r"Tournament #(\d+)", filename)
+            if m_tid_fn:
+                self._tournament_id = m_tid_fn.group(1)
+                logger.debug(f"Турнир ID из имени файла: {self._tournament_id}")
+                
         if not self._tournament_id:
             logger.warning(f"Не удалось извлечь Tournament ID из файла HH: {filename}. Файл пропущен.")
             return {'tournament_id': None} # Пропускаем файл без ID
-
+            
         logger.debug(f"Начат парсинг HH для турнира {self._tournament_id}, файл: {filename}")
-
-        # --- Парсим все раздачи ---
-        current_line_idx = 0
-        while current_line_idx < len(lines):
-            if RE_HAND_START.match(lines[current_line_idx]):
-                hand_number_counter += 1
-                try:
-                     # Парсим только базовые данные раздачи и определяем, относится ли она к финалке
-                     current_line_idx, hand_data = self._parse_single_hand_initial_data(lines, current_line_idx, self._tournament_id, hand_number_counter)
-
-                     if hand_data:
-                         self._hands.append(hand_data) # Сохраняем все раздачи (опционально)
-
-                         # Проверяем условия финального стола (9-max и >=50/100 BB)
-                         if hand_data.table_size == config.FINAL_TABLE_SIZE and hand_data.bb >= config.MIN_KO_BLIND_LEVEL_BB:
-                              # Это раздача финального стола (по нашим критериям)
-                              self._final_table_hands.append(hand_data)
-
-                              # Если это первая раздача финального стола, сохраняем ее данные
-                              if first_ft_hand_data is None:
-                                  first_ft_hand_data = hand_data
-                                  logger.debug(f"Найдена первая раздача финального стола ({hand_data.table_size}-max, BB={hand_data.bb}) в турнире {self._tournament_id}. Раздача #{hand_data.hand_number}. Стек Hero: {hand_data.hero_stack}")
-
-                              # Определяем, является ли раздача "ранней" стадией финалки (9-6 игроков)
-                              if 6 <= hand_data.table_size <= config.FINAL_TABLE_SIZE: # Проверяем размер стола в раздаче
-                                   hand_data.is_early_final = True
-
-
-                    # Если hand_data is None, _parse_single_hand_initial_data уже сдвинул current_line_idx
-                except Exception as e:
-                    logger.error(f"Ошибка парсинга раздачи в файле {filename}, строка {current_line_idx}: {e}")
-                    # Находим начало следующей раздачи, чтобы продолжить парсинг
-                    temp_idx = current_line_idx + 1
-                    while temp_idx < len(lines) and not RE_HAND_START.match(lines[temp_idx]):
-                        temp_idx += 1
-                    current_line_idx = temp_idx # Сдвигаем индекс к началу следующей раздачи или концу файла
-                    continue # Переходим к следующей итерации цикла
-
-
-            else:
-                current_line_idx += 1
-
-        # --- Повторный проход по раздачам финалки для подсчета KO ---
-        # Теперь, когда у нас есть все HandData для финалки, парсим действия и сборы
-        # для КАЖДОЙ раздачи финалки, чтобы построить поты и определить победителей, а затем посчитать KO.
-        # Важно: _parse_single_hand_initial_data только извлек базовые данные,
-        # парсинг действий/сборов/потов делается здесь.
-
+        
+        # Обрабатываем раздачи в хронологическом порядке (от первой к последней)
+        # Поскольку в файле они идут в ОБРАТНОМ порядке, мы обрабатываем chunks в обратном порядке
+        hand_number_counter = 0
+        first_ft_hand_data: Optional[HandData] = None
+        
+        # Получаем хронологически первую раздачу для определения start_time турнира
+        first_chunk = hand_chunks[-1]  # Последний chunk в массиве - это первая раздача хронологически
+        for line in first_chunk[:20]:
+            m_dt = RE_DATE.search(line)
+            if m_dt:
+                self._start_time = m_dt.group(1)
+                break
+        
+        # Теперь обрабатываем раздачи в хронологическом порядке (от первой к последней)
+        for hand_chunk in reversed(hand_chunks):  # Обрабатываем от последней в файле (первой хронологически)
+            hand_number_counter += 1
+            try:
+                hand_data = self._parse_hand_chunk(hand_chunk, self._tournament_id, hand_number_counter)
+                
+                if hand_data:
+                    self._hands.append(hand_data)  # Сохраняем все раздачи
+                    
+                    # Проверяем условия финального стола
+                    if hand_data.table_size == config.FINAL_TABLE_SIZE and hand_data.bb >= config.MIN_KO_BLIND_LEVEL_BB:
+                        # Это раздача финального стола
+                        self._final_table_hands.append(hand_data)
+                        
+                        # Если это первая раздача финального стола, сохраняем ее данные
+                        if first_ft_hand_data is None:
+                            first_ft_hand_data = hand_data
+                            logger.debug(f"Найдена первая раздача финального стола ({hand_data.table_size}-max, BB={hand_data.bb}) в турнире {self._tournament_id}. Раздача #{hand_data.hand_number}. Стек Hero: {hand_data.hero_stack}")
+                        
+                        # Определяем, является ли раздача "ранней" стадией финалки (9-6 игроков)
+                        if 6 <= hand_data.table_size <= config.FINAL_TABLE_SIZE:
+                            hand_data.is_early_final = True
+                            
+            except Exception as e:
+                logger.error(f"Ошибка парсинга раздачи в файле {filename}: {e}")
+                continue  # Переходим к следующей раздаче
+        
+        # Определяем выбывших игроков путем сравнения списков игроков в соседних раздачах
+        self._identify_eliminated_players()
+        
+        # Подсчитываем KO Hero для всех раздач финального стола
         final_table_data_for_db: List[Dict[str, Any]] = []
-
-        # Находим индексы начала каждой раздачи в исходных линиях файла
-        hand_start_indices = {}
-        for idx, line in enumerate(lines):
-            m_hand_start = RE_HAND_START.match(line)
-            if m_hand_start:
-                hand_id = m_hand_start.group('hand_id')
-                # Находим соответствующую HandData по hand_id
-                related_hand_data = next((h for h in self._final_table_hands if h.hand_id == hand_id), None)
-                if related_hand_data:
-                    hand_start_indices[hand_id] = idx
-
-
+        
         for hand_data in self._final_table_hands:
-             start_idx_in_lines = hand_start_indices.get(hand_data.hand_id)
-             if start_idx_in_lines is None:
-                  logger.warning(f"Не найдена начальная строка для раздачи {hand_data.hand_id} в файле {filename}.")
-                  continue # Пропускаем эту раздачу финалки если не можем ее найти в исходных линиях
-
-             try:
-                 # Парсим действия, сборы и строим поты для этой раздачи
-                 _, contrib, collects = self._parse_hand_actions_and_collects(lines, start_idx_in_lines)
-
-                 if contrib: # Если были ставки/блайнды
-                      hand_data.contrib = contrib
-                      hand_data.collects = collects
-                      hand_data.pots = self._build_pots(hand_data.contrib)
-                      self._assign_winners(hand_data.pots, hand_data.collects)
-
-                 # Определяем, кто выбыл в этой раздаче
-                 # Ищем следующую раздачу финалки, чтобы сравнить стеки
-                 next_hand_data = None
-                 current_hand_idx_in_ft_list = self._final_table_hands.index(hand_data)
-                 if current_hand_idx_in_ft_list + 1 < len(self._final_table_hands):
-                      next_hand_data = self._final_table_hands[current_hand_idx_in_ft_list + 1]
-                      # Если следующая раздача есть, используем стеки из нее
-                      eliminated_players = [p for p in hand_data.seats if p not in next_hand_data.seats]
-                 else:
-                      # Если это последняя раздача финалки в файле, смотрим на тех, кто собрал деньги
-                      # Те, кто не собрал и были за столом в начале раздачи - выбыли.
-                      # Или более надежно: смотрим на место Hero из TS. Если Hero вылетел,
-                      # смотрим кто был за столом в начале последней раздачи и кого нет в TS.
-                      # **Упрощение**: В рамках HH парсера, мы можем только определить выбывших
-                      # сравнивая с *началом следующей раздачи* в этом файле.
-                      # Если следующей раздачи нет, мы не можем точно определить выбывших только по HH.
-                      # Финальное место Hero из TS - это лучший индикатор.
-                      # **Решение**: Для определения выбывших, сравним Hero.seats с Hero.collects
-                      # в ПОСЛЕДНЕЙ раздаче. Это не идеально, но может быть индикатором.
-                      # Лучше использовать флаг is_eliminated в HandData и заполнять его
-                      # на уровне ApplicationService, мерджа данные с TS.
-                      # **Пересмотр**: Парсер HH должен просто подсчитать KO в раздаче.
-                      # Кто выбыл - это уже логика ApplicationService при объединении HH и TS.
-                      # KO засчитывается, если Hero выиграл пот, к которому выбывший имел отношение.
-                      # Давайте посчитаем KO только по инфе в текущей раздаче (кто выиграл пот, кто был покрыт).
-
-                      # KO count for a hand logic remains the same based on pots and coverage
-                      # The list of eliminated players is technically not needed directly for THIS KO logic
-                      # but useful for context. Let's keep the _count_ko_in_hand logic as is.
-                      eliminated_players = [] # Очищаем список выбывших для этой логики
-
-
-                 # Подсчитываем KO Hero в этой раздаче
-                 # Используем hand_data, которая теперь содержит pots, contrib, collects
-                 ko_this_hand = self._count_ko_in_hand_from_data(hand_data)
-                 hand_data.hero_ko_this_hand = ko_this_hand # Обновляем модель раздачи
-
-
-                 # Подготавливаем данные раздачи для сохранения в БД
-                 final_table_data_for_db.append({
-                     'tournament_id': hand_data.tournament_id,
-                     'hand_id': hand_data.hand_id,
-                     'hand_number': hand_data.hand_number,
-                     'table_size': hand_data.table_size,
-                     'bb': hand_data.bb,
-                     'hero_stack': hand_data.hero_stack,
-                     'hero_ko_this_hand': hand_data.hero_ko_this_hand,
-                     'is_early_final': hand_data.is_early_final,
-                     # session_id будет добавлен в ApplicationService
-                 })
-
-             except Exception as e:
-                  logger.error(f"Ошибка обработки данных финальной раздачи {hand_data.hand_id} в турнире {hand_data.tournament_id}: {e}")
-
-
-        # --- Собираем итоговый результат для ApplicationService ---
+            try:
+                # Теперь _count_ko_in_hand_from_data будет использовать информацию о выбывших игроках
+                ko_this_hand = self._count_ko_in_hand_from_data(hand_data)
+                hand_data.hero_ko_this_hand = ko_this_hand
+                
+                # Подготавливаем данные раздачи для сохранения в БД
+                final_table_data_for_db.append({
+                    'tournament_id': hand_data.tournament_id,
+                    'hand_id': hand_data.hand_id,
+                    'hand_number': hand_data.hand_number,
+                    'table_size': hand_data.table_size,
+                    'bb': hand_data.bb,
+                    'hero_stack': hand_data.hero_stack,
+                    'hero_ko_this_hand': hand_data.hero_ko_this_hand,
+                    'is_early_final': hand_data.is_early_final,
+                    # session_id будет добавлен в ApplicationService
+                })
+                
+            except Exception as e:
+                logger.error(f"Ошибка обработки данных финальной раздачи {hand_data.hand_id} в турнире {hand_data.tournament_id}: {e}")
+        
+        # Собираем итоговый результат для ApplicationService
         result = {
             'tournament_id': self._tournament_id,
             'start_time': self._start_time,
@@ -257,9 +195,9 @@ class HandHistoryParser(BaseParser):
             'final_table_initial_stack_bb': (first_ft_hand_data.hero_stack / first_ft_hand_data.bb) if first_ft_hand_data and first_ft_hand_data.bb > 0 else None,
             'final_table_hands_data': final_table_data_for_db, # Список данных по рукам финалки для сохранения
         }
-
+        
         logger.debug(f"Парсинг HH завершен для {self._tournament_id}. Финалка: {result['reached_final_table']}, Рук на финалке: {len(self._final_table_hands)}")
-
+        
         return result
 
     def _reset(self):
@@ -270,36 +208,68 @@ class HandHistoryParser(BaseParser):
         self._final_table_hands = []
         logger.debug("Состояние парсера HH сброшено.")
 
-
-    def _parse_single_hand_initial_data(self, lines: List[str], idx: int, tournament_id: str, hand_number: int) -> Tuple[int, Optional[HandData]]:
+    def _split_file_into_hand_chunks(self, lines: List[str]) -> List[List[str]]:
         """
-        Парсит одну раздачу до секции действий, извлекая базовую информацию, стеки, блайнды и размер стола.
-        Возвращает индекс строки, с которой нужно продолжить парсинг действий/сборов.
+        Разбивает файл на chunks, каждый из которых содержит одну раздачу.
+        Возвращает chunks в том порядке, в котором они находятся в файле
+        (последние хронологические раздачи в начале списка).
         """
-        hand_start_line = lines[idx]
-        m_hand_start = RE_HAND_START.match(hand_start_line)
+        chunks = []
+        current_chunk = []
+        
+        for line in lines:
+            if RE_HAND_START.match(line) and current_chunk:
+                # Нашли начало новой раздачи, сохраняем предыдущую
+                chunks.append(current_chunk)
+                current_chunk = [line]
+            else:
+                current_chunk.append(line)
+                
+        # Не забываем добавить последний chunk
+        if current_chunk:
+            chunks.append(current_chunk)
+            
+        return chunks
+            
+    def _parse_hand_chunk(self, lines: List[str], tournament_id: str, hand_number: int) -> Optional[HandData]:
+        """
+        Парсит chunk строк, относящийся к одной раздаче.
+        """
+        if not lines:
+            return None
+            
+        # Проверяем, что первая строка действительно начало раздачи
+        m_hand_start = RE_HAND_START.match(lines[0])
         if not m_hand_start:
-            return idx + 1, None # Пропускаем, если это не начало раздачи
-
+            return None
+            
         hand_id = m_hand_start.group('hand_id')
-
-        current_idx = idx + 1
+        timestamp = None
+        
+        # Ищем timestamp раздачи
+        for line in lines[:5]:
+            m_dt = RE_DATE.search(line)
+            if m_dt:
+                timestamp = m_dt.group(1)
+                break
+                
         seats: Dict[str, int] = {}
         table_size: int = 0
         bb: float = 0.0
         hero_participated = False
-
-        # Ищем информацию о столе, блайндах и стеках до *** HOLE CARDS ***
-        while current_idx < len(lines) and not lines[current_idx].startswith('*** HOLE'):
-            line = lines[current_idx]
+        
+        # Ищем информацию о столе, блайндах и стеках
+        idx = 0
+        while idx < len(lines) and not lines[idx].startswith('*** HOLE'):
+            line = lines[idx]
             m_table_info = RE_TABLE_INFO.match(line)
             if m_table_info:
-                 table_size = int(m_table_info.group('table_size'))
-
+                table_size = int(m_table_info.group('table_size'))
+                
             m_blinds = RE_BLINDS_HEADER.search(line)
             if m_blinds:
-                 bb = float(m_blinds.group(2).replace(',', '.')) # Заменяем запятую на точку
-
+                bb = float(m_blinds.group(2).replace(',', '.'))
+                
             m_seat = RE_SEAT.match(line)
             if m_seat:
                 name, stack_str = m_seat.groups()
@@ -307,116 +277,110 @@ class HandHistoryParser(BaseParser):
                 seats[player_name] = CHIP(stack_str)
                 if player_name == config.HERO_NAME:
                     hero_participated = True
-
-            current_idx += 1
-
-        # Если Hero не участвовал в этой раздаче, пропускаем ее полностью
+                    
+            idx += 1
+            
+        # Если Hero не участвовал, пропускаем раздачу
         if not hero_participated:
-            # logger.debug(f"Раздача #{hand_number} ({hand_id}) - Hero не участвует. Пропускаем.")
-            return self._skip_to_next_hand(lines, idx), None
-
-
-        # Если не удалось найти размер стола или BB в заголовке раздачи,
-        # и Hero участвует, все равно создаем HandData, но с неполной инфой.
-        # Это нужно, чтобы _eliminated мог сравнить стеки даже для не-финальных рук.
-        # Однако, для подсчета KO и определения финалки эти поля критичны.
-        # Давайте требовать наличия table_size и bb >= MIN_KO_BLIND_LEVEL_BB для рассмотрения как финалки.
-        # Но HandData создадим в любом случае, если Hero участвует.
-
-        hand_data = HandData(hand_id, hand_number, tournament_id, table_size, bb, seats)
-
-        # Теперь парсим секции действий, сборов и строим поты
-        # current_idx находится после "*** HOLE CARDS ***"
-        current_idx, hand_data.contrib, hand_data.collects = self._parse_hand_actions_and_collects(lines, current_idx)
-
-        if hand_data.contrib: # Строим банки только если были ставки/блайнды
+            return None
+            
+        # Создаем HandData
+        hand_data = HandData(hand_id, hand_number, tournament_id, table_size, bb, seats, timestamp)
+        
+        # Парсим действия и сборы
+        contrib, collects = self._parse_actions_and_collects(lines[idx:])
+        hand_data.contrib = contrib
+        hand_data.collects = collects
+        
+        if hand_data.contrib:  # Строим банки только если были вклады
             hand_data.pots = self._build_pots(hand_data.contrib)
             self._assign_winners(hand_data.pots, hand_data.collects)
-
-
-        # logger.debug(f"Раздача #{hand_number} ({hand_id}) базовая информация спарсена.")
-
-        return current_idx, hand_data
-
-
-    def _parse_hand_actions_and_collects(self, lines: List[str], idx: int) -> Tuple[int, Dict[str, int], Dict[str, int]]:
+            
+        return hand_data
+        
+    def _parse_actions_and_collects(self, lines: List[str]) -> Tuple[Dict[str, int], Dict[str, int]]:
         """
-        Парсит секции *** HOLE CARDS ***, ACTIONS, *** SHOWDOWN ***, *** SUMMARY ***
-        для извлечения вкладов в банк и сборов. Возвращает индекс строки ПОСЛЕ секции SUMMARY.
+        Парсит действия и сборы из части раздачи, начиная с *** HOLE CARDS ***.
         """
-        current_idx = idx
         contrib: Dict[str, int] = {}
-        committed: Dict[str, int] = {} # Сколько вложено в текущем стрите
+        committed: Dict[str, int] = {}  # Сколько вложено в текущем стрите
         collects: Dict[str, int] = {}
-
-        # Пропускаем секции до действий (*** HOLE CARDS ***, *** FLOP ***, *** TURN ***, *** RIVER ***)
-        while current_idx < len(lines) and not lines[current_idx].strip().startswith(('*** SHOWDOWN', '*** SUMMARY', '***')) :
-             line = lines[current_idx].strip()
-             # Парсим действия
-             m_action = RE_ACTION.match(line)
-             if m_action:
-                 action_groups = m_action.groupdict()
-                 pl = NAME(action_groups['player_name'])
-                 act = action_groups['action']
-                 amt_str = action_groups.get('amount')
-                 amt = CHIP(amt_str)
-
-                 if act in ('posts', 'bets', 'calls', 'all-in'):
-                     contrib[pl] = contrib.get(pl, 0) + amt
-                     committed[pl] = committed.get(pl, 0) + amt
-                     # logger.debug(f"Action: {pl} {act} {amt}")
-                 elif act == 'raises':
-                     m_raise_to = RE_RAISE_TO.search(line)
-                     if m_raise_to:
-                         total_to = CHIP(m_raise_to.group(1))
-                         prev_committed = committed.get(pl, 0)
-                         diff = total_to - prev_committed
-                         contrib[pl] = contrib.get(pl, 0) + diff
-                         committed[pl] = total_to # Committed becomes the total amount of the raise
-                     else:
-                         logger.warning(f"Found 'raises' action without 'to' amount: {line}")
-
-             # Парсим Uncalled bet (может быть до SHOWDOWN)
-             m_unc = RE_UNCALLED.match(line)
-             if m_unc:
-                 amt_str, pl_name = m_unc.groups()
-                 pl = NAME(pl_name)
-                 val = CHIP(amt_str)
-                 contrib[pl] = contrib.get(pl, 0) - val
-                 committed[pl] = committed.get(pl, 0) - val
-                 # logger.debug(f"Uncalled bet {val} returned to {pl}")
-
-             current_idx += 1
-
-        # Теперь парсим *** SHOWDOWN *** и *** SUMMARY *** для сборов
-        # Ищем строку SUMMARY, чтобы начать оттуда сканировать сборы
+        
+        idx = 0
+        # Парсим действия до SHOWDOWN или SUMMARY
+        while idx < len(lines) and not lines[idx].strip().startswith(('*** SHOWDOWN', '*** SUMMARY')):
+            line = lines[idx].strip()
+            
+            # Парсим действия
+            m_action = RE_ACTION.match(line)
+            if m_action:
+                action_groups = m_action.groupdict()
+                pl = NAME(action_groups['player_name'])
+                act = action_groups['action']
+                amt_str = action_groups.get('amount')
+                amt = CHIP(amt_str)
+                
+                if act in ('posts', 'bets', 'calls', 'all-in'):
+                    contrib[pl] = contrib.get(pl, 0) + amt
+                    committed[pl] = committed.get(pl, 0) + amt
+                elif act == 'raises':
+                    m_raise_to = RE_RAISE_TO.search(line)
+                    if m_raise_to:
+                        total_to = CHIP(m_raise_to.group(1))
+                        prev_committed = committed.get(pl, 0)
+                        diff = total_to - prev_committed
+                        contrib[pl] = contrib.get(pl, 0) + diff
+                        committed[pl] = total_to
+                    else:
+                        logger.warning(f"Found 'raises' action without 'to' amount: {line}")
+                        
+            # Парсим Uncalled bet
+            m_unc = RE_UNCALLED.match(line)
+            if m_unc:
+                amt_str, pl_name = m_unc.groups()
+                pl = NAME(pl_name)
+                val = CHIP(amt_str)
+                contrib[pl] = contrib.get(pl, 0) - val
+                committed[pl] = committed.get(pl, 0) - val
+                
+            idx += 1
+            
+        # Ищем секцию SUMMARY
         summary_idx = -1
-        for j in range(current_idx, len(lines)):
+        for j in range(idx, len(lines)):
             if RE_SUMMARY.match(lines[j]):
                 summary_idx = j
                 break
-
+                
+        # Парсим сборы после SUMMARY
         if summary_idx != -1:
-            collect_search_idx = summary_idx + 1
-            # Читаем строки после SUMMARY пока не пустая строка или начало новой раздачи
-            while collect_search_idx < len(lines) and lines[collect_search_idx].strip() and not RE_HAND_START.match(lines[collect_search_idx]):
-                 line = lines[collect_search_idx]
-                 m_collected = RE_COLLECTED.match(line)
-                 if m_collected:
-                     pl, amt_str = m_collected.groups()
-                     collects[NAME(pl)] = collects.get(NAME(pl), 0) + CHIP(amt_str)
-                     # logger.debug(f"Collected: {NAME(pl)} collected {CHIP(amt_str)}")
-                 collect_search_idx += 1
-            current_idx = collect_search_idx # Обновляем current_idx до конца секции SUMMARY
+            collect_idx = summary_idx + 1
+            while collect_idx < len(lines):
+                line = lines[collect_idx]
+                m_collected = RE_COLLECTED.match(line)
+                if m_collected:
+                    pl, amt_str = m_collected.groups()
+                    collects[NAME(pl)] = collects.get(NAME(pl), 0) + CHIP(amt_str)
+                collect_idx += 1
+                
+        return contrib, collects
 
-
-        # Пропускаем пустые строки между раздачами
-        while current_idx < len(lines) and not lines[current_idx].strip() and not RE_HAND_START.match(lines[current_idx]):
-             current_idx += 1
-
-
-        return current_idx, contrib, collects
-
+    def _identify_eliminated_players(self):
+        """
+        Определяет выбывших игроков путем сравнения списков игроков между 
+        последовательными раздачами. Игрок считается выбывшим в раздаче, если
+        он присутствует в ней, но отсутствует в следующей раздаче.
+        """
+        # Раздачи уже отсортированы по хронологии (в self._hands)
+        for i in range(len(self._hands) - 1):
+            current_hand = self._hands[i]
+            next_hand = self._hands[i + 1]
+            
+            # Игроки, которые были в текущей раздаче, но отсутствуют в следующей
+            eliminated_in_current_hand = set(current_hand.players) - set(next_hand.players)
+            
+            # Добавляем атрибут eliminated_players к текущей раздаче
+            current_hand.eliminated_players = eliminated_in_current_hand
 
     def _build_pots(self, contrib: Dict[str, int]) -> List[Pot]:
         """Строит структуру банков (главный и сайд-поты) из вкладов игроков."""
@@ -457,78 +421,40 @@ class HandHistoryParser(BaseParser):
     def _count_ko_in_hand_from_data(self, hand: HandData) -> int:
         """
         Подсчитывает количество нокаутов Hero в данной раздаче, используя данные HandData.
-        Hero получает KO за выбитого игрока, если Hero выиграл ПОТ,
-        к которому выбитый игрок имел отношение, И Hero покрывал стек выбывшего.
-        Эта функция вызывается ПОСЛЕ того, как Pot и winners определены для раздачи.
+        Игрок считается выбитым Hero если:
+        1. Он отсутствует в следующей раздаче (определено в _identify_eliminated_players)
+        2. Hero покрывал его стек
+        3. Hero выиграл пот, к которому игрок имел отношение
         """
         if config.HERO_NAME not in hand.seats:
             return 0 # Hero не участвовал в раздаче
 
         hero_stack_at_start = hand.hero_stack # Стек Hero в начале раздачи
-
         ko_count = 0
-        # Чтобы точно определить выбывших в этой раздаче, нам нужен список игроков
-        # в *начале следующей* раздачи. Парсер HH сам по себе в момент парсинга
-        # одной раздачи не знает состояние следующей.
-        # **Решение:** Логика определения выбывших должна быть в ApplicationService,
-        # который имеет доступ ко всем спарсенным HandData для турнира.
-        # Парсер HH просто извлекает потенциальных кандидатов на KO:
-        # игроки, которые были в начале этой раздачи, имеют отношение к поту,
-        # и чей стек был покрыт Hero.
-        # ApplicationService затем подтвердит, выбыл ли этот игрок, сверившись с TS.
+        
+        # Используем информацию о выбывших игроках, добавленную методом _identify_eliminated_players
+        for knocked_out_player in hand.eliminated_players:
+            if knocked_out_player == config.HERO_NAME:
+                continue
 
-        # **Пересмотр логики KO в парсере HH:**
-        # Парсер HH должен просто определить, кто потенциально был выбит Hero В ЭТОЙ РАЗДАЧЕ
-        # на основе того, кто проиграл алл-ин Hero (Hero покрывал и выиграл пот).
-        # Наличие строки "Player eliminated" в HH было бы идеальным, но не всегда есть.
-        # Самый надежный индикатор в HH: игрок пошел олл-ин, Hero покрывал, Hero выиграл пот,
-        # и у игрока 0 фишек в конце раздачи (нужен доступ к стекам в конце раздачи,
-        # чего в HandData пока нет).
+            # Находим пот(ы), к которым имел отношение выбывший игрок
+            relevant_pots = [
+                pot for pot in hand.pots
+                if knocked_out_player in pot.eligible
+            ]
 
-        # **Простое решение для парсера HH:** Игрок P потенциально выбит Hero в раздаче H, если:
-        # 1. P пошел олл-ин в раздаче H.
-        # 2. Hero покрывал стек P в начале раздачи H (Hero.stack >= P.stack).
-        # 3. Hero выиграл ПОТ, к которому P имел отношение.
-        # 4. (Опционально, но надежнее) Стек P в начале следующей раздачи равен 0.
+            # Проверяем условие покрытия стека
+            knocked_out_stack = hand.seats.get(knocked_out_player, 0)
+            covered = hero_stack_at_start is not None and hero_stack_at_start >= knocked_out_stack
 
-        # Давайте модифицируем HandData для хранения стеков в конце раздачи,
-        # ИЛИ просто определять выбывших как тех, кто был в начале раздачи, но не собрал деньги.
-        # Последнее ближе к текущей структуре HandData.
-        # Выбывшие в этой раздаче: игроки, которые были в `hand.seats` но НЕ в `hand.collects`.
+            if covered:
+                # Если Hero покрывал стек, проверяем, выиграл ли Hero какой-либо из релевантных потов
+                hero_won_relevant_pot = any(
+                    config.HERO_NAME in pot.winners for pot in relevant_pots
+                )
 
-        eliminated_players_this_hand = [p for p in hand.seats if p not in hand.collects]
-
-        for knocked_out_player in eliminated_players_this_hand:
-             if knocked_out_player == config.HERO_NAME:
-                 continue
-
-             # Находим пот(ы), к которым имел отношение выбывший игрок
-             relevant_pots = [
-                 pot for pot in hand.pots
-                 if knocked_out_player in pot.eligible
-             ]
-
-             # Проверяем условие покрытия стека
-             knocked_out_stack = hand.seats.get(knocked_out_player, 0)
-             covered = hero_stack_at_start is not None and hero_stack_at_start >= knocked_out_stack # Проверяем, что стек Hero не None
-
-             if covered:
-                 # Если Hero покрывал стек, проверяем, выиграл ли Hero какой-либо из релевантных потов
-                 hero_won_relevant_pot = any(
-                     config.HERO_NAME in pot.winners for pot in relevant_pots
-                 )
-
-                 if hero_won_relevant_pot:
-                     ko_count += 1
-                     # logger.debug(f"Турнир {hand.tournament_id}, Раздача {hand.hand_number}: Потенциальный KO Hero за {knocked_out_player}. Покрывал: {covered}, Hero выиграл пот: {hero_won_relevant_pot}.")
+                if hero_won_relevant_pot:
+                    ko_count += 1
+                    logger.debug(f"Турнир {hand.tournament_id}, Раздача {hand.hand_number}: KO Hero за {knocked_out_player}. Покрывал: {covered}, Hero выиграл пот: {hero_won_relevant_pot}.")
 
         return ko_count
-
-    def _skip_to_next_hand(self, lines: List[str], idx: int) -> int:
-        """Пропускает строки текущей раздачи до начала следующей или конца файла."""
-        current_idx = idx + 1
-        while current_idx < len(lines):
-            if RE_HAND_START.match(lines[current_idx]):
-                return current_idx # Нашли начало следующей раздачи
-            current_idx += 1
-        return current_idx # Достигли конца файла

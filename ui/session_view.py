@@ -6,9 +6,12 @@
 """
 
 from PyQt6 import QtWidgets, QtGui, QtCore
+from typing import List, Optional
 from ui.app_style import setup_table_widget, format_money, apply_cell_color_by_value, format_percentage
 from application_service import ApplicationService # Импортируем сервис
-# from ui.stats_grid import StatsGrid # Можно импортировать StatsGrid для показа стат сессии в отдельном окне/зоне
+from ui.stats_grid import StatCard
+from models import Session
+import config # Для доступа к настройкам
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas

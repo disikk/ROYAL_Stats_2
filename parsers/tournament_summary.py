@@ -2,7 +2,8 @@
 
 """
 Парсер итогового Tournament Summary для Hero.
-Бай-ин берем из первой строки (названия турнира) или из специальной строки Buy-in.
+Бай-ин приоритетно извлекаем из первой строки (названия турнира), 
+а если не найден - из специальной строки Buy-in.
 Выплату берем из строки "You received a total of".
 """
 
@@ -58,7 +59,7 @@ class TournamentSummaryParser(BaseParser):
         payout: Optional[float] = None
         finish_place: Optional[int] = None
 
-        # 1. Парсим первую строку для ID, названия и, возможно, бай-ина
+        # 1. Парсим первую строку для ID, названия и бай-ина (приоритетно из первой строки)
         if lines:
             first_line = lines[0]
             m_tid_title = self.re_tournament_id_title.search(first_line)
@@ -72,6 +73,21 @@ class TournamentSummaryParser(BaseParser):
                  name_part = re.sub(r'[$€]', '', name_part).strip()
                  name_part = name_part.replace("Mystery Battle Royale", "").strip()
                  tournament_name = name_part
+            
+            # Извлекаем бай-ин из первой строки (приоритетный метод)
+            # Ищем сумму после символа валюты, возможно с +fee
+            m_buyin_title = re.search(r"[$€]([\d]+(?:[.,]\d+)?)(?:\+[$€]?([\d]+(?:[.,]\d+)?)?)?", first_line)
+            if m_buyin_title:
+                try:
+                    main_buyin_str = m_buyin_title.group(1).replace(',', '.')
+                    buyin = float(main_buyin_str)
+                    # Если есть fee (группа 2), добавляем её к бай-ину
+                    if m_buyin_title.group(2):
+                        fee_str = m_buyin_title.group(2).replace(',', '.')
+                        buyin += float(fee_str)
+                    logger.debug(f"Бай-ин из заголовка (приоритетный метод): {buyin}")
+                except (ValueError, IndexError, AttributeError) as e:
+                    logger.warning(f"Не удалось распарсить бай-ин из заголовка: {e} в файле {filename}")
 
 
         # 2. Парсим файл целиком для остальных данных
@@ -99,30 +115,20 @@ class TournamentSummaryParser(BaseParser):
                  logger.warning(f"Не удалось распарсить выплату из '{m_payout.group(1)}' в файле {filename}")
 
 
-        # 3. Поиск бай-ина: сначала строка "Buy-in:", затем fallback на заголовок
-        m_buyin_line = self.re_buyin_line.search(file_content_str)
-        if m_buyin_line:
-             try:
-                 # Группы: 1 - символ валюты 1, 2 - основная часть бай-ина, 3 - символ валюты 2 (для фи), 4 - часть фи
-                 main_buyin_str = m_buyin_line.group(2).replace(',', '.')
-                 fee_str = m_buyin_line.group(4)
-                 buyin = float(main_buyin_str)
-                 if fee_str:
-                     buyin += float(fee_str.replace(',', '.'))
-             except ValueError:
-                  logger.warning(f"Не удалось распарсить бай-ин из строки Buy-in: в файле {filename}")
-
-        # Fallback: Если бай-ин не найден в строке "Buy-in:", пробуем извлечь его из заголовка
-        if buyin is None and lines:
-             # Ищем число после символа валюты в первой строке
-             m_buyin_title_fallback = re.search(r"[$€]([\d]+(?:[.,]\d+)?)", lines[0])
-             if m_buyin_title_fallback:
-                  try:
-                      buyin_str = m_buyin_title_fallback.group(1).replace(',', '.')
-                      buyin = float(buyin_str)
-                      logger.debug(f"Бай-ин из заголовка (fallback): {buyin}")
-                  except ValueError:
-                       logger.warning(f"Не удалось распарсить бай-ин из заголовка (fallback) в файле {filename}")
+        # 3. Поиск бай-ина из специальной строки "Buy-in:" если не найден в заголовке
+        if buyin is None:
+            m_buyin_line = self.re_buyin_line.search(file_content_str)
+            if m_buyin_line:
+                try:
+                    # Группы: 1 - символ валюты 1, 2 - основная часть бай-ина, 3 - символ валюты 2 (для фи), 4 - часть фи
+                    main_buyin_str = m_buyin_line.group(2).replace(',', '.')
+                    fee_str = m_buyin_line.group(4)
+                    buyin = float(main_buyin_str)
+                    if fee_str:
+                        buyin += float(fee_str.replace(',', '.'))
+                    logger.debug(f"Бай-ин из строки Buy-in: {buyin}")
+                except ValueError:
+                    logger.warning(f"Не удалось распарсить бай-ин из строки Buy-in: в файле {filename}")
 
 
         if tournament_id is None:
