@@ -1,76 +1,144 @@
+# -*- coding: utf-8 -*-
+
 """
 Парсер итогового Tournament Summary для Hero.
-Бай-ин берём из первой строки (названия турнира), а не из строки Buy-in!
+Бай-ин берем из первой строки (названия турнира) или из специальной строки Buy-in.
+Выплату берем из строки "You received a total of".
 """
 
 import re
+import logging
+from typing import Dict, Any, Optional
+import config
+from .base_parser import BaseParser # Наследуем от BaseParser
 
-class TournamentSummaryParser:
+logger = logging.getLogger('ROYAL_Stats.TournamentSummaryParser')
+logger.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
+
+
+class TournamentSummaryParser(BaseParser):
     """
     Парсер summary-файла турнира только для Hero.
     """
 
-    def __init__(self, hero_name="Hero"):
-        self.hero_name = hero_name
-        # Регулярки для поиска места и выплат по Hero
-        self.re_place = re.compile(r"You finished the tournament in (\d+)[a-z]{2} place")
-        self.re_payout = re.compile(r"You received a total of \$?([\d\.]+)")
-        self.re_buyin_from_title = re.compile(r"[$€]([\d]+(?:\.\d+)?)")  # ищет $25, $10, €1 и т.д.
-        self.re_tournament_id_content = re.compile(r"Tournament #(\d+)") # For content fallback
-        self.re_tournament_id_filename = re.compile(r"Tournament #(\d+)") # For filename
-        self.re_start_date = re.compile(r"Tournament started (\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})")
+    def __init__(self, hero_name: str = config.HERO_NAME):
+        super().__init__(hero_name)
+        # --- Регулярки для парсинга TS ---
+        self.re_tournament_id_title = re.compile(r"Tournament #(\d+)") # Из заголовка (первая строка)
+        self.re_buyin_line = re.compile(r"Buy-in:.*?(\$|€)([\d]+(?:[.,]\d+)?)(?:\+(\$|€)?([\d]+(?:[.,]\d+)?))?") # Для поиска бай-ина в специальной строке "Buy-in:"
+        self.re_place = re.compile(r"You finished the tournament in (\d+)[a-z]{0,2} place") # Место Hero
+        self.re_payout = re.compile(r"You received a total of (?:\$|€)?([\d]+(?:[.,]\d+)?)") # Выплата Hero
+        self.re_start_time = re.compile(r"Tournament started (\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})") # Время старта
+        self.re_tournament_name_title = re.compile(r"Tournament #\d+,\s*(.+)") # Название турнира из заголовка (первая строка)
 
-    def parse(self, file_content, filename=""):
+
+    def parse(self, file_content: str, filename: str = "") -> Dict[str, Any]:
         """
-        Возвращает: {"place": place, "payout": payout, "buyin": buyin, "tournament_id": tid, "date": date_str}
+        Парсит summary-файл, извлекая информацию о турнире для Hero.
+
+        Args:
+            file_content: Содержимое файла в виде строки.
+            filename: Имя файла.
+
+        Returns:
+             Словарь с ключами:
+             'tournament_id': str,
+             'tournament_name': str,
+             'start_time': str,
+             'buyin': float,
+             'payout': float,
+             'finish_place': int
+             (Значения могут быть None, если не найдены)
         """
         lines = file_content.splitlines()
-        place, payout, buyin, tournament_id, date_str = None, None, None, None, None
+        tournament_id: Optional[str] = None
+        tournament_name: Optional[str] = None
+        start_time: Optional[str] = None
+        buyin: Optional[float] = None
+        payout: Optional[float] = None
+        finish_place: Optional[int] = None
 
-        # 1. Try to get Tournament ID from filename
-        if filename:
-            m_tid_fn = self.re_tournament_id_filename.search(filename)
-            if m_tid_fn:
-                tournament_id = m_tid_fn.group(1)
-        
-        # 2. If not in filename, try from content (e.g. first line or specific line)
-        if not tournament_id and lines:
-            # Check first few lines for tournament ID
-            for line in lines[:5]: 
-                m_tid_content = self.re_tournament_id_content.search(line)
-                if m_tid_content:
-                    tournament_id = m_tid_content.group(1)
-                    break
-
-        # Стартовая дата турнира (если есть)
-        m_dt = self.re_start_date.search(file_content)
-        if m_dt:
-            date_str = m_dt.group(1)
-
-        # Бай-ин парсим из первой строки (Tournament Name)
+        # 1. Парсим первую строку для ID, названия и, возможно, бай-ина
         if lines:
-            m = self.re_buyin_from_title.search(lines[0])
-            if m:
-                buyin_str = m.group(1)
-                if buyin_str:
-                    buyin = float(buyin_str.rstrip('.'))
+            first_line = lines[0]
+            m_tid_title = self.re_tournament_id_title.search(first_line)
+            if m_tid_title:
+                tournament_id = m_tid_title.group(1)
 
-        # Ищем строку места Hero
-        m = self.re_place.search(file_content)
-        if m:
-            place = int(m.group(1))
+            m_name_title = self.re_tournament_name_title.search(first_line)
+            if m_name_title:
+                 # Удаляем символы валюты и "Mystery Battle Royale" из названия, если есть
+                 name_part = m_name_title.group(1).split(',')[0]
+                 name_part = re.sub(r'[$€]', '', name_part).strip()
+                 name_part = name_part.replace("Mystery Battle Royale", "").strip()
+                 tournament_name = name_part
 
-        # Итоговая выплата Hero
-        m = self.re_payout.search(file_content)
-        if m:
-            payout_str = m.group(1)
-            if payout_str:
-                payout = float(payout_str.rstrip('.'))
 
-        return {
+        # 2. Парсим файл целиком для остальных данных
+        file_content_str = file_content # Работаем с полной строкой для поиска по всему файлу
+
+        m_start_time = self.re_start_time.search(file_content_str)
+        if m_start_time:
+            start_time = m_start_time.group(1)
+
+        m_place = self.re_place.search(file_content_str)
+        if m_place:
+            try:
+                finish_place = int(m_place.group(1))
+            except ValueError:
+                 logger.warning(f"Не удалось распарсить место из '{m_place.group(1)}' в файле {filename}")
+
+
+        m_payout = self.re_payout.search(file_content_str)
+        if m_payout:
+            try:
+                # Заменяем запятую на точку для корректного преобразования в float
+                payout_str = m_payout.group(1).replace(',', '.')
+                payout = float(payout_str)
+            except ValueError:
+                 logger.warning(f"Не удалось распарсить выплату из '{m_payout.group(1)}' в файле {filename}")
+
+
+        # 3. Поиск бай-ина: сначала строка "Buy-in:", затем fallback на заголовок
+        m_buyin_line = self.re_buyin_line.search(file_content_str)
+        if m_buyin_line:
+             try:
+                 # Группы: 1 - символ валюты 1, 2 - основная часть бай-ина, 3 - символ валюты 2 (для фи), 4 - часть фи
+                 main_buyin_str = m_buyin_line.group(2).replace(',', '.')
+                 fee_str = m_buyin_line.group(4)
+                 buyin = float(main_buyin_str)
+                 if fee_str:
+                     buyin += float(fee_str.replace(',', '.'))
+             except ValueError:
+                  logger.warning(f"Не удалось распарсить бай-ин из строки Buy-in: в файле {filename}")
+
+        # Fallback: Если бай-ин не найден в строке "Buy-in:", пробуем извлечь его из заголовка
+        if buyin is None and lines:
+             # Ищем число после символа валюты в первой строке
+             m_buyin_title_fallback = re.search(r"[$€]([\d]+(?:[.,]\d+)?)", lines[0])
+             if m_buyin_title_fallback:
+                  try:
+                      buyin_str = m_buyin_title_fallback.group(1).replace(',', '.')
+                      buyin = float(buyin_str)
+                      logger.debug(f"Бай-ин из заголовка (fallback): {buyin}")
+                  except ValueError:
+                       logger.warning(f"Не удалось распарсить бай-ин из заголовка (fallback) в файле {filename}")
+
+
+        if tournament_id is None:
+            logger.warning(f"Не удалось извлечь Tournament ID из файла Summary: {filename}. Файл пропущен.")
+            return {'tournament_id': None} # Пропускаем файл без ID
+
+
+        result = {
             "tournament_id": tournament_id,
-            "place": place,
-            "payout": payout,
+            "tournament_name": tournament_name,
+            "start_time": start_time,
             "buyin": buyin,
-            "date": date_str,
+            "payout": payout,
+            "finish_place": finish_place,
         }
+
+        logger.debug(f"Парсинг TS завершен для {tournament_id}. Данные: {result}")
+
+        return result

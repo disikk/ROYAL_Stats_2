@@ -1,113 +1,345 @@
+# -*- coding: utf-8 -*-
+
 """
 Репозиторий турниров Hero. Работает через DatabaseManager.
+Обновлен под новую схему БД.
 """
+
+import sqlite3
+from typing import List, Optional, Dict, Any
+from db.manager import database_manager # Используем синглтон менеджер БД
+from models import Tournament
 
 class TournamentRepository:
     """
-    Хранит и отдаёт инфу о турнирах только по Hero.
+    Хранит и отдает инфу о турнирах только по Hero из таблицы tournaments.
     """
 
-    def __init__(self, db_manager):
-        self.db = db_manager
-        self._ensure_table()
+    def __init__(self):
+        # Репозитории работают с менеджером БД
+        self.db = database_manager # Используем синглтон
 
-    def _ensure_table(self):
+    def add_or_update_tournament(self, tournament: Tournament):
         """
-        Создаёт таблицу hero_tournaments (если не создана).
+        Добавляет новый турнир или обновляет существующий по tournament_id.
+        Использует ON CONFLICT для upsert.
+        Логика мерджа данных из HH и TS происходит в ApplicationService,
+        сюда приходит уже подготовленный объект Tournament.
         """
-        with self.db.get_connection() as conn:
-            c = conn.cursor()
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS hero_tournaments (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    tournament_id TEXT UNIQUE NOT NULL,
-                    place INTEGER NOT NULL,
-                    payout REAL NOT NULL,
-                    buyin REAL NOT NULL,
-                    ko_count INTEGER NOT NULL,
-                    date TEXT
-                )
-            """)
-            # Ensure 'date' column exists (for old DB versions)
-            c.execute("PRAGMA table_info(hero_tournaments)")
-            cols = [r[1] for r in c.fetchall()]
-            if 'date' not in cols:
-                try:
-                    c.execute("ALTER TABLE hero_tournaments ADD COLUMN date TEXT")
-                    conn.commit() # Commit alter table
-                except Exception as e:
-                    # Handle potential error, e.g. table being locked, though less likely here.
-                    print(f"Error adding date column: {e}")
-            conn.commit()
+        query = """
+            INSERT INTO tournaments (
+                tournament_id, tournament_name, start_time, buyin, payout,
+                finish_place, ko_count, session_id, reached_final_table,
+                final_table_initial_stack_chips, final_table_initial_stack_bb
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(tournament_id)
+            DO UPDATE SET
+                tournament_name = COALESCE(excluded.tournament_name, tournaments.tournament_name),
+                start_time = COALESCE(excluded.start_time, tournaments.start_time),
+                buyin = COALESCE(excluded.buyin, tournaments.buyin),
+                payout = COALESCE(excluded.payout, tournaments.payout),
+                finish_place = COALESCE(excluded.finish_place, tournaments.finish_place),
+                ko_count = excluded.ko_count, -- ko_count приходит уже объединенный из ApplicationService
+                session_id = COALESCE(tournaments.session_id, excluded.session_id), -- Сохраняем первый session_id, если новый не установлен
+                reached_final_table = tournaments.reached_final_table OR excluded.reached_final_table, -- Флаг становится TRUE если хоть раз был TRUE
+                final_table_initial_stack_chips = COALESCE(excluded.final_table_initial_stack_chips, tournaments.final_table_initial_stack_chips),
+                final_table_initial_stack_bb = COALESCE(excluded.final_table_initial_stack_bb, tournaments.final_table_initial_stack_bb)
+        """
 
-    def add_or_update_tournament(self, tournament_id, place, payout, buyin, ko_count, date=None):
-        """
-        Добавляет или обновляет запись по турниру (Hero-only).
-        """
-        with self.db.get_connection() as conn:
-            c = conn.cursor()
-            # Ensure 'date' column exists (for old DB versions)
-            c.execute("PRAGMA table_info(hero_tournaments)")
-            cols = [r[1] for r in c.fetchall()]
-            if 'date' not in cols:
-                try:
-                    c.execute("ALTER TABLE hero_tournaments ADD COLUMN date TEXT")
-                except Exception:
-                    pass
-            c.execute("""
-                INSERT INTO hero_tournaments (tournament_id, place, payout, buyin, ko_count, date)
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(tournament_id)
-                DO UPDATE SET
-                    place=excluded.place,
-                    payout=excluded.payout,
-                    buyin=excluded.buyin,
-                    ko_count=excluded.ko_count,
-                    date=COALESCE(excluded.date, hero_tournaments.date)
-            """, (tournament_id, place, payout, buyin, ko_count, date))
-            conn.commit()
+        params = (
+            tournament.tournament_id,
+            tournament.tournament_name,
+            tournament.start_time,
+            tournament.buyin,
+            tournament.payout,
+            tournament.finish_place,
+            tournament.ko_count,
+            tournament.session_id,
+            tournament.reached_final_table,
+            tournament.final_table_initial_stack_chips,
+            tournament.final_table_initial_stack_bb,
+        )
 
-    def get_hero_tournament(self, tournament_id):
-        """
-        Возвращает данные Hero по одному турниру.
-        """
-        with self.db.get_connection() as conn:
-            c = conn.cursor()
-            c.execute("""
-                SELECT place, payout, buyin, ko_count, date
-                FROM hero_tournaments
-                WHERE tournament_id=?
-            """, (tournament_id,))
-            row = c.fetchone()
-            if row:
-                return {
-                    "tournament_id": tournament_id,
-                    "place": row[0],
-                    "payout": row[1],
-                    "buyin": row[2],
-                    "ko_count": row[3],
-                    "date": row[4],
-                }
-            return None
+        self.db.execute_update(query, params)
 
-    def get_all_hero_tournaments(self):
+
+    def get_tournament_by_id(self, tournament_id: str) -> Optional[Tournament]:
         """
-        Возвращает список всех турниров Hero.
+        Возвращает данные Hero по одному турниру по ID.
         """
-        with self.db.get_connection() as conn:
-            c = conn.cursor()
-            c.execute("""
-                SELECT tournament_id, place, payout, buyin, ko_count, date
-                FROM hero_tournaments
-            """)
-            rows = c.fetchall()
-            return [
-                {
-                    "tournament_id": row[0],
-                    "place": row[1],
-                    "payout": row[2],
-                    "buyin": row[3],
-                    "ko_count": row[4],
-                    "date": row[5],
-                } for row in rows
-            ]
+        query = """
+            SELECT
+                id, tournament_id, tournament_name, start_time, buyin, payout,
+                finish_place, ko_count, session_id, reached_final_table,
+                final_table_initial_stack_chips, final_table_initial_stack_bb
+            FROM tournaments
+            WHERE tournament_id=?
+        """
+        result = self.db.execute_query(query, (tournament_id,))
+        if result:
+            # results from execute_query are Row objects, convert to dict first
+            return Tournament.from_dict(dict(result[0]))
+        return None
+
+    def get_all_tournaments(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> List[Tournament]:
+        """
+        Возвращает список всех турниров Hero, опционально фильтруя по сессии или бай-ину.
+        """
+        query = """
+            SELECT
+                id, tournament_id, tournament_name, start_time, buyin, payout,
+                finish_place, ko_count, session_id, reached_final_table,
+                final_table_initial_stack_chips, final_table_initial_stack_bb
+            FROM tournaments
+        """
+        conditions = []
+        params = []
+
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        # Сортируем по времени начала турнира для хронологического порядка
+        query += " ORDER BY start_time ASC"
+
+        results = self.db.execute_query(query, params)
+        return [Tournament.from_dict(dict(row)) for row in results]
+
+    def count_all(self, buyin_filter: Optional[float] = None) -> int:
+        """
+        Возвращает общее количество турниров, опционально фильтруя по бай-ину.
+        """
+        query = "SELECT COUNT(*) FROM tournaments"
+        conditions = []
+        params = []
+
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        result = self.db.execute_query(query, params)
+        return result[0][0] if result else 0
+
+    def count_reached_final_table(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> int:
+         """
+         Возвращает количество турниров, в которых Hero достиг финального стола,
+         опционально фильтруя по сессии или бай-ину.
+         """
+         query = "SELECT COUNT(*) FROM tournaments WHERE reached_final_table = 1"
+         conditions = []
+         params = []
+
+         if session_id:
+             conditions.append("session_id = ?")
+             params.append(session_id)
+
+         if buyin_filter is not None:
+             conditions.append("buyin = ?")
+             params.append(buyin_filter)
+
+         if conditions:
+              query += " AND " + " AND ".join(conditions)
+
+         result = self.db.execute_query(query, params)
+         return result[0][0] if result else 0
+
+    def sum_ko_count(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> int:
+        """
+        Суммирует общее количество KO из таблицы tournaments,
+        опционально фильтруя по сессии или бай-ину.
+        """
+        query = "SELECT SUM(ko_count) FROM tournaments"
+        conditions = []
+        params = []
+
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        result = self.db.execute_query(query, params)
+        return result[0][0] if result and result[0][0] is not None else 0
+
+    def sum_payout(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> float:
+        """
+        Суммирует общую выплату из таблицы tournaments,
+        опционально фильтруя по сессии или бай-ину.
+        """
+        query = "SELECT SUM(payout) FROM tournaments"
+        conditions = []
+        params = []
+
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        result = self.db.execute_query(query, params)
+        return result[0][0] if result and result[0][0] is not None else 0.0
+
+    def sum_buyin(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> float:
+        """
+        Суммирует общий бай-ин из таблицы tournaments,
+        опционально фильтруя по сессии или бай-ину.
+        """
+        query = "SELECT SUM(buyin) FROM tournaments"
+        conditions = []
+        params = []
+
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        result = self.db.execute_query(query, params)
+        return result[0][0] if result and result[0][0] is not None else 0.0
+
+
+    def get_avg_finish_place(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> float:
+        """
+        Рассчитывает среднее финишное место по турнирам (включая не финалку),
+        опционально фильтруя по сессии или бай-ину.
+        Возвращает 0.0 если нет турниров.
+        """
+        query = "SELECT AVG(finish_place) FROM tournaments WHERE finish_place IS NOT NULL"
+        conditions = []
+        params = []
+
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+
+        if conditions:
+             query += " AND " + " AND ".join(conditions)
+
+        result = self.db.execute_query(query, params)
+        return result[0][0] if result and result[0][0] is not None else 0.0
+
+
+    def get_avg_finish_place_ft(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> float:
+        """
+        Рассчитывает среднее финишное место только по турнирам на финальном столе (1-9),
+        опционально фильтруя по сессии или бай-ину.
+        Возвращает 0.0 если нет турниров на финалке.
+        """
+        query = """
+            SELECT AVG(finish_place)
+            FROM tournaments
+            WHERE reached_final_table = 1 AND finish_place IS NOT NULL AND finish_place BETWEEN 1 AND 9
+        """
+        conditions = []
+        params = []
+
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+
+        if conditions:
+             query += " AND " + " AND ".join(conditions)
+
+        result = self.db.execute_query(query, params)
+        return result[0][0] if result and result[0][0] is not None else 0.0
+
+
+    def get_avg_ft_initial_stack_chips(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> float:
+        """
+        Рассчитывает средний стек Hero в фишках на старте финального стола
+        (только для турниров, достигших финалки), опционально фильтруя.
+        """
+        query = """
+            SELECT AVG(final_table_initial_stack_chips)
+            FROM tournaments
+            WHERE reached_final_table = 1 AND final_table_initial_stack_chips IS NOT NULL
+        """
+        conditions = []
+        params = []
+
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+
+        if conditions:
+             query += " AND " + " AND ".join(conditions)
+
+        result = self.db.execute_query(query, params)
+        return result[0][0] if result and result[0][0] is not None else 0.0
+
+
+    def get_avg_ft_initial_stack_bb(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> float:
+        """
+        Рассчитывает средний стек Hero в BB на старте финального стола
+        (только для турниров, достигших финалки), опционально фильтруя.
+        """
+        query = """
+            SELECT AVG(final_table_initial_stack_bb)
+            FROM tournaments
+            WHERE reached_final_table = 1 AND final_table_initial_stack_bb IS NOT NULL
+        """
+        conditions = []
+        params = []
+
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+
+        if conditions:
+             query += " AND " + " AND ".join(conditions)
+
+        result = self.db.execute_query(query, params)
+        return result[0][0] if result and result[0][0] is not None else 0.0
+
+    def get_distinct_buyins(self) -> List[float]:
+        """
+        Возвращает список всех уникальных бай-инов турниров Hero.
+        """
+        query = "SELECT DISTINCT buyin FROM tournaments WHERE buyin IS NOT NULL ORDER BY buyin ASC"
+        results = self.db.execute_query(query)
+        return [row[0] for row in results if row[0] is not None]
+
+
+# Создаем синглтон экземпляр репозитория
+tournament_repository = TournamentRepository()

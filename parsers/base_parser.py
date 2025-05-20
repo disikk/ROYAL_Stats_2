@@ -1,7 +1,10 @@
+# -*- coding: utf-8 -*-
+
 """
 Базовый класс парсера для Royal Stats.
 Все дочерние парсеры должны реализовывать только работу с Hero.
 """
+import config # Для имени Hero
 
 class BaseParser:
     """
@@ -9,13 +12,21 @@ class BaseParser:
     Реализует базовую структуру и общие проверки.
     """
 
-    def __init__(self, hero_name="Hero"):
-        # Имя Hero фиксировано для всех задач (можно переопределить в дочернем классе)
+    def __init__(self, hero_name: str = config.HERO_NAME):
+        # Имя Hero берется из конфигурации
         self.hero_name = hero_name
 
-    def parse(self, file_content):
+    def parse(self, file_content: str, filename: str = ""):
         """
         Метод-заглушка: должен быть переопределён в наследниках.
+        Парсит содержимое файла и возвращает структурированные данные.
+
+        Args:
+            file_content: Содержимое файла в виде строки.
+            filename: Имя файла (может быть полезно для определения турнира ID).
+
+        Returns:
+            Словарь или объект модели с извлеченными данными.
         """
         raise NotImplementedError("Метод parse должен быть реализован в дочернем классе.")
 
@@ -25,10 +36,3 @@ class BaseParser:
         """
         # Для надёжности сравниваем с учётом регистра и лишних пробелов
         return name.strip() == self.hero_name
-
-    def filter_hero_only(self, data: list, key: str) -> list:
-        """
-        Фильтрует список данных, оставляя только записи по Hero.
-        Удобно использовать для post-processing результатов парсинга.
-        """
-        return [row for row in data if row.get(key, "").strip() == self.hero_name]

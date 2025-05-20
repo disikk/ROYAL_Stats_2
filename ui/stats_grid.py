@@ -1,54 +1,52 @@
+# -*- coding: utf-8 -*-
+
+"""
+Дашборд Hero: отображает ключевые статы в виде карточек и гистограмму мест.
+Обновлен для работы с ApplicationService и новой структурой стат.
+"""
+
 from PyQt6 import QtWidgets, QtCore, QtGui
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
-from ui.app_style import format_money, apply_cell_color_by_value
+import numpy as np # Для работы с массивами в графике
+from ui.app_style import format_money, format_percentage, apply_cell_color_by_value # Используем форматтеры
+from application_service import ApplicationService # Импортируем сервис
 
+# Вспомогательный виджет для отображения одного стата в виде карточки
 class StatCard(QtWidgets.QGroupBox):
-    def __init__(self, name, value, parent=None, is_money=False, with_plus=False):
+    def __init__(self, name: str, value: Any, parent=None, format_func=str, value_color_threshold: Optional[float] = None):
+        """
+        Виджет-карточка для отображения одного статистического показателя.
+
+        Args:
+            name: Название стата.
+            value: Значение стата.
+            parent: Родительский виджет.
+            format_func: Функция для форматирования значения (например, format_money, format_percentage).
+            value_color_threshold: Порог для окраски значения (зеленый > порога, красный < порога).
+                                   None - без окраски.
+        """
         super().__init__(parent)
         self.setTitle(name)
-        self.is_money = is_money
-        self.with_plus = with_plus
-        
-        self.value_label = QtWidgets.QLabel(self._format_value(value))
+        self.format_func = format_func
+        self.value_color_threshold = value_color_threshold
+
+        self.value_label = QtWidgets.QLabel(self.format_func(value))
         font = self.value_label.font()
-        font.setPointSize(14)
+        font.setPointSize(16) # Увеличиваем размер шрифта значения
         font.setBold(True)
         self.value_label.setFont(font)
         self.value_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        
-        # Добавляем иконку тренда (опционально)
-        self.trend_icon = QtWidgets.QLabel()
-        self.trend_icon.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        
-        # Контейнер для верхней строки (значения и иконки тренда)
-        top_layout = QtWidgets.QHBoxLayout()
-        top_layout.addStretch()
-        top_layout.addWidget(self.value_label)
-        top_layout.addWidget(self.trend_icon)
-        top_layout.addStretch()
-        
-        # Устанавливаем цвет текста в зависимости от значения для денежных показателей
-        if is_money:
-            try:
-                val = float(value)
-                if val > 0:
-                    self.value_label.setStyleSheet("color: #2ecc71;")  # Зеленый
-                    if self.trend_icon:
-                        self.trend_icon.setPixmap(QtGui.QIcon.fromTheme("go-up").pixmap(16, 16))
-                elif val < 0:
-                    self.value_label.setStyleSheet("color: #e74c3c;")  # Красный
-                    if self.trend_icon:
-                        self.trend_icon.setPixmap(QtGui.QIcon.fromTheme("go-down").pixmap(16, 16))
-            except (ValueError, TypeError):
-                pass
-        
+
+        # Применяем цвет текста, если задан порог
+        self._apply_value_color(value)
+
         layout = QtWidgets.QVBoxLayout()
-        layout.addLayout(top_layout)
+        layout.addWidget(self.value_label, alignment=QtCore.Qt.AlignmentFlag.AlignCenter) # Центрируем значение
         self.setLayout(layout)
-        self.setFixedHeight(60)  # Компактнее
-        
+        self.setFixedHeight(80) # Немного увеличиваем высоту для лучшего вида
+
         # Тень для карточки
         shadow = QtWidgets.QGraphicsDropShadowEffect()
         shadow.setBlurRadius(10)
@@ -56,259 +54,266 @@ class StatCard(QtWidgets.QGroupBox):
         shadow.setOffset(2, 2)
         self.setGraphicsEffect(shadow)
 
-    def _format_value(self, value):
-        if self.is_money:
-            return format_money(value, self.with_plus)
-        return str(value)
+    def set_value(self, value: Any):
+        """Обновляет значение в карточке и перекрашивает его."""
+        self.value_label.setText(self.format_func(value))
+        self._apply_value_color(value)
 
-    def set_value(self, value):
-        self.value_label.setText(self._format_value(value))
-        
-        # Обновляем цвет при изменении значения (для денежных показателей)
-        if self.is_money:
+    def _apply_value_color(self, value: Any):
+        """Применяет цвет к значению на основе порога."""
+        if self.value_color_threshold is not None:
             try:
                 val = float(value)
-                if val > 0:
-                    self.value_label.setStyleSheet("color: #2ecc71;")  # Зеленый
-                    if self.trend_icon:
-                        self.trend_icon.setPixmap(QtGui.QIcon.fromTheme("go-up").pixmap(16, 16))
-                elif val < 0:
-                    self.value_label.setStyleSheet("color: #e74c3c;")  # Красный
-                    if self.trend_icon:
-                        self.trend_icon.setPixmap(QtGui.QIcon.fromTheme("go-down").pixmap(16, 16))
+                if val > self.value_color_threshold:
+                    self.value_label.setStyleSheet("color: #2ecc71;")  # Зеленый (для положительной прибыли/ROI)
+                elif val < self.value_color_threshold:
+                    self.value_label.setStyleSheet("color: #e74c3c;")  # Красный (для отрицательной прибыли/ROI)
                 else:
-                    self.value_label.setStyleSheet("")
-                    if self.trend_icon:
-                        self.trend_icon.clear()
+                    self.value_label.setStyleSheet("") # Сброс цвета для нуля
             except (ValueError, TypeError):
-                pass
+                self.value_label.setStyleSheet("") # Сброс цвета для нечисловых значений
 
 
 class StatsGrid(QtWidgets.QWidget):
     """
-    Дашборд Hero: все ключевые статы в виде карточек + гистограмма мест
+    Дашборд Hero: все ключевые статы в виде карточек + гистограмма мест на финалке.
     """
 
-    def __init__(self, stats_repo, tournament_repo, session_repo, parent=None):
+    def __init__(self, app_service: ApplicationService, parent=None):
         super().__init__(parent)
-        self.stats_repo = stats_repo
-        self.tournament_repo = tournament_repo
-        self.session_repo = session_repo
+        self.app_service = app_service # Используем ApplicationService
 
-        self.cards = []
-        self.card_names = []
         self._init_ui()
-        self.reload()
+        # Данные загружаются при первом отображении вкладки или по сигналу обновления
 
     def _init_ui(self):
         main_layout = QtWidgets.QVBoxLayout(self)
-        
+
         # Заголовок дашборда
         header_layout = QtWidgets.QHBoxLayout()
-        self.header_label = QtWidgets.QLabel("Статистика игрока")
-        self.header_label.setStyleSheet("font-size: 20px; font-weight: bold; margin: 10px;")
+        self.header_label = QtWidgets.QLabel("Общая статистика игрока")
+        self.header_label.setStyleSheet("font-size: 24px; font-weight: bold; margin: 10px;")
         header_layout.addWidget(self.header_label)
-        
+
+        header_layout.addStretch()
+
         # Кнопка обновления с иконкой
-        self.refresh_btn = QtWidgets.QPushButton()
+        self.refresh_btn = QtWidgets.QPushButton("Обновить")
         self.refresh_btn.setIcon(QtGui.QIcon.fromTheme("view-refresh"))
         self.refresh_btn.setToolTip("Обновить статистику")
         self.refresh_btn.clicked.connect(self.reload)
         header_layout.addWidget(self.refresh_btn)
-        header_layout.addStretch()
-        
+
         main_layout.addLayout(header_layout)
-        
-        # Виджет прокрутки для всего содержимого
+
+        # --- Карточки статов (QGridLayout в ScrollArea) ---
         scroll_area = QtWidgets.QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_content = QtWidgets.QWidget()
         scroll_layout = QtWidgets.QVBoxLayout(scroll_content)
-        
-        # --- Карточки статов (QGridLayout) ---
+
         self.cards_grid = QtWidgets.QGridLayout()
         self.cards_grid.setSpacing(16)
-        self.cards_grid.setContentsMargins(8, 8, 8, 8)
+        self.cards_grid.setContentsMargins(10, 10, 10, 10) # Увеличим отступы
         self.cards_widget = QtWidgets.QWidget()
         self.cards_widget.setLayout(self.cards_grid)
         scroll_layout.addWidget(self.cards_widget)
-        
+
         # --- Заголовок для гистограммы ---
-        chart_header = QtWidgets.QLabel("Распределение занятых мест")
-        chart_header.setStyleSheet("font-size: 16px; font-weight: bold; margin-top: 20px;")
+        chart_header = QtWidgets.QLabel("Распределение занятых мест на финальном столе (1-9)")
+        chart_header.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 20px; margin-bottom: 10px;")
         chart_header.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         scroll_layout.addWidget(chart_header)
 
         # --- Гистограмма распределения мест ---
-        self.figure = Figure(figsize=(6, 3))
-        # Устанавливаем фон в соответствии с темной темой
-        self.figure.patch.set_facecolor('#353535')
+        self.figure = Figure(figsize=(8, 5)) # Увеличим размер фигуры
         self.canvas = FigureCanvas(self.figure)
         scroll_layout.addWidget(self.canvas)
-        
+
         scroll_area.setWidget(scroll_content)
         main_layout.addWidget(scroll_area)
 
         self.setLayout(main_layout)
 
-    def reload(self):
-        tournaments = self.tournament_repo.get_all_hero_tournaments()
-        sessions = self.session_repo.get_all_hero_sessions() if hasattr(self.session_repo, 'get_all_hero_sessions') else []
-        knockouts = []  # KO details are no longer stored separately
+        # Создаем карточки статов (изначально с нулями/прочерками)
+        self._create_stat_cards()
 
-        # --- Считаем все статы через плагины ---
-        from stats.itm import ITMStat
-        from stats.roi import ROIStat
-        from stats.big_ko import BigKOStat
-        from stats.total_ko import TotalKOStat
 
-        plugins = [ITMStat(), ROIStat(), BigKOStat(), TotalKOStat()]
-        stats_flat = []
-        self.card_names = []
-        
-        # Определяем, какие статы являются денежными значениями
-        money_stats = ["ROI", "Доход", "Прибыль", "Выплата", "Бай-ин"]
-
-        # Отображаем только необходимые показатели
-        required_keys = {
-            "ITM": ["itm_percent"],
-            "ROI": ["roi"],
-            "Total KO": ["total_ko"],
-            "Big KO": ["x1.5", "x2", "x10", "x100"],
-        }
-
-        for plugin in plugins:
-            try:
-                result = plugin.compute(tournaments, knockouts, sessions)
-
-                # Какие ключи из результата нужно показать
-                need_keys = required_keys.get(plugin.name, [])
-
-                if isinstance(result, dict):
-                    for k, v in result.items():
-                        if k not in need_keys:
-                            continue  # пропускаем лишние данные
-                        # Проверяем, является ли стат денежным показателем
-                        is_money = any(money_term in plugin.name or money_term in k for money_term in money_stats)
-                        # Удобно отобразить человеко-читаемый заголовок
-                        display_name = {
-                            ("ITM", "itm_percent"): "ITM%",
-                            ("ROI", "roi"): "ROI%",
-                            ("Total KO", "total_ko"): "Нокауты",
-                        }.get((plugin.name, k), f"{k}")
-                        # Для Big KO выводим как x1.5 и т.п.
-                        if plugin.name == "Big KO":
-                            display_name = k
-                        stats_flat.append((display_name, v, is_money))
-                        self.card_names.append(display_name)
-                else:
-                    if not need_keys:
-                        continue
-                    # Если результат не словарь, но метрика одна (не используется сейчас)
-                    is_money = any(money_term in plugin.name for money_term in money_stats)
-                    display_name = plugin.name
-                    stats_flat.append((display_name, result, is_money))
-                    self.card_names.append(display_name)
-            except Exception as e:
-                stats_flat.append((plugin.name, f"Ошибка: {e}", False))
-                self.card_names.append(plugin.name)
-
-        # --- Рендерим карточки ---
-        # Удалить старые карточки из layout
+    def _create_stat_cards(self):
+        """Создает виджеты StatCard для всех отображаемых статистик."""
+        # Очищаем существующие карточки из layout
         while self.cards_grid.count():
             item = self.cards_grid.takeAt(0)
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
-        self.cards = []
 
-        # Dynamically determine columns based on available width
-        # StatCard has fixed height 100, let's assume a min/avg width for calculation
-        # Min card width might be around 200-250px with title and value.
-        # Spacing is 16px.
-        card_min_width_plus_spacing = 140 + self.cards_grid.spacing() 
-        
-        # Use the width of the container for cards, or StatsGrid itself as a fallback
-        container_width = self.cards_widget.width()
-        if container_width <= 0: # If not yet sized (e.g. during init)
-            container_width = self.width()
-        if container_width <= 0: # Still not sized (e.g. hidden tab)
-            container_width = 800 # Default reasonable width
-            
-        cols = max(1, int(container_width / card_min_width_plus_spacing))
-        # Cap columns to a reasonable max, e.g., 5 or 6, to avoid tiny cards if width is huge
-        cols = min(cols, 6) 
+        self.stat_cards: Dict[str, StatCard] = {} # Словарь для доступа к карточкам по имени стата
 
-        for i, (name, value, is_money) in enumerate(stats_flat):
-            card = StatCard(name, value, is_money=is_money, with_plus="ROI" in name)
-            self.cards.append(card)
+        # Определяем, какие статы отображать и как их форматировать/красить
+        # Имена ключей соответствуют полям OverallStats или ключам из compute() плагинов
+        stats_to_display = [
+            ("Всего турниров", "total_tournaments", str, None),
+            ("Всего финалок", "total_final_tables", str, None),
+            ("Всего KO", "total_knockouts", str, None),
+            ("Среднее место (все)", "avg_finish_place", lambda v: f"{v:.2f}" if v is not None else "-", None),
+            ("Среднее место (FT)", "avg_finish_place_ft", lambda v: f"{v:.2f}" if v is not None else "-", None),
+            ("Общая прибыль", lambda stats: stats.total_prize - stats.total_buy_in if stats else 0.0, format_money, 0.0),
+            ("Общий ROI", lambda stats: (stats.total_prize - stats.total_buy_in) / stats.total_buy_in * 100 if stats and stats.total_buy_in > 0 else 0.0, format_percentage, 0.0),
+            ("Среднее KO / турнир", "avg_ko_per_tournament", lambda v: f"{v:.2f}" if v is not None else "-", None),
+            ("Процент попадания в ITM", lambda stats: ITMStat().compute([], [], [], stats).get('itm_percent', 0.0) if stats else 0.0, format_percentage, 0.0), # ITM% из плагина
+            ("Процент попадания на FT", lambda stats: FinalTableReachStat().compute([], [], [], stats).get('final_table_reach_percent', 0.0) if stats else 0.0, format_percentage, 0.0), # % Reach FT из плагина
+            ("Средний стек FT (фишки)", "avg_ft_initial_stack_chips", lambda v: f"{v:.2f}" if v is not None else "-", None),
+            ("Средний стек FT (BB)", "avg_ft_initial_stack_bb", lambda v: f"{v:.2f}" if v is not None else "-", None),
+            ("KO в ранней финалке (9-6)", "early_ft_ko_count", str, None),
+            ("Среднее KO в ранней финалке / турнир", "early_ft_ko_per_tournament", lambda v: f"{v:.2f}" if v is not None else "-", None),
+            ("Big KO (x1.5)", "big_ko_x1_5", str, None),
+            ("Big KO (x2)", "big_ko_x2", str, None),
+            ("Big KO (x10)", "big_ko_x10", str, None),
+            ("Big KO (x100)", "big_ko_x100", str, None),
+            ("Big KO (x1000)", "big_ko_x1000", str, None),
+            ("Big KO (x10000)", "big_ko_x10000", str, None),
+        ]
+
+        # Определяем количество колонок в гриде (адаптивно или фиксированно)
+        # Давайте сделаем фиксировано, например, 4 колонки.
+        cols = 4
+
+        # Создаем карточки и добавляем их в грид
+        for i, (name, key_or_lambda, format_func, color_threshold) in enumerate(stats_to_display):
+            # Изначальное значение - прочерк или 0
+            initial_value = "- " if isinstance(key_or_lambda, str) else 0.0
+            card = StatCard(name, initial_value, format_func=format_func, value_color_threshold=color_threshold)
+            self.stat_cards[name] = card # Сохраняем ссылку
             self.cards_grid.addWidget(card, i // cols, i % cols)
 
-        # --- Гистограмма ---
-        self._update_places_chart(tournaments)
+    def reload(self):
+        """
+        Обновляет данные в карточках статов и гистограмме.
+        """
+        # Получаем общую статистику из ApplicationService
+        overall_stats = self.app_service.get_overall_stats()
+        if not overall_stats:
+             logger.warning("Общая статистика недоступна для обновления UI.")
+             # Возможно, стоит очистить карточки или показать сообщение об отсутствии данных
+             return
 
-    def _update_places_chart(self, tournaments):
-        distribution = self._place_distribution(tournaments)
-        self.figure.clear()
-        
+        logger.debug("Обновление UI StatsGrid...")
+
+        # Обновляем значения в карточках статов
+        # Проходимся по словарю stat_cards и обновляем значения
+        for name, card in self.stat_cards.items():
+             # Находим соответствующее значение в overall_stats
+             # Используем getattr для доступа к полям по строковому имени
+             # или вызываем lambda-функцию, если key_or_lambda - это функция
+             try:
+                 # Находим исходное определение стата, чтобы получить key_or_lambda
+                 stat_def = next(
+                     (item for item in stats_to_display if item[0] == name),
+                     None
+                 )
+                 if stat_def:
+                      key_or_lambda = stat_def[1] # Получаем второй элемент (ключ или lambda)
+
+                      if isinstance(key_or_lambda, str):
+                           # Это прямое поле в OverallStats
+                           value = getattr(overall_stats, key_or_lambda, None) # Получаем значение по имени поля
+                      else:
+                           # Это lambda-функция, которая рассчитывает значение
+                           value = key_or_lambda(overall_stats) # Вызываем lambda, передавая overall_stats
+
+                      card.set_value(value)
+             except Exception as e:
+                  logger.error(f"Ошибка при обновлении карточки стата '{name}': {e}")
+                  card.set_value("Ошибка") # Показываем ошибку в карточке
+
+
+        # Обновляем гистограмму распределения мест
+        self._update_places_chart()
+
+    def _update_places_chart(self):
+        """Обновляет график гистограммы распределения мест."""
+        distribution = self.app_service.get_place_distribution()
+        overall_stats = self.app_service.get_overall_stats()
+
+        self.figure.clear() # Очищаем предыдущий график
+
         # Получаем текущие цвета из темы приложения
+        # (Можно получить через QPalette или жестко задать для согласованности с QSS)
+        # Используем жестко заданные для темной темы, как в app_style.py
         bg_color = '#353535'  # Фон графика
         text_color = '#ffffff'  # Цвет текста
         grid_color = '#555555'  # Цвет сетки
-        bar_color = '#2a82da'  # Основной цвет для столбцов
-        
+        # bar_color = '#2a82da'  # Основной цвет для столбцов (синий)
+
         # Настраиваем стиль графика для темной темы
         plt.style.use('dark_background')
-        
+        # Устанавливаем фон фигуры явно (может быть переопределен стилем)
+        self.figure.patch.set_facecolor(bg_color)
+
+
         ax = self.figure.add_subplot(111)
         ax.set_facecolor(bg_color)
-        
-        places = list(range(1, 10))
-        counts = [distribution[p][0] for p in places]
-        percentages = [distribution[p][1] for p in places]
-        
+
+        places = list(distribution.keys()) # Места от 1 до 9
+        counts = [distribution[p] for p in places] # Количество финишей на каждом месте
+
+        total_final_tables = overall_stats.total_final_tables if overall_stats else sum(counts) # Общее количество финалок для нормализации
+
+        percentages = [(count / total_final_tables * 100) if total_final_tables > 0 else 0.0 for count in counts]
+        percentages = [round(p, 2) for p in percentages] # Округляем проценты
+
         # Создаем градиент цветов для столбцов: первые места - зеленые, последние - красные
-        colors = ['#27ae60', '#2ecc71', '#3498db', '#3498db', '#f1c40f', 
+        colors = ['#27ae60', '#2ecc71', '#3498db', '#3498db', '#f1c40f',
                  '#f1c40f', '#e67e22', '#e67e22', '#e74c3c'][:len(places)]
-        
+
+        # Строим гистограмму
         bars = ax.bar(places, counts, color=colors)
-        
-        # Добавляем проценты над столбцами
-        for i, (bar, percentage) in enumerate(zip(bars, percentages)):
+
+        # Добавляем количество и проценты над столбцами
+        for i, (bar, count, percentage) in enumerate(zip(bars, counts, percentages)):
             height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
-                    f'{percentage}%',
-                    ha='center', va='bottom', color=text_color, fontweight='bold')
-        
-        ax.set_title("Распределение занятых мест", color=text_color, fontsize=14, pad=20)
+            # Отображаем count только если он > 0
+            if count > 0:
+                ax.text(bar.get_x() + bar.get_width()/2., height + 0.5, # Небольшой отступ над столбцом
+                        f'{count}', # Отображаем количество
+                        ha='center', va='bottom', color=text_color, fontweight='bold', fontsize=10)
+
+            # Отображаем процент только если он > 0
+            if percentage > 0:
+                 ax.text(bar.get_x() + bar.get_width()/2., height + (overall_stats.total_tournaments * 0.01), # Немного выше, чем count
+                         f'{percentage:.1f}%', # Отображаем процент с одним знаком после запятой
+                         ha='center', va='bottom', color=text_color, fontsize=9)
+
+
+        ax.set_title(f"Распределение занятых мест на финальном столе",
+                     color=text_color, fontsize=14, pad=20) # Увеличиваем отступ заголовка
         ax.set_xlabel("Место", color=text_color, fontsize=12)
-        ax.set_ylabel("Количество турниров", color=text_color, fontsize=12)
-        ax.set_xticks(places)
-        ax.tick_params(colors=text_color)
-        
+        ax.set_ylabel("Количество финалок", color=text_color, fontsize=12) # Подпись оси Y
+        ax.set_xticks(places) # Устанавливаем метки только для имеющихся мест
+        ax.tick_params(colors=text_color) # Цвет меток на осях
+
         # Настраиваем внешний вид сетки
         ax.grid(True, linestyle='--', alpha=0.3, color=grid_color)
-        
-        # Добавляем общее количество турниров в заголовок
-        total_tournaments = sum(counts)
-        ax.set_title(f"Распределение занятых мест (всего турниров: {total_tournaments})", 
-                     color=text_color, fontsize=14, pad=20)
-        
-        # Удаляем рамку
+
+        # Устанавливаем пределы оси Y так, чтобы проценты не выходили за график
+        # Находим максимальное значение количества + небольшой запас
+        max_count = max(counts) if counts else 0
+        # Определяем примерную высоту текста процента (зависит от размера шрифта и dpi)
+        # Это сложно сделать точно без рендеринга, используем эвристику или относительный отступ
+        # Зададим верхний предел Y как максимум count + 10-15% от максимума для текста
+        ax.set_ylim(0, max_count * 1.2) # Добавляем 20% сверху для текста
+
+        # Добавляем общее количество финалок в заголовок или подпись
+        ax.text(0.98, 0.98, f"Всего финалок: {total_final_tables}",
+                verticalalignment='top', horizontalalignment='right',
+                transform=ax.transAxes,
+                color=text_color, fontsize=10)
+
+
+        # Удаляем рамку графика
         for spine in ax.spines.values():
             spine.set_visible(False)
-        
-        self.figure.tight_layout()
-        self.canvas.draw()
 
-    @staticmethod
-    def _place_distribution(tournaments, places=9):
-        counter = {i: 0 for i in range(1, places + 1)}
-        total = len(tournaments)
-        if total == 0:
-            return {i: (0, 0.0) for i in range(1, places + 1)}
-        for t in tournaments:
-            place = t.get("place") if isinstance(t, dict) else getattr(t, "place", None)
-            if isinstance(place, int) and 1 <= place <= places:
-                counter[place] += 1
-        return {place: (count, round(count / total * 100, 2)) for place, count in counter.items()}
+        self.figure.tight_layout() # Автоматически корректируем расположение элементов
+        self.canvas.draw() # Прорисовываем график

@@ -1,0 +1,62 @@
+# -*- coding: utf-8 -*-
+
+"""
+Репозиторий для работы с распределением мест Hero на финальном столе.
+"""
+
+import sqlite3
+from typing import Dict
+from db.manager import database_manager # Используем синглтон менеджер БД
+
+class PlaceDistributionRepository:
+    """
+    Репозиторий для хранения и получения распределения мест Hero на финальном столе (1-9).
+    """
+
+    def __init__(self):
+        self.db = database_manager # Используем синглтон
+
+    def get_distribution(self) -> Dict[int, int]:
+        """
+        Возвращает распределение занятых мест (1-9) на финальном столе.
+        Ключ - место, значение - количество финишей.
+        """
+        query = "SELECT place, count FROM places_distribution ORDER BY place"
+        results = self.db.execute_query(query)
+        # Преобразуем список Row в словарь для удобства {place: count}
+        distribution = {row['place']: row['count'] for row in results}
+        
+        # Убедимся, что все места от 1 до 9 присутствуют в словаре, даже если count = 0
+        for i in range(1, 10):
+            if i not in distribution:
+                distribution[i] = 0
+                
+        return distribution
+
+    def increment_place_count(self, place: int):
+        """
+        Увеличивает счетчик для указанного финишного места.
+        Предполагается, что place находится в диапазоне 1-9.
+        """
+        if not 1 <= place <= 9:
+            print(f"Предупреждение: Попытка инкрементировать счетчик для некорректного места: {place}")
+            return
+
+        query = "UPDATE places_distribution SET count = count + 1 WHERE place = ?"
+        self.db.execute_update(query, (place,))
+
+    def reset_distribution(self):
+        """
+        Сбрасывает все счетчики распределения мест в 0.
+        Может понадобиться, если мы захотим пересчитать статистику с нуля
+        для текущей БД или при удалении данных.
+        """
+        query = "UPDATE places_distribution SET count = 0"
+        self.db.execute_update(query)
+
+
+# Пример использования (в ApplicationService)
+# from db.repositories import PlaceDistributionRepository
+# place_repo = PlaceDistributionRepository()
+# dist = place_repo.get_distribution()
+# place_repo.increment_place_count(3) # Hero занял 3-е место на финалке

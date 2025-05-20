@@ -1,31 +1,52 @@
+# -*- coding: utf-8 -*-
+
+"""
+Таблица всех сессий Hero: список турниров, общий бай-ин, выплаты, KO, статы сессии.
+Обновлен для работы с ApplicationService и отображения статистики сессий.
+"""
+
 from PyQt6 import QtWidgets, QtGui, QtCore
-from ui.app_style import setup_table_widget, format_money, apply_cell_color_by_value
+from ui.app_style import setup_table_widget, format_money, apply_cell_color_by_value, format_percentage
+from application_service import ApplicationService # Импортируем сервис
+# from ui.stats_grid import StatsGrid # Можно импортировать StatsGrid для показа стат сессии в отдельном окне/зоне
+
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+import numpy as np # Для работы с графиками
+
+import logging
+logger = logging.getLogger('ROYAL_Stats.SessionView')
+logger.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
+
 
 class SessionView(QtWidgets.QWidget):
     """
-    Таблица всех сессий Hero: список турниров, общий бай-ин, выплаты, KO.
+    Представление игровых сессий Hero.
+    Показывает список сессий и статистику по выбранной сессии, включая гистограмму мест на финалке.
     """
 
-    def __init__(self, session_repo, parent=None):
+    def __init__(self, app_service: ApplicationService, parent=None):
         super().__init__(parent)
-        self.session_repo = session_repo
+        self.app_service = app_service # Используем ApplicationService
+        self._selected_session_id: Optional[str] = None # ID выбранной сессии
+
         self._init_ui()
-        self.reload()
+        # Данные загружаются при первом отображении вкладки или по сигналу обновления
 
     def _init_ui(self):
         main_layout = QtWidgets.QVBoxLayout(self)
-        
+
         # Верхний блок с заголовком и поиском
         header_layout = QtWidgets.QHBoxLayout()
-        
+
         # Заголовок
         self.title_label = QtWidgets.QLabel("Игровые сессии")
-        self.title_label.setStyleSheet("font-size: 20px; font-weight: bold; margin: 10px;")
+        self.title_label.setStyleSheet("font-size: 24px; font-weight: bold; margin: 10px;")
         header_layout.addWidget(self.title_label)
-        
+
+        header_layout.addStretch()
+
         # Поле поиска
         self.search_field = QtWidgets.QLineEdit()
         self.search_field.setPlaceholderText("Поиск по сессиям...")
@@ -34,388 +55,358 @@ class SessionView(QtWidgets.QWidget):
         search_layout.addWidget(QtWidgets.QLabel("Поиск:"))
         search_layout.addWidget(self.search_field)
         header_layout.addLayout(search_layout)
-        
-        header_layout.addStretch()
-        
+
         # Кнопка обновления
-        self.refresh_btn = QtWidgets.QPushButton()
+        self.refresh_btn = QtWidgets.QPushButton("Обновить")
         self.refresh_btn.setIcon(QtGui.QIcon.fromTheme("view-refresh"))
-        self.refresh_btn.setToolTip("Обновить данные")
+        self.refresh_btn.setToolTip("Обновить данные сессий")
         self.refresh_btn.clicked.connect(self.reload)
         header_layout.addWidget(self.refresh_btn)
-        
+
         main_layout.addLayout(header_layout)
-        
-        # Создаем разделитель на две части: слева таблица, справа графики
+
+        # Разделитель на две части: слева таблица, справа статистика и графики выбранной сессии
         splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
-        
-        # Левая часть: таблица и статистика
+
+        # Левая часть: Таблица сессий
         table_widget = QtWidgets.QWidget()
         table_layout = QtWidgets.QVBoxLayout(table_widget)
-        
-        # Статистика сессий
-        stats_layout = QtWidgets.QHBoxLayout()
-        
-        self.session_count = QtWidgets.QLabel("Всего сессий: 0")
-        self.session_count.setStyleSheet("font-weight: bold;")
-        
-        self.total_profit = QtWidgets.QLabel("Общая прибыль: 0.00 ₽")
-        self.total_profit.setStyleSheet("font-weight: bold;")
-        
-        self.avg_buyin = QtWidgets.QLabel("Средний бай-ин: 0.00 ₽")
-        self.avg_buyin.setStyleSheet("font-weight: bold;")
-        
-        stats_layout.addWidget(self.session_count)
-        stats_layout.addWidget(self.total_profit)
-        stats_layout.addWidget(self.avg_buyin)
-        stats_layout.addStretch()
-        
-        # Добавляем разделитель
-        separator = QtWidgets.QFrame()
-        separator.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        separator.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
-        
-        table_layout.addLayout(stats_layout)
-        table_layout.addWidget(separator)
-        
+
         # Таблица сессий
-        self.table = QtWidgets.QTableWidget(0, 7)  # Добавлены колонки для прибыли и даты
-        self.table.setHorizontalHeaderLabels(["ID", "Сессия", "Турниры", "Бай-ин", "Выплата", "KO", "Прибыль", "Дата"])
+        self.table = QtWidgets.QTableWidget(0, 7) # ID, Сессия, Турниры, Бай-ин, Выплата, KO, Прибыль
+        self.table.setHorizontalHeaderLabels(["ID", "Сессия", "Турниры", "Бай-ин", "Выплата", "KO", "Прибыль"]) # Дата будет в имени сессии или tooltip
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setSortingEnabled(True)
-        
+
         # Применяем улучшения к таблице
         setup_table_widget(self.table)
-        
+
         # Скрываем колонку ID
         self.table.hideColumn(0)
-        
-        # Подключаем сигнал выбора строки для обновления графика
-        self.table.itemSelectionChanged.connect(self.update_graph)
-        
+
+        # Подключаем сигнал выбора строки для отображения деталей сессии
+        self.table.itemSelectionChanged.connect(self._session_selected)
+
         table_layout.addWidget(self.table)
-        
-        # Правая часть: графики
-        graph_widget = QtWidgets.QWidget()
-        graph_layout = QtWidgets.QVBoxLayout(graph_widget)
-        
-        # Заголовок графиков
-        graph_title = QtWidgets.QLabel("Динамика прибыли")
-        graph_title.setStyleSheet("font-size: 16px; font-weight: bold;")
+        table_layout.setContentsMargins(0, 0, 0, 0) # Убираем отступы для корректного отображения в сплиттере
+
+        # Правая часть: Статистика и графики выбранной сессии
+        details_widget = QtWidgets.QScrollArea() # Используем ScrollArea для прокрутки деталей
+        details_widget.setWidgetResizable(True)
+        details_content = QtWidgets.QWidget()
+        self.details_layout = QtWidgets.QVBoxLayout(details_content)
+        details_widget.setWidget(details_content)
+
+
+        # Статистические карточки для выбранной сессии (динамическое создание)
+        self.session_stat_cards_widget = QtWidgets.QWidget()
+        self.session_stat_cards_layout = QtWidgets.QGridLayout(self.session_stat_cards_widget)
+        self.session_stat_cards_layout.setSpacing(10)
+        self.details_layout.addWidget(self.session_stat_cards_widget)
+
+        # Заголовок для графиков
+        graph_title = QtWidgets.QLabel("Графики сессии")
+        graph_title.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 15px; margin-bottom: 5px;")
         graph_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        graph_layout.addWidget(graph_title)
-        
-        # График динамики прибыли
-        self.figure = Figure(figsize=(4, 4))
-        self.figure.patch.set_facecolor('#353535')  # Фон графика для темной темы
-        self.canvas = FigureCanvas(self.figure)
-        graph_layout.addWidget(self.canvas)
-        
-        # Круговая диаграмма распределения выигрышей
-        self.pie_figure = Figure(figsize=(4, 4))
-        self.pie_figure.patch.set_facecolor('#353535')  # Фон графика для темной темы
-        self.pie_canvas = FigureCanvas(self.pie_figure)
-        graph_layout.addWidget(self.pie_canvas)
-        
+        self.details_layout.addWidget(graph_title)
+
+        # График 1 (например, динамика прибыли по турнирам в сессии - опционально, требует данных по турнирам в сессии)
+        # Пока оставим место для графиков, но рисовать будем только гистограмму мест
+
+        # Гистограмма распределения мест на финалке для выбранной сессии
+        chart_header = QtWidgets.QLabel("Распределение занятых мест на финальном столе (1-9) в сессии")
+        chart_header.setStyleSheet("font-size: 16px; font-weight: bold; margin-top: 10px; margin-bottom: 5px;")
+        chart_header.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.details_layout.addWidget(chart_header)
+
+        self.ft_places_figure = Figure(figsize=(8, 5))
+        self.ft_places_canvas = FigureCanvas(self.ft_places_figure)
+        self.details_layout.addWidget(self.ft_places_canvas)
+
+
         # Добавляем виджеты в разделитель
         splitter.addWidget(table_widget)
-        splitter.addWidget(graph_widget)
-        
-        # Устанавливаем соотношение размеров
-        splitter.setSizes([600, 400])
-        
+        splitter.addWidget(details_widget)
+
+        # Устанавливаем начальное соотношение размеров
+        splitter.setSizes([400, 800]) # Таблица слева уже, детали справа шире
+
         main_layout.addWidget(splitter)
-        
-        self.setLayout(main_layout)
+        main_layout.setContentsMargins(0, 0, 0, 0) # Убираем отступы для основного layout
+
 
     def reload(self):
-        sessions = self.session_repo.get_all_hero_sessions()
-        
-        # Обновляем статистику
-        self._update_stats(sessions)
-        
-        # Обновляем таблицу
+        """
+        Загружает данные сессий из ApplicationService и обновляет таблицу.
+        """
+        logger.debug("Перезагрузка SessionView...")
+        sessions = self.app_service.get_all_sessions()
+
+        self._update_sessions_table(sessions)
+
+        # Очищаем панель деталей, пока сессия не выбрана
+        self._clear_session_details()
+
+        # Применяем текущий поисковый фильтр
+        self.filter_table()
+        logger.debug("Перезагрузка SessionView завершена.")
+
+
+    def _update_sessions_table(self, sessions: List[Session]):
+        """Обновляет данные в таблице сессий."""
         self.table.setRowCount(0)
+        if not sessions:
+            logger.debug("Нет данных по сессиям для отображения.")
+            return
+
         for s in sessions:
             row = self.table.rowCount()
             self.table.insertRow(row)
-            
-            # ID
-            id_item = QtWidgets.QTableWidgetItem(str(s.get("id", "")))
+
+            # ID (скрытая колонка)
+            id_item = QtWidgets.QTableWidgetItem(str(s.id))
             self.table.setItem(row, 0, id_item)
-            
+
             # Сессия (название/идентификатор)
-            session_id = s.get("session_id", "")
-            session_item = QtWidgets.QTableWidgetItem(str(session_id))
-            session_item.setToolTip(f"ID сессии: {session_id}")
-            self.table.setItem(row, 1, session_item)
-            
-            # Турниры (список через запятую)
-            tournaments = s.get("tournaments", [])
-            tournaments_text = ", ".join(tournaments) if tournaments else ""
-            tournament_item = QtWidgets.QTableWidgetItem(tournaments_text)
-            tournament_item.setToolTip(tournaments_text)
-            self.table.setItem(row, 2, tournament_item)
-            
-            # Бай-ин
-            buyin = s.get("total_buyin", 0)
-            buyin_item = QtWidgets.QTableWidgetItem(format_money(buyin))
+            session_name_item = QtWidgets.QTableWidgetItem(s.session_name)
+            # Добавляем ID сессии и дату создания в тултип
+            tooltip_text = f"ID сессии: {s.session_id}\nСоздана: {s.created_at}"
+            session_name_item.setToolTip(tooltip_text)
+            self.table.setItem(row, 1, session_name_item)
+
+            # Турниры (количество)
+            tournaments_count_item = QtWidgets.QTableWidgetItem(str(s.tournaments_count))
+            tournaments_count_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            self.table.setItem(row, 2, tournaments_count_item)
+
+            # Бай-ин (общий)
+            buyin_item = QtWidgets.QTableWidgetItem(format_money(s.total_buy_in))
             buyin_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(row, 3, buyin_item)
-            
-            # Выплата
-            payout = s.get("total_payout", 0)
-            payout_item = QtWidgets.QTableWidgetItem(format_money(payout))
+
+            # Выплата (общая)
+            payout_item = QtWidgets.QTableWidgetItem(format_money(s.total_prize))
             payout_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
-            apply_cell_color_by_value(payout_item, payout)
+            apply_cell_color_by_value(payout_item, s.total_prize) # Окрашиваем выплату (хотя прибыль нагляднее)
             self.table.setItem(row, 4, payout_item)
-            
-            # KO
-            ko = s.get("total_ko", 0)
-            ko_item = QtWidgets.QTableWidgetItem(format_money(ko))
-            ko_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
-            apply_cell_color_by_value(ko_item, ko)
+
+            # KO (общее)
+            ko_item = QtWidgets.QTableWidgetItem(str(s.knockouts_count))
+            ko_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(row, 5, ko_item)
-            
-            # Прибыль (выплата + KO - бай-ин)
-            profit = float(payout) + float(ko) - float(buyin)
+
+            # Прибыль (Выплата - Бай-ин)
+            profit = s.total_prize - s.total_buy_in
             profit_item = QtWidgets.QTableWidgetItem(format_money(profit, with_plus=True))
             profit_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
-            apply_cell_color_by_value(profit_item, profit)
+            apply_cell_color_by_value(profit_item, profit) # Окрашиваем прибыль
             self.table.setItem(row, 6, profit_item)
-            
-            # Дата
-            date_item = QtWidgets.QTableWidgetItem(str(s.get("date", ""))) if "date" in s else QtWidgets.QTableWidgetItem("")
-            date_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            self.table.setItem(row, 7, date_item)
-        
-        # Обновляем графики
-        self._update_profit_graph(sessions)
-        self._update_pie_chart(sessions)
-        
-        # Применяем текущий поисковый фильтр
-        self.filter_table()
 
-    def _update_stats(self, sessions):
-        """Обновляет виджеты статистики сессий"""
-        # Количество сессий
-        self.session_count.setText(f"Всего сессий: {len(sessions)}")
-        
-        # Общая прибыль
-        total_buyin = sum(float(s.get("total_buyin", 0)) for s in sessions)
-        total_payout = sum(float(s.get("total_payout", 0)) for s in sessions)
-        total_ko = sum(float(s.get("total_ko", 0)) for s in sessions)
-        profit = total_payout + total_ko - total_buyin
-        self.total_profit.setText(f"Общая прибыль: {format_money(profit, with_plus=True)}")
-        
-        # Окрашиваем прибыль
-        if profit > 0:
-            self.total_profit.setStyleSheet("font-weight: bold; color: #2ecc71;")
-        elif profit < 0:
-            self.total_profit.setStyleSheet("font-weight: bold; color: #e74c3c;")
-        else:
-            self.total_profit.setStyleSheet("font-weight: bold;")
-        
-        # Средний бай-ин
-        avg_buyin = total_buyin / len(sessions) if sessions else 0
-        self.avg_buyin.setText(f"Средний бай-ин: {format_money(avg_buyin)}")
-    
+
+        self.table.resizeColumnsToContents() # Подгоняем ширину колонок
+
     def filter_table(self):
-        """Фильтрует таблицу по поисковому запросу"""
+        """Фильтрует таблицу сессий по поисковому запросу."""
         search_text = self.search_field.text().lower()
         for row in range(self.table.rowCount()):
             show_row = False
-            for col in range(self.table.columnCount()):
+            # Проверяем текст во всех видимых колонках
+            for col in range(1, self.table.columnCount()): # Начинаем с 1, чтобы пропустить скрытый ID
                 item = self.table.item(row, col)
                 if item and search_text in item.text().lower():
                     show_row = True
                     break
             self.table.setRowHidden(row, not show_row)
-    
-    def update_graph(self):
-        """Обновляет графики при выборе сессии в таблице"""
-        selected_rows = self.table.selectionModel().selectedRows()
-        if not selected_rows:
+
+    @QtCore.pyqtSlot()
+    def _session_selected(self):
+        """Обрабатывает выбор сессии в таблице и обновляет панель деталей."""
+        selected_items = self.table.selectedItems()
+        if not selected_items:
+            self._clear_session_details()
+            self._selected_session_id = None
             return
-        
-        # Получаем выбранную сессию
-        row = selected_rows[0].row()
-        session_id = self.table.item(row, 1).text()
-        
-        # Здесь можно добавить логику для обновления графиков для конкретной сессии
-        # Например, показать распределение выигрышей по турнирам в сессии
-        
-    def _update_profit_graph(self, sessions):
-        """Обновляет график динамики прибыли"""
-        self.figure.clear()
-        
+
+        # Получаем session_id из скрытой колонки (col 0)
+        row = selected_items[0].row()
+        session_id_item = self.table.item(row, 0)
+        if session_id_item:
+             self._selected_session_id = session_id_item.text()
+             self._update_session_details(self._selected_session_id)
+        else:
+             self._clear_session_details()
+             self._selected_session_id = None
+
+
+    def _update_session_details(self, session_id: str):
+        """
+        Загружает и отображает подробную статистику и графики для выбранной сессии.
+        """
+        logger.debug(f"Обновление деталей для сессии: {session_id}")
+        session_stats = self.app_service.get_session_stats(session_id)
+
+        self._clear_session_details() # Очищаем предыдущие детали
+
+        if not session_stats:
+             logger.warning(f"Статистика для сессии {session_id} не найдена.")
+             # Отобразить сообщение об отсутствии данных
+             no_data_label = QtWidgets.QLabel("Данные по выбранной сессии не найдены.")
+             no_data_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+             self.details_layout.addWidget(no_data_label)
+             return
+
+        # --- Отображаем статистические карточки для сессии ---
+        self._populate_session_stat_cards(session_stats)
+
+        # --- Отображаем гистограмму мест на финалке для сессии ---
+        self._update_session_places_chart(session_id)
+
+
+    def _clear_session_details(self):
+        """Очищает правую панель деталей сессии."""
+        # Удаляем все виджеты из layout деталей сессии
+        while self.details_layout.count():
+            item = self.details_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+            elif item.layout(): # Если это вложенный layout
+                 # Рекурсивно удаляем виджеты из вложенного layout
+                 while item.layout().count():
+                     sub_item = item.layout().takeAt(0)
+                     sub_widget = sub_item.widget()
+                     if sub_widget is not None:
+                         sub_widget.deleteLater()
+                 item.layout().deleteLater()
+            # Удаляем также пустые пространства (spacers)
+            del item
+
+        # Восстанавливаем основные заголовки графиков
+        graph_title = QtWidgets.QLabel("Графики сессии")
+        graph_title.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 15px; margin-bottom: 5px;")
+        graph_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.details_layout.addWidget(graph_title)
+
+        chart_header = QtWidgets.QLabel("Распределение занятых мест на финальном столе (1-9) в сессии")
+        chart_header.setStyleSheet("font-size: 16px; font-weight: bold; margin-top: 10px; margin-bottom: 5px;")
+        chart_header.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.details_layout.addWidget(chart_header)
+
+        # Пересоздаем виджеты для графиков (matplotlib canvases)
+        self.ft_places_figure = Figure(figsize=(8, 5))
+        self.ft_places_canvas = FigureCanvas(self.ft_places_figure)
+        self.details_layout.addWidget(self.ft_places_canvas)
+
+
+    def _populate_session_stat_cards(self, session_stats: Session):
+        """
+        Создает и заполняет статистические карточки для выбранной сессии.
+        """
+        # Очищаем текущие карточки
+        while self.session_stat_cards_layout.count():
+             item = self.session_stat_cards_layout.takeAt(0)
+             widget = item.widget()
+             if widget is not None:
+                 widget.deleteLater()
+
+        # Определяем статы сессии для отображения в карточках
+        # Используем атрибуты объекта Session
+        session_stats_to_display = [
+            ("Турниров в сессии", "tournaments_count", str, None),
+            ("Общий бай-ин", "total_buy_in", format_money, None),
+            ("Общая выплата", "total_prize", format_money, None),
+            ("Прибыль сессии", lambda s: s.total_prize - s.total_buy_in, format_money, 0.0), # Вычисляем прибыль
+            ("Всего KO в сессии", "knockouts_count", str, None),
+            ("Среднее место в сессии", "avg_finish_place", lambda v: f"{v:.2f}" if v is not None else "-", None), # Среднее место по всем турнирам сессии
+            # Дополнительные статы сессии, если они будут добавлены в модель Session
+            # ("Среднее место FT в сессии", "avg_finish_place_ft", lambda v: f"{v:.2f}" if v is not None else "-", None), # Требует добавления в модель Session
+        ]
+
+        cols = 3 # Количество колонок для карточек сессии
+
+        for i, (name, key_or_attr, format_func, color_threshold) in enumerate(session_stats_to_display):
+            try:
+                if isinstance(key_or_attr, str):
+                     # Это прямое поле в объекте Session
+                     value = getattr(session_stats, key_or_attr, None)
+                else:
+                     # Это lambda-функция, которая рассчитывает значение
+                     value = key_or_attr(session_stats) # Вызываем lambda, передавая объект Session
+
+                card = StatCard(name, value, format_func=format_func, value_color_threshold=color_threshold)
+                self.session_stat_cards_layout.addWidget(card, i // cols, i % cols)
+            except Exception as e:
+                logger.error(f"Ошибка при создании карточки стата сессии '{name}': {e}")
+                card = StatCard(name, "Ошибка", format_func=str) # Показываем ошибку
+                self.session_stat_cards_layout.addWidget(card, i // cols, i % cols)
+
+
+    def _update_session_places_chart(self, session_id: str):
+        """
+        Рисует гистограмму распределения мест на финальном столе для выбранной сессии.
+        """
+        # Получаем распределение мест и общее количество финалок для этой сессии
+        distribution, total_final_tables_in_session = self.app_service.get_place_distribution_for_session(session_id)
+
+        self.ft_places_figure.clear() # Очищаем предыдущий график
+
         # Настраиваем стиль для темной темы
         plt.style.use('dark_background')
-        
-        # Цвета для темной темы
-        bg_color = '#353535'  # Фон графика
-        text_color = '#ffffff'  # Цвет текста
-        grid_color = '#555555'  # Цвет сетки
-        line_color = '#2a82da'  # Цвет линии
-        
-        ax = self.figure.add_subplot(111)
+        bg_color = '#3a3a3a' # Фон для графика внутри панели деталей
+        text_color = '#ffffff'
+        grid_color = '#555555'
+
+        self.ft_places_figure.patch.set_facecolor(bg_color)
+
+        ax = self.ft_places_figure.add_subplot(111)
         ax.set_facecolor(bg_color)
-        
-        # Проверяем, есть ли данные для отображения
-        if not sessions:
-            ax.set_title("Нет данных для отображения", color=text_color)
-            self.figure.tight_layout()
-            self.canvas.draw()
-            return
-        
-        # Подготавливаем данные (сортируем по дате, если есть)
-        # Для примера - просто используем индексы сессий
-        dates = list(range(len(sessions)))
-        profits = []
-        cumulative_profit = 0
-        
-        for s in sessions:
-            buyin = float(s.get("total_buyin", 0))
-            payout = float(s.get("total_payout", 0))
-            ko = float(s.get("total_ko", 0))
-            profit = payout + ko - buyin
-            cumulative_profit += profit
-            profits.append(cumulative_profit)
-        
-        # Проверяем, есть ли данные после обработки
-        if not profits:
-            ax.set_title("Нет данных для отображения", color=text_color)
-            self.figure.tight_layout()
-            self.canvas.draw()
-            return
-            
-        # Рисуем график
-        ax.plot(dates, profits, 'o-', color=line_color, linewidth=2)
-        
-        # Заполняем область под линией - проверяем последнее значение
-        fill_color = line_color if profits[-1] > 0 else '#e74c3c'
-        ax.fill_between(dates, 0, profits, alpha=0.3, color=fill_color)
-        
-        # Добавляем линию y=0
-        ax.axhline(y=0, color='#e74c3c', linestyle='--', alpha=0.7)
-        
-        # Настраиваем оси и подписи
-        ax.set_xlabel("Номер сессии", color=text_color)
-        ax.set_ylabel("Накопленная прибыль, ₽", color=text_color)
-        ax.set_title("Динамика прибыли", color=text_color, fontsize=14)
+
+        places = list(distribution.keys()) # Места от 1 до 9
+        counts = [distribution[p] for p in places] # Количество финишей на каждом месте
+
+        percentages = [(count / total_final_tables_in_session * 100) if total_final_tables_in_session > 0 else 0.0 for count in counts]
+        percentages = [round(p, 2) for p in percentages] # Округляем проценты
+
+        # Создаем градиент цветов для столбцов: первые места - зеленые, последние - красные
+        colors = ['#27ae60', '#2ecc71', '#3498db', '#3498db', '#f1c40f',
+                 '#f1c40f', '#e67e22', '#e67e22', '#e74c3c'][:len(places)]
+
+        # Строим гистограмму
+        bars = ax.bar(places, counts, color=colors)
+
+        # Добавляем количество и проценты над столбцами
+        for i, (bar, count, percentage) in enumerate(zip(bars, counts, percentages)):
+            height = bar.get_height()
+            if count > 0:
+                ax.text(bar.get_x() + bar.get_width()/2., height + 0.5,
+                        f'{count}',
+                        ha='center', va='bottom', color=text_color, fontweight='bold', fontsize=10)
+
+            if percentage > 0:
+                 ax.text(bar.get_x() + bar.get_width()/2., height + (total_final_tables_in_session * 0.01),
+                         f'{percentage:.1f}%',
+                         ha='center', va='bottom', color=text_color, fontsize=9)
+
+
+        ax.set_title(f"Распределение мест на финалке (всего финалок: {total_final_tables_in_session})",
+                     color=text_color, fontsize=14, pad=20)
+        ax.set_xlabel("Место", color=text_color, fontsize=12)
+        ax.set_ylabel("Количество финалок", color=text_color, fontsize=12)
+        ax.set_xticks(places)
         ax.tick_params(colors=text_color)
-        
-        # Аннотации для важных точек
-        if profits:
-            max_profit = max(profits)
-            min_profit = min(profits)
-            max_idx = profits.index(max_profit)
-            min_idx = profits.index(min_profit)
-            
-            # Аннотация для максимума
-            ax.annotate(f"{format_money(max_profit)}", 
-                         xy=(max_idx, max_profit),
-                         xytext=(max_idx, max_profit + (max_profit * 0.1 if max_profit > 0 else max_profit * 0.1)),
-                         color='#2ecc71',
-                         fontweight='bold',
-                         arrowprops=dict(facecolor='#2ecc71', shrink=0.05, alpha=0.7),
-                         ha='center')
-            
-            # Аннотация для минимума (если отрицательный)
-            if min_profit < 0:
-                ax.annotate(f"{format_money(min_profit)}", 
-                             xy=(min_idx, min_profit),
-                             xytext=(min_idx, min_profit - (abs(min_profit) * 0.1)),
-                             color='#e74c3c',
-                             fontweight='bold',
-                             arrowprops=dict(facecolor='#e74c3c', shrink=0.05, alpha=0.7),
-                             ha='center')
-        
-        # Настраиваем сетку
+
         ax.grid(True, linestyle='--', alpha=0.3, color=grid_color)
-        
-        # Удаляем рамку
+
+        # Устанавливаем пределы оси Y
+        max_count = max(counts) if counts else 0
+        ax.set_ylim(0, max_count * 1.2)
+
+        # Удаляем рамку графика
         for spine in ax.spines.values():
             spine.set_visible(False)
-        
-        self.figure.tight_layout()
-        self.canvas.draw()
-    
-    def _update_pie_chart(self, sessions):
-        """Обновляет круговую диаграмму распределения прибыли"""
-        self.pie_figure.clear()
-        
-        # Настраиваем стиль для темной темы
-        plt.style.use('dark_background')
-        
-        # Цвета для темной темы
-        bg_color = '#353535'  # Фон графика
-        text_color = '#ffffff'  # Цвет текста
-        
-        # Цвета для диаграммы
-        colors = ['#2ecc71', '#3498db', '#e74c3c', '#f1c40f', '#9b59b6']
-        
-        ax = self.pie_figure.add_subplot(111)
-        ax.set_facecolor(bg_color)
-        
-        # Готовим данные
-        if not sessions:
-            # Если нет данных, рисуем пустую диаграмму
-            ax.set_title("Нет данных для отображения", color=text_color)
-            self.pie_figure.tight_layout()
-            self.pie_canvas.draw()
-            return
-        
-        # Для примера: распределение прибыли по разным компонентам
-        total_buyin = sum(float(s.get("total_buyin", 0)) for s in sessions)
-        total_payout = sum(float(s.get("total_payout", 0)) for s in sessions)
-        total_ko = sum(float(s.get("total_ko", 0)) for s in sessions)
-        
-        # Проверяем, что есть какие-то ненулевые значения для диаграммы
-        if total_buyin == 0 and total_payout == 0 and total_ko == 0:
-            ax.set_title("Нет данных для отображения", color=text_color)
-            self.pie_figure.tight_layout()
-            self.pie_canvas.draw()
-            return
-        
-        # Абсолютные значения для диаграммы
-        labels = ['Бай-ины', 'Выплаты', 'Нокауты']
-        sizes = [total_buyin, total_payout, total_ko]
-        
-        # Вычисляем прибыль
-        profit = total_payout + total_ko - total_buyin
-        
-        # Рисуем круговую диаграмму
-        wedges, texts, autotexts = ax.pie(
-            sizes, 
-            labels=labels, 
-            colors=colors,
-            autopct='%1.1f%%',
-            startangle=90,
-            shadow=True,
-            wedgeprops=dict(width=0.5)  # Создаем кольцевую диаграмму
-        )
-        
-        # Настраиваем внешний вид
-        for text in texts:
-            text.set_color(text_color)
-        for autotext in autotexts:
-            autotext.set_color('white')
-            autotext.set_fontweight('bold')
-        
-        ax.set_title("Распределение денежных потоков", color=text_color, fontsize=14)
-        
-        # Добавляем текст с итоговой прибылью в центр
-        ax.text(0, 0, f"Прибыль:\n{format_money(profit)}", 
-                ha='center', va='center', 
-                fontsize=12, fontweight='bold',
-                color='#2ecc71' if profit >= 0 else '#e74c3c')
-        
-        # Убираем рамку
-        ax.set_frame_on(False)
-        
-        self.pie_figure.tight_layout()
-        self.pie_canvas.draw()
+
+        self.ft_places_figure.tight_layout()
+        self.ft_places_canvas.draw()

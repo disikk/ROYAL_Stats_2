@@ -1,8 +1,18 @@
+# -*- coding: utf-8 -*-
+
 """
-Пакет моделей данных (dataclass) для Royal Stats (Hero-only).
+Инициализация пакета моделей данных (dataclass) для ROYAL_Stats (Hero-only).
 """
 
-from .knockout import Knockout
-from .tournament import HeroTournament
-from .session import HeroSession
-from .stats import HeroStats
+from .tournament import Tournament
+from .session import Session
+from .overall_stats import OverallStats
+from .final_table_hand import FinalTableHand # Новая модель
+
+# Импортируем все модели для удобства
+__all__ = [
+    'Tournament',
+    'Session',
+    'OverallStats',
+    'FinalTableHand',
+]
