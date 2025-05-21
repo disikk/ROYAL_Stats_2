@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS tournaments (
     tournament_name TEXT,
     start_time TEXT,
     buyin REAL,
-    payout REAL,
+    payout REAL DEFAULT 0 NOT NULL,
     finish_place INTEGER,
     ko_count INTEGER DEFAULT 0,
     session_id TEXT,
