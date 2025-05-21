@@ -152,14 +152,7 @@ class ApplicationService:
         all_final_table_hands_data: List[Dict[str, Any]] = []
 
 
-        # Сначала обрабатываем HH файлы для получения KO и данных финалки
-        # Затем TS для получения финальных результатов (place, payout, buyin)
-        hh_files = [f for f in all_files_to_process if any(ext in f.lower() for ext in ('.hh', '.log', '.txt'))] # assuming .log/.txt can be HH
-        ts_files = [f for f in all_files_to_process if any(ext in f.lower() for ext in ('.ts', '.summary'))] # assuming .ts/.summary can be TS
-
-        files_ordered = hh_files + ts_files # HH first, then TS
-
-        for file_path in files_ordered:
+        for file_path in all_files_to_process:
             # Проверяем флаг отмены
             if is_canceled_callback and is_canceled_callback():
                 logger.info("Импорт отменен пользователем. Прерываем обработку файлов.")
@@ -173,9 +166,61 @@ class ApplicationService:
             try:
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.read()
+                    
+                # Проверяем первые несколько строк, чтобы определить тип файла
+                first_lines = content.splitlines()[:5]  # Берем первые 5 строк для анализа
+                
+                # Проверяем, похож ли файл на Tournament Summary
+                # Характерные признаки TS: "Tournament #", "Buy-in:", "You finished the tournament"
+                ts_markers = ["Tournament #", "Buy-in:", "You finished the tournament", "You received a total of"]
+                has_ts_markers = any(marker in line for line in first_lines for marker in ts_markers)
+                
+                # Проверяем, похож ли файл на Hand History
+                # Характерные признаки HH: "Poker Hand #", "Table", "Seat", строки с действиями игроков
+                hh_markers = ["Poker Hand #", "Table", "Seat"]
+                has_hh_markers = any(marker in line for line in first_lines for marker in hh_markers)
+                
+                # Если больше признаков TS, считаем файл турнирным саммари
+                # Если больше признаков HH, считаем файл историей рук
+                is_ts = False
+                is_hh = False
+                
+                if has_ts_markers and not has_hh_markers:
+                    is_ts = True
+                    logger.debug(f"Файл определен как Tournament Summary по содержимому: {file_path}")
+                elif has_hh_markers:
+                    is_hh = True
+                    logger.debug(f"Файл определен как Hand History по содержимому: {file_path}")
+                else:
+                    # Если нельзя определить тип, пробуем сначала TS-парсер (он делает меньше предположений)
+                    # а затем HH-парсер, если TS-парсер не смог распознать файл
+                    try:
+                        ts_data = self.ts_parser.parse(content, filename=os.path.basename(file_path))
+                        if ts_data.get('tournament_id'):
+                            is_ts = True
+                            logger.debug(f"Файл определен как Tournament Summary после попытки парсинга: {file_path}")
+                        else:
+                            # Если TS-парсер не смог распознать, пробуем HH-парсер
+                            hh_data = self.hh_parser.parse(content, filename=os.path.basename(file_path))
+                            if hh_data.get('tournament_id'):
+                                is_hh = True
+                                logger.debug(f"Файл определен как Hand History после попытки парсинга: {file_path}")
+                    except Exception as e:
+                        # Если оба парсера вызвали исключение, пропускаем файл
+                        logger.warning(f"Не удалось определить тип файла: {file_path}. Файл пропущен. Ошибка: {e}")
+                        processed_count += 1
+                        continue
 
-                is_hh = any(ext in file_path.lower() for ext in ('.hh', '.log', '.txt')) # Re-check type based on final path
+                # Если не удалось определить тип файла, пропускаем его
+                if not is_hh and not is_ts:
+                    logger.warning(f"Не удалось определить тип файла: {file_path}. Файл пропущен.")
+                    processed_count += 1
+                    continue
+                
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
 
+                # Обрабатываем файл соответствующим парсером
                 if is_hh:
                     hh_data = self.hh_parser.parse(content, filename=os.path.basename(file_path))
                     tourney_id = hh_data.get('tournament_id')
@@ -220,7 +265,8 @@ class ApplicationService:
                              all_final_table_hands_data.append(hand_data)
 
 
-                else: # Это файл Tournament Summary
+                elif is_ts:
+                    logger.debug(f"Обработка файла Tournament Summary: {file_path}")
                     ts_data = self.ts_parser.parse(content, filename=os.path.basename(file_path))
                     tourney_id = ts_data.get('tournament_id')
 
@@ -235,6 +281,9 @@ class ApplicationService:
                         parsed_tournaments_data[tourney_id]['buyin'] = ts_data.get('buyin') or parsed_tournaments_data[tourney_id].get('buyin')
                         parsed_tournaments_data[tourney_id]['payout'] = ts_data.get('payout') or parsed_tournaments_data[tourney_id].get('payout')
                         parsed_tournaments_data[tourney_id]['finish_place'] = ts_data.get('finish_place') or parsed_tournaments_data[tourney_id].get('finish_place') # finish_place 0 или None из HH, TS должно переписать
+
+                        # Логируем найденные значения для отладки
+                        logger.debug(f"TS данные для {tourney_id}: name={ts_data.get('tournament_name')}, buyin={ts_data.get('buyin')}, payout={ts_data.get('payout')}, place={ts_data.get('finish_place')}")
 
 
             except Exception as e:
@@ -307,6 +356,11 @@ class ApplicationService:
                  if existing_tourney and existing_tourney.session_id:
                       final_tourney_data['session_id'] = existing_tourney.session_id
 
+
+                 # Логируем финальные данные турнира перед сохранением
+                 logger.debug(f"Сохранение турнира {tourney_id}: name={final_tourney_data.get('tournament_name')}, " 
+                            f"buyin={final_tourney_data.get('buyin')}, payout={final_tourney_data.get('payout')}, "
+                            f"place={final_tourney_data.get('finish_place')}")
 
                  # Создаем объект Tournament из объединенных данных
                  merged_tournament = Tournament.from_dict(final_tourney_data)
