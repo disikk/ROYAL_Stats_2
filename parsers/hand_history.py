@@ -25,7 +25,10 @@ RE_HAND_START = re.compile(r'^Poker Hand #(?P<hand_id>[A-Za-z0-9]+): Tournament 
 RE_TABLE_INFO = re.compile(r"^Table '\d+' (?P<table_size>\d+)-max Seat #\d+ is the button")
 RE_BLINDS_HEADER = re.compile(r"Level\d+\(([\d,]+)/([\d,]+)\)") # Для поиска блайндов в заголовке раздачи
 RE_SEAT = re.compile(r'^Seat \d+: (?P<player_name>[^()]+?) \((?P<stack>[-\d,]+) in chips\)')
-RE_ACTION = re.compile(r'^(?P<player_name>[^:]+): (?P<action>posts|bets|calls|raises|all-in|checks|folds)\b(?:.*?)(?P<amount>[\d,]+)?')
+RE_ACTION = re.compile(
+    r'^(?P<player_name>[^:]+): (?P<action>posts|bets|calls|raises|all-in|checks|folds)\b'
+    r'(?:.*?)(?P<amount>[\d,]+)?'
+)
 RE_RAISE_TO = re.compile(r'raises [\d,]+ to ([\d,]+)')
 RE_UNCALLED = re.compile(r'^Uncalled bet \(([\d,]+)\) returned to ([^\n]+)')
 RE_COLLECTED = re.compile(r'^([^:]+) collected ([\d,]+) from pot')
@@ -45,7 +48,14 @@ class Pot:
 
 class HandData:
     """Внутреннее представление данных раздачи для парсинга KO."""
-    __slots__ = ('hand_id', 'hand_number', 'tournament_id', 'table_size', 'bb', 'seats', 'contrib', 'collects', 'pots', 'hero_stack', 'hero_ko_this_hand', 'is_early_final', 'timestamp', 'players', 'eliminated_players')
+    __slots__ = (
+        'hand_id', 'hand_number', 'tournament_id', 'table_size',
+        'bb', 'seats', 'contrib', 'collects', 'pots',
+        'final_stacks', 'all_in_players',
+        'hero_stack', 'hero_ko_this_hand',
+        'is_early_final', 'timestamp',
+        'players', 'eliminated_players'
+    )
 
     def __init__(self, hand_id: str, hand_number: int, tournament_id: str, table_size: int, bb: float, seats: Dict[str, int], timestamp: str = None):
         self.hand_id = hand_id
@@ -57,6 +67,8 @@ class HandData:
         self.contrib: Dict[str, int] = {}
         self.collects: Dict[str, int] = {}
         self.pots: List[Pot] = []
+        self.final_stacks: Dict[str, int] = {}
+        self.all_in_players: Set[str] = set()
         self.hero_stack = seats.get(config.HERO_NAME) # Стек Hero в начале раздачи
         self.hero_ko_this_hand = 0 # KO Hero в этой раздаче
         self.is_early_final = False # Флаг ранней стадии финалки
@@ -287,10 +299,29 @@ class HandHistoryParser(BaseParser):
         # Создаем HandData
         hand_data = HandData(hand_id, hand_number, tournament_id, table_size, bb, seats, timestamp)
         
-        # Парсим действия и сборы
-        contrib, collects = self._parse_actions_and_collects(lines[idx:])
+        # --- ante / SB / BB до HOLE CARDS ---
+        preflop_contrib: Dict[str, int] = {}
+        for pre_line in lines[:idx]:
+            m_post = RE_ACTION.match(pre_line.strip())
+            if m_post and m_post.group('action') == 'posts':
+                pl = NAME(m_post.group('player_name'))
+                preflop_contrib[pl] = preflop_contrib.get(pl, 0) + CHIP(m_post.group('amount'))
+
+        contrib_act, collects = self._parse_actions_and_collects(lines[idx:])
+
+        # объединяем
+        contrib = contrib_act
+        for pl, val in preflop_contrib.items():
+            contrib[pl] = contrib.get(pl, 0) + val
+
+        # финальные стеки и all-in статусы
+        final_stacks = {pl: seats[pl] - contrib.get(pl, 0) + collects.get(pl, 0) for pl in seats}
+        all_in_players = {pl for pl in seats if contrib.get(pl, 0) >= seats[pl]}
+
         hand_data.contrib = contrib
         hand_data.collects = collects
+        hand_data.final_stacks = final_stacks
+        hand_data.all_in_players = all_in_players
         
         if hand_data.contrib:  # Строим банки только если были вклады
             hand_data.pots = self._build_pots(hand_data.contrib)
@@ -382,6 +413,11 @@ class HandHistoryParser(BaseParser):
             # Добавляем атрибут eliminated_players к текущей раздаче
             current_hand.eliminated_players = eliminated_in_current_hand
 
+        # --- последняя раздача турнира ---
+        if self._hands:
+            last = self._hands[-1]
+            last.eliminated_players = {p for p, stk in last.final_stacks.items() if stk == 0}
+
     def _build_pots(self, contrib: Dict[str, int]) -> List[Pot]:
         """Строит структуру банков (главный и сайд-поты) из вкладов игроков."""
         pots = []
@@ -410,12 +446,15 @@ class HandHistoryParser(BaseParser):
 
     def _assign_winners(self, pots: List[Pot], collects: Dict[str, int]):
         """Назначает победителей банкам на основе информации о сборах."""
-        # Для определения победителей KO достаточно знать, кто собрал деньги из пота.
-        # Упрощенно: если игрок собрал хоть что-то и он eligible для этого пота, считаем его победителем этого пота.
-        for pot in pots:
-            for player in pot.eligible:
-                if collects.get(player, 0) > 0: # Проверяем общие сборы игрока
-                    pot.winners.add(player)
+        remaining = collects.copy()
+        for pot in pots:  # main → side1 → side2 …
+            elig = {p for p in pot.eligible if remaining.get(p, 0) > 0}
+            if not elig:
+                continue
+            pot.winners.update(elig)
+            share = pot.size // len(elig)
+            for p in elig:
+                remaining[p] = max(0, remaining[p] - share)
 
 
     def _count_ko_in_hand_from_data(self, hand: HandData) -> int:
@@ -443,18 +482,17 @@ class HandHistoryParser(BaseParser):
                 if knocked_out_player in pot.eligible
             ]
 
-            # Проверяем условие покрытия стека
             knocked_out_stack = hand.seats.get(knocked_out_player, 0)
+            went_all_in = knocked_out_player in hand.all_in_players
             covered = hero_stack_at_start is not None and hero_stack_at_start >= knocked_out_stack
 
-            if covered:
-                # Если Hero покрывал стек, проверяем, выиграл ли Hero какой-либо из релевантных потов
-                hero_won_relevant_pot = any(
-                    config.HERO_NAME in pot.winners for pot in relevant_pots
-                )
-
-                if hero_won_relevant_pot:
+            if went_all_in and covered and relevant_pots:
+                # Последний пот, куда игрок вложил фишки
+                last_pot = sorted(relevant_pots, key=lambda p: len(p.eligible))[0]
+                if config.HERO_NAME in last_pot.winners:
                     ko_count += 1
-                    logger.debug(f"Турнир {hand.tournament_id}, Раздача {hand.hand_number}: KO Hero за {knocked_out_player}. Покрывал: {covered}, Hero выиграл пот: {hero_won_relevant_pot}.")
+                    logger.debug(
+                        f"Турнир {hand.tournament_id}, Раздача {hand.hand_number}: KO Hero за {knocked_out_player}. Покрывал: {covered}, Pot size: {last_pot.size}."
+                    )
 
         return ko_count
