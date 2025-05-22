@@ -45,7 +45,12 @@ class Pot:
 
 class HandData:
     """Внутреннее представление данных раздачи для парсинга KO."""
-    __slots__ = ('hand_id', 'hand_number', 'tournament_id', 'table_size', 'bb', 'seats', 'contrib', 'collects', 'pots', 'hero_stack', 'hero_ko_this_hand', 'is_early_final', 'timestamp', 'players', 'eliminated_players')
+    __slots__ = (
+        'hand_id', 'hand_number', 'tournament_id', 'table_size', 'bb', 'seats',
+        'contrib', 'collects', 'pots', 'hero_stack', 'hero_ko_this_hand',
+        'is_early_final', 'timestamp', 'players', 'eliminated_players',
+        'final_stacks', 'all_in_players'
+    )
 
     def __init__(self, hand_id: str, hand_number: int, tournament_id: str, table_size: int, bb: float, seats: Dict[str, int], timestamp: str = None):
         self.hand_id = hand_id
@@ -63,6 +68,8 @@ class HandData:
         self.timestamp = timestamp  # Время начала раздачи
         self.players = list(seats.keys())  # Список игроков за столом в этой раздаче
         self.eliminated_players = set()  # Игроки, выбывшие в этой раздаче
+        self.final_stacks: Dict[str, int] = {}
+        self.all_in_players: Set[str] = set()
 
 class HandHistoryParser(BaseParser):
     def __init__(self, hero_name: str = config.HERO_NAME):
@@ -288,23 +295,33 @@ class HandHistoryParser(BaseParser):
         hand_data = HandData(hand_id, hand_number, tournament_id, table_size, bb, seats, timestamp)
         
         # Парсим действия и сборы
-        contrib, collects = self._parse_actions_and_collects(lines[idx:])
+        contrib, collects, all_in_players = self._parse_actions_and_collects(lines[idx:])
         hand_data.contrib = contrib
         hand_data.collects = collects
+        hand_data.all_in_players = all_in_players
         
         if hand_data.contrib:  # Строим банки только если были вклады
             hand_data.pots = self._build_pots(hand_data.contrib)
             self._assign_winners(hand_data.pots, hand_data.collects)
-            
+
+        # --- рассчитываем финальные стеки и определяем выбывших сразу ---
+        final_stacks: Dict[str, int] = {}
+        for pl, start_stack in seats.items():
+            final_stacks[pl] = start_stack - contrib.get(pl, 0) + collects.get(pl, 0)
+        hand_data.final_stacks = final_stacks
+        hand_data.eliminated_players = {pl for pl, stk in final_stacks.items() if stk == 0}
+
         return hand_data
         
-    def _parse_actions_and_collects(self, lines: List[str]) -> Tuple[Dict[str, int], Dict[str, int]]:
+    def _parse_actions_and_collects(self, lines: List[str]) -> Tuple[Dict[str, int], Dict[str, int], Set[str]]:
         """
         Парсит действия и сборы из части раздачи, начиная с *** HOLE CARDS ***.
+        Возвращает вклады, сборы и набор игроков, которые объявили all-in.
         """
         contrib: Dict[str, int] = {}
         committed: Dict[str, int] = {}  # Сколько вложено в текущем стрите
         collects: Dict[str, int] = {}
+        all_in_players: Set[str] = set()
         
         idx = 0
         # Парсим действия до SHOWDOWN или SUMMARY
@@ -319,6 +336,8 @@ class HandHistoryParser(BaseParser):
                 act = action_groups['action']
                 amt_str = action_groups.get('amount')
                 amt = CHIP(amt_str)
+                if 'all-in' in line:
+                    all_in_players.add(pl)
                 
                 if act in ('posts', 'bets', 'calls', 'all-in'):
                     contrib[pl] = contrib.get(pl, 0) + amt
@@ -363,24 +382,13 @@ class HandHistoryParser(BaseParser):
                     collects[NAME(pl)] = collects.get(NAME(pl), 0) + CHIP(amt_str)
                 collect_idx += 1
                 
-        return contrib, collects
+        return contrib, collects, all_in_players
 
     def _identify_eliminated_players(self):
-        """
-        Определяет выбывших игроков путем сравнения списков игроков между 
-        последовательными раздачами. Игрок считается выбывшим в раздаче, если
-        он присутствует в ней, но отсутствует в следующей раздаче.
-        """
-        # Раздачи уже отсортированы по хронологии (в self._hands)
-        for i in range(len(self._hands) - 1):
-            current_hand = self._hands[i]
-            next_hand = self._hands[i + 1]
-            
-            # Игроки, которые были в текущей раздаче, но отсутствуют в следующей
-            eliminated_in_current_hand = set(current_hand.players) - set(next_hand.players)
-            
-            # Добавляем атрибут eliminated_players к текущей раздаче
-            current_hand.eliminated_players = eliminated_in_current_hand
+        """Больше не сравниваем с ‘следующей рукой’.
+        Данные уже расставлены при парсе, но оставляем метод
+        на случай, если его вызывают извне."""
+        return
 
     def _build_pots(self, contrib: Dict[str, int]) -> List[Pot]:
         """Строит структуру банков (главный и сайд-поты) из вкладов игроков."""
@@ -445,7 +453,7 @@ class HandHistoryParser(BaseParser):
 
             # Проверяем условие покрытия стека
             knocked_out_stack = hand.seats.get(knocked_out_player, 0)
-            covered = hero_stack_at_start is not None and hero_stack_at_start >= knocked_out_stack
+            covered = hero_stack_at_start is not None and hero_stack_at_start >= knocked_out_stack  # оператор >= оставляем
 
             if covered:
                 # Если Hero покрывал стек, проверяем, выиграл ли Hero какой-либо из релевантных потов

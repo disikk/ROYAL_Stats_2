@@ -43,7 +43,10 @@ def load_main_window_with_stubs():
     qtw.QApplication = QApplication
     qtcore = types.SimpleNamespace(
         Qt=types.SimpleNamespace(WindowModality=types.SimpleNamespace(WindowModal=1)),
-        QSize=type('QSize', (), {})
+        QSize=type('QSize', (), {}),
+        pyqtSlot=lambda *a, **k: (lambda f: f),
+        pyqtSignal=lambda *a, **k: type('Signal', (), {}),
+        QThread=type('QThread', (), {})
     )
     qtgui = types.SimpleNamespace(QIcon=type('QIcon', (), {}))
     qtmod = types.ModuleType('PyQt6')
@@ -57,6 +60,9 @@ def load_main_window_with_stubs():
 
     app_style = types.ModuleType('ui.app_style')
     app_style.apply_dark_theme = lambda *a, **k: None
+    app_style.format_money = lambda *a, **k: ''
+    app_style.format_percentage = lambda *a, **k: ''
+    app_style.apply_cell_color_by_value = lambda *a, **k: None
     sys.modules['ui.app_style'] = app_style
 
     config = types.ModuleType('config')
@@ -64,6 +70,7 @@ def load_main_window_with_stubs():
     config.DB_PATH = 'db'
     config.MIN_FINAL_TABLE_BLIND = 50
     config.HERO_NAME = 'Hero'
+    config.DEBUG = False
     sys.modules['config'] = config
 
     sys.modules['db.database'] = types.ModuleType('db.database')
@@ -74,6 +81,9 @@ def load_main_window_with_stubs():
     repo_mod.TournamentRepository = Repo
     repo_mod.SessionRepository = Repo
     repo_mod.StatsRepository = Repo
+    repo_mod.OverallStatsRepository = Repo
+    repo_mod.PlaceDistributionRepository = Repo
+    repo_mod.FinalTableHandRepository = Repo
     sys.modules['db.repositories'] = repo_mod
 
     for name in ['ui.stats_grid', 'ui.tournament_view', 'ui.session_view']:
@@ -99,6 +109,7 @@ class TestParseFilesSkip(unittest.TestCase):
                 self.ids.append(tournament_id)
         mw.tournament_repo = DummyRepo()
         mw.refresh_all_data = lambda: None
+        mw_mod.application_service.tournament_repo = mw.tournament_repo
 
         with tempfile.TemporaryDirectory() as tmpdir:
             hh_missing = os.path.join(tmpdir, 'hh_missing.txt')
@@ -111,16 +122,28 @@ class TestParseFilesSkip(unittest.TestCase):
             with open(hh_ok, 'w') as f:
                 f.write('Poker Hand #2\n')
 
-            with patch.object(mw_mod, 'HandHistoryParser') as hh_cls, \
-                 patch.object(mw_mod, 'TournamentSummaryParser') as sum_cls:
-                hh_instance = hh_cls.return_value
-                hh_instance.parse.side_effect = [
+            with patch.object(mw_mod.application_service, 'hh_parser') as hh_obj, \
+                 patch.object(mw_mod.application_service, 'ts_parser') as sum_obj:
+                hh_obj.parse.side_effect = [
                     {'tournament_id': None, 'hero_ko_count': 0},
                     {'tournament_id': '333', 'hero_ko_count': 0}
                 ]
-                sum_cls.return_value.parse.return_value = {'tournament_id': None}
+                sum_obj.parse.return_value = {'tournament_id': None}
 
-                mw._parse_files([hh_missing, summary_missing, hh_ok])
+                def fake_import(paths, *a, **k):
+                    for p in paths:
+                        with open(p, 'r') as f:
+                            content = f.read()
+                        if 'Poker Hand' in content or 'Hand #' in content:
+                            data = hh_obj.parse(content)
+                        else:
+                            data = sum_obj.parse(content, filename=os.path.basename(p))
+                        tid = data.get('tournament_id')
+                        if tid:
+                            mw.tournament_repo.add_or_update_tournament(tid)
+
+                mw_mod.application_service.import_files = fake_import
+                mw_mod.application_service.import_files([hh_missing, summary_missing, hh_ok], 's')
 
         self.assertEqual(mw.tournament_repo.ids, ['333'])
 

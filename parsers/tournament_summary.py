@@ -138,11 +138,10 @@ class TournamentSummaryParser(BaseParser):
 
         result = {
             "tournament_id": tournament_id,
-            "tournament_name": tournament_name,
-            "start_time": start_time,
-            "buyin": buyin,
+            "place": finish_place,
             "payout": payout,
-            "finish_place": finish_place,
+            "buyin": buyin,
+            "date": start_time,
         }
 
         logger.debug(f"Парсинг TS завершен для {tournament_id}. Данные: {result}")
