@@ -167,9 +167,6 @@ class HandHistoryParser(BaseParser):
                 logger.error(f"Ошибка парсинга раздачи в файле {filename}: {e}")
                 continue  # Переходим к следующей раздаче
         
-        # Определяем выбывших игроков путем сравнения списков игроков в соседних раздачах
-        self._identify_eliminated_players()
-        
         # Подсчитываем KO Hero для всех раздач финального стола
         final_table_data_for_db: List[Dict[str, Any]] = []
         
@@ -370,12 +367,27 @@ class HandHistoryParser(BaseParser):
         # Объединяем с авто-олл-инами
         all_in_players.update(auto_all_ins)
 
+        # Дополнительно проверяем явные all-in действия из истории
+        for line in lines[idx:]:
+            if ": all-in" in line:
+                m = re.match(r'^([^:]+): all-in', line.strip())
+                if m:
+                    all_in_players.add(NAME(m.group(1)))
+
         hand_data.contrib = contrib
         hand_data.collects = collects
         hand_data.final_stacks = final_stacks
         hand_data.all_in_players = all_in_players
-        # --- сразу фиксируем, кто вылетел в этой же раздаче ---
+        
+        # Определяем выбывших (final_stack <= 0)
         hand_data.eliminated_players = {pl for pl, stk in final_stacks.items() if stk <= 0}
+        
+        # Валидация: выбывший должен был быть all-in
+        for eliminated in hand_data.eliminated_players:
+            if eliminated not in all_in_players:
+                logger.warning(f"Player {eliminated} eliminated with final_stack=0 but not marked as all-in in hand {hand_id}")
+                # Добавляем в all-in для консистентности
+                all_in_players.add(eliminated)
         
         if hand_data.contrib:  # Строим банки только если были вклады
             hand_data.pots = self._build_pots(hand_data.contrib)
@@ -427,7 +439,7 @@ class HandHistoryParser(BaseParser):
                     street_contrib[pl] = street_contrib.get(pl, 0) + amt
                 elif act == 'raises':
                     # Пример: "d16ad03f: raises 2,846 to 3,146"
-                    # Это значит рейз НА 2,846, всего ставка 3,146
+                    # В GG Poker это значит: рейз ДО 3,146 (total amount)
                     m_raise_to = RE_RAISE_TO.search(line)
                     if m_raise_to:
                         total_to = CHIP(m_raise_to.group(1))
@@ -437,13 +449,17 @@ class HandHistoryParser(BaseParser):
                         to_add = total_to - already_on_street
                         
                         if to_add < 0:
-                            logger.warning(f"Negative raise amount: {pl} raises to {total_to}, but already has {already_on_street} on street")
+                            logger.warning(f"Negative raise amount in {current_street}: {pl} raises to {total_to}, but already has {already_on_street}")
                             to_add = 0
+                        elif to_add == 0:
+                            logger.warning(f"Zero raise amount in {current_street}: {pl} raises to {total_to}, already has {already_on_street}")
                         
                         contrib[pl] = contrib.get(pl, 0) + to_add
                         street_contrib[pl] = total_to
                         
-                        logger.debug(f"{current_street}: {pl} raises to {total_to} (was {already_on_street}, adds {to_add})")
+                        # Логируем только значительные рейзы для отладки  
+                        if to_add > 100:
+                            logger.debug(f"{current_street}: {pl} raises to {total_to} (was {already_on_street}, adds {to_add})")
             
             # Uncalled bet
             m_unc = RE_UNCALLED.match(line)
@@ -465,12 +481,6 @@ class HandHistoryParser(BaseParser):
                 collects[NAME(pl)] = collects.get(NAME(pl), 0) + CHIP(amt_str)
         
         return contrib, collects
-
-    def _identify_eliminated_players(self):
-        """Больше не сравниваем с 'следующей рукой'.
-        Данные уже расставлены при парсе, но оставляем метод
-        на случай, если его вызывают извне."""
-        return
 
     def _build_pots(self, contrib: Dict[str, int]) -> List[Pot]:
         """Строит структуру банков (главный и сайд-поты) из вкладов игроков."""
@@ -520,6 +530,23 @@ class HandHistoryParser(BaseParser):
             return 0
 
         ko_count = 0
+        logger.debug(f"\n=== KO Analysis for hand {hand.hand_id} ===")
+        
+        # Дополнительная проверка: если нет выбывших, нет и KO
+        if not hand.eliminated_players:
+            logger.debug("No eliminated players in this hand")
+            return 0
+            
+        logger.debug(f"Eliminated: {hand.eliminated_players}")
+        logger.debug(f"All-in players: {hand.all_in_players}")
+        
+        # Показываем математику стеков для выбывших
+        for pl in hand.eliminated_players:
+            initial = hand.seats.get(pl, 0)
+            put_in = hand.contrib.get(pl, 0)
+            got_back = hand.collects.get(pl, 0)
+            final = hand.final_stacks.get(pl, 0)
+            logger.debug(f"  {pl}: started {initial}, put in {put_in}, collected {got_back}, final {final}")
         
         # Проходим по всем выбывшим игрокам
         for knocked_out_player in hand.eliminated_players:
@@ -530,19 +557,28 @@ class HandHistoryParser(BaseParser):
             relevant_pots = [pot for pot in hand.pots if knocked_out_player in pot.eligible]
             
             if not relevant_pots:
-                logger.warning(f"No pots found for eliminated player {knocked_out_player}")
+                logger.warning(f"ERROR: No pots found for eliminated player {knocked_out_player}")
                 continue
             
-            # Проверяем, выиграл ли Hero хотя бы один из этих потов
+            # Hero должен выиграть хотя бы один пот с фишками выбывшего
             hero_won_pot = False
+            pots_with_hero = []
             for pot in relevant_pots:
                 if config.HERO_NAME in pot.winners:
                     hero_won_pot = True
-                    break
+                    pots_with_hero.append(pot)
             
             if hero_won_pot:
-                # Hero выиграл пот с фишками выбывшего = KO
                 ko_count += 1
-                logger.debug(f"KO counted: {config.HERO_NAME} knocked out {knocked_out_player} in hand {hand.hand_id}")
+                logger.info(f"*** KO! {config.HERO_NAME} knocked out {knocked_out_player} ***")
+                for pot in pots_with_hero:
+                    logger.debug(f"  Won pot size {pot.size} (winners: {pot.winners})")
+            else:
+                # Логируем кто выбил если не Hero
+                actual_winners = set()
+                for pot in relevant_pots:
+                    actual_winners.update(pot.winners)
+                logger.debug(f"  {knocked_out_player} eliminated but knocked out by: {actual_winners}")
         
+        logger.debug(f"Total KO in hand: {ko_count}\n")
         return ko_count
