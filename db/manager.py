@@ -183,6 +183,8 @@ class DatabaseManager:
             return cursor.fetchall()
         except Exception as e:
             logger.error(f"Ошибка выполнения SELECT запроса: {query} с параметрами {params}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             # В зависимости от требуемой обработки ошибок, можно вернуть пустой список, None,
             # или пробросить исключение. Вернем пустой список.
             return []

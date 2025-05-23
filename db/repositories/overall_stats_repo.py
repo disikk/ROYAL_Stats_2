@@ -26,7 +26,7 @@ class OverallStatsRepository:
         query = "SELECT * FROM overall_stats WHERE id = 1"
         result = self.db.execute_query(query)
         if result:
-            return OverallStats.from_dict(result[0])
+            return OverallStats.from_dict(dict(result[0]))
         else:
             # Возвращаем дефолтные значения, если запись еще не создана
             # Инициализация должна гарантировать наличие записи с id=1

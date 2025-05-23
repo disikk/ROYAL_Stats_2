@@ -409,7 +409,7 @@ class ApplicationService:
             progress_callback(total_files, total_files, "Импорт завершен")
 
 
-    def _update_all_statistics(self, session_id_just_imported: Optional[str] = None):
+    def _update_all_statistics(self, session_id: str):
         """
         Пересчитывает и обновляет все агрегированные статистики (общие и по сессии).
         Вызывается после импорта данных.
@@ -417,51 +417,87 @@ class ApplicationService:
         logger.debug("Запущен пересчет всей статистики.")
 
         # --- Обновление Overall Stats ---
-        logger.debug("Обновление общей статистики...")
-        overall_stats = self._calculate_overall_stats()
-        self.overall_stats_repo.update_overall_stats(overall_stats)
-        logger.debug("Общая статистика обновлена.")
+        try:
+            logger.debug("Обновление общей статистики...")
+            overall_stats = self._calculate_overall_stats()
+            self.overall_stats_repo.update_overall_stats(overall_stats)
+            logger.info("Общая статистика обновлена успешно.")
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении overall_stats: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            # Продолжаем обновлять остальные таблицы!
 
         # --- Обновление Place Distribution ---
-        logger.debug("Обновление распределения мест...")
-        # Сначала сбросим текущее распределение, затем пересчитаем по всем турнирам
-        self.place_dist_repo.reset_distribution()
-        all_final_tournaments = self.tournament_repo.get_all_tournaments(buyin_filter=None) # Get all, filters applied in calculation
-        for tourney in all_final_tournaments:
-             # Учитываем место только если турнир достиг финалки и место в диапазоне 1-9
-             if tourney.reached_final_table and tourney.finish_place is not None and 1 <= tourney.finish_place <= 9:
-                  self.place_dist_repo.increment_place_count(tourney.finish_place)
-        logger.debug("Распределение мест обновлено.")
+        try:
+            logger.debug("Обновление распределения мест...")
+            self.place_dist_repo.reset_distribution()
+            all_final_tournaments = self.tournament_repo.get_all_tournaments()
+            
+            count = 0
+            for tourney in all_final_tournaments:
+                if tourney.reached_final_table and tourney.finish_place is not None and 1 <= tourney.finish_place <= 9:
+                    self.place_dist_repo.increment_place_count(tourney.finish_place)
+                    count += 1
+            
+            logger.info(f"Распределение мест обновлено для {count} турниров.")
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении place_distribution: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
 
         # --- Обновление KO count для турниров ---
-        logger.debug("Обновление ko_count для турниров...")
-        all_tournaments = self.tournament_repo.get_all_tournaments()
-        for tournament in all_tournaments:
-            # Получаем все руки финального стола для этого турнира
-            tournament_ft_hands = self.ft_hand_repo.get_hands_by_tournament(tournament.tournament_id)
-            # Суммируем KO из всех рук
-            total_ko = sum(hand.hero_ko_this_hand for hand in tournament_ft_hands)
-            # Обновляем ko_count у турнира
-            tournament.ko_count = total_ko
-            # Сохраняем обновленный турнир
-            self.tournament_repo.add_or_update_tournament(tournament)
-        logger.debug("KO count для турниров обновлен.")
+        try:
+            logger.debug("Обновление ko_count для турниров...")
+            all_tournaments = self.tournament_repo.get_all_tournaments()
+            updated_count = 0
+            
+            for tournament in all_tournaments:
+                tournament_ft_hands = self.ft_hand_repo.get_hands_by_tournament(tournament.tournament_id)
+                total_ko = sum(hand.hero_ko_this_hand for hand in tournament_ft_hands)
+                tournament.ko_count = total_ko
+                self.tournament_repo.add_or_update_tournament(tournament)
+                if total_ko > 0:
+                    updated_count += 1
+            
+            logger.info(f"KO count обновлен для {updated_count} турниров.")
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении ko_count: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
 
         # --- Обновление Session Stats ---
-        logger.debug("Обновление статистики сессий...")
-        sessions_to_update = self.session_repo.get_all_sessions()
-        for session in sessions_to_update:
-             self._calculate_and_update_session_stats(session.session_id)
-        logger.debug("Статистика сессий обновлена.")
+        try:
+            logger.debug("Обновление статистики сессий...")
+            sessions_to_update = self.session_repo.get_all_sessions()
+            
+            for session in sessions_to_update:
+                try:
+                    self._calculate_and_update_session_stats(session.session_id)
+                except Exception as e:
+                    logger.error(f"Ошибка при обновлении сессии {session.session_id}: {e}")
+            
+            logger.info(f"Статистика обновлена для {len(sessions_to_update)} сессий.")
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении session stats: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+
+        logger.info("Обновление всей статистики завершено (с учетом возможных ошибок).")
 
 
     def _calculate_overall_stats(self) -> OverallStats:
         """
         Рассчитывает все показатели для OverallStats на основе данных из БД.
         """
-        # Получаем все турниры и финальные руки для расчетов
         all_tournaments = self.tournament_repo.get_all_tournaments()
         all_ft_hands = self.ft_hand_repo.get_all_hands() # Все руки финалок
+        logger.info(f"_calculate_overall_stats: Загружено {len(all_tournaments)} турниров")
+        logger.info(f"_calculate_overall_stats: Загружено {len(all_ft_hands)} рук финального стола")
+        # Проверяем содержимое первого турнира для отладки
+        if all_tournaments:
+            t = all_tournaments[0]
+            logger.debug(f"Пример турнира: id={t.tournament_id}, buyin={t.buyin}, payout={t.payout}, place={t.finish_place}, ft={t.reached_final_table}, ko={t.ko_count}")
 
         stats = OverallStats() # Создаем объект с дефолтными значениями
 
@@ -473,7 +509,7 @@ class ApplicationService:
 
         # Расчеты, основанные на турнирах:
         stats.total_buy_in = sum(t.buyin for t in all_tournaments if t.buyin is not None)
-        stats.total_prize = sum(t.payout for t in all_tournaments if t.payout is not None)
+        stats.total_prize = sum(t.payout if t.payout is not None else 0 for t in all_tournaments)
 
         # Среднее место по всем турнирам (включая не финалку)
         all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
@@ -487,6 +523,7 @@ class ApplicationService:
         # Обновленный HandHistoryParser точно определяет выбывших игроков путем сравнения
         # списков игроков между соседними раздачами в хронологическом порядке
         stats.total_knockouts = sum(hand.hero_ko_this_hand for hand in all_ft_hands)
+        logger.info(f"Рассчитано total_knockouts: {stats.total_knockouts}")
 
         # Avg KO / Tournament (по всем турнирам, включая не финалку)
         stats.avg_ko_per_tournament = stats.total_knockouts / stats.total_tournaments if stats.total_tournaments > 0 else 0.0
@@ -511,7 +548,8 @@ class ApplicationService:
 
         # Расчет Big KO (требует buyin и payout из турниров)
         # Эта логика находится в плагине BigKOStat. Вызовем его.
-        big_ko_results = BigKOStat().compute(all_tournaments, all_ft_hands, []) # Передаем пустые списки для knockout и sessions т.к. данные в БД
+        big_ko_results = BigKOStat().compute(all_tournaments, all_ft_hands, [], stats)
+        logger.info(f"BigKO результаты: {big_ko_results}")
         stats.big_ko_x1_5 = big_ko_results.get("x1.5", 0)
         stats.big_ko_x2 = big_ko_results.get("x2", 0)
         stats.big_ko_x10 = big_ko_results.get("x10", 0)
@@ -529,13 +567,14 @@ class ApplicationService:
         stats.early_ft_ko_per_tournament = round(stats.early_ft_ko_per_tournament, 2)
         stats.final_table_reach_percent = round(stats.final_table_reach_percent, 2)
 
-
+        logger.info(f"Итоговая статистика: tournaments={stats.total_tournaments}, knockouts={stats.total_knockouts}, prize={stats.total_prize}, buyin={stats.total_buy_in}")
         return stats
 
     def _calculate_and_update_session_stats(self, session_id: str):
         """
         Рассчитывает и обновляет статистику для конкретной сессии.
         """
+        logger.debug(f"Расчет статистики для сессии {session_id}")
         session = self.session_repo.get_session_by_id(session_id)
         if not session:
             logger.warning(f"Сессия с ID {session_id} не найдена для обновления статистики.")
@@ -560,6 +599,7 @@ class ApplicationService:
         session.total_prize = round(session.total_prize, 2)
         session.total_buy_in = round(session.total_buy_in, 2)
 
+        logger.debug(f"Сессия {session_id}: турниров={session.tournaments_count}, KO={session.knockouts_count}, avg_place={session.avg_finish_place}, prize={session.total_prize}, buyin={session.total_buy_in}")
         self.session_repo.update_session_stats(session)
 
 
