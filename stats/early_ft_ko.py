@@ -35,6 +35,9 @@ class EarlyFTKOStat(BaseStat):
         Returns:
             Словарь с ключами 'early_ft_ko_count' и 'early_ft_ko_per_tournament'.
         """
+        if not tournaments and not overall_stats:
+            return {"early_ft_ko_count": 0, "early_ft_ko_per_tournament": 0.0}
+
         # Эти статы уже рассчитываются и хранятся в OverallStats
         # Плагин просто извлекает их.
 

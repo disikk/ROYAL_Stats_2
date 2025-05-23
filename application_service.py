@@ -563,7 +563,7 @@ class ApplicationService:
                            f"(ratio: {t.payout/t.buyin:.1f}x)")
 
         # Расчет Big KO (требует buyin и payout из турниров)
-        big_ko_results = BigKOStat().compute(all_tournaments, all_ft_hands, [], stats)
+        big_ko_results = BigKOStat().compute(all_tournaments, all_ft_hands, [], None)
         logger.info(f"BigKO результаты: {big_ko_results}")
         stats.big_ko_x1_5 = big_ko_results.get("x1.5", 0)
         stats.big_ko_x2 = big_ko_results.get("x2", 0)

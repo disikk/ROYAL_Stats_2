@@ -33,6 +33,9 @@ class FinalTableReachStat(BaseStat):
         Returns:
             Словарь с ключом 'final_table_reach_percent'.
         """
+        if not tournaments and not overall_stats:
+            return {"final_table_reach_percent": 0.0}
+
         # Этот стат уже рассчитывается и хранится в OverallStats
         # Плагин просто извлекает его.
 

@@ -31,6 +31,9 @@ class ROIStat(BaseStat):
         Returns:
             Словарь с ключом 'roi'.
         """
+        if not tournaments and not overall_stats:
+            return {"roi": 0.0}
+
         # ROI рассчитывается на основе общих сумм, которые хранятся в OverallStats.
         # Плагин использует эти агрегированные данные.
 

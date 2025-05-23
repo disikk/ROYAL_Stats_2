@@ -30,6 +30,9 @@ class TotalKOStat(BaseStat):
         Returns:
             Словарь с ключом 'total_ko'.
         """
+        if not tournaments and not overall_stats:
+            return {"total_ko": 0}
+
         # Общее количество KO уже хранится в OverallStats, рассчитанное ApplicationService.
         # Плагин просто извлекает это значение.
 

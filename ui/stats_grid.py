@@ -51,11 +51,8 @@ class StatCard(QtWidgets.QFrame):
                 background-color: #2D2D30;
             }
         """)
-        
         layout = QtWidgets.QVBoxLayout(self)
         layout.setSpacing(8)
-        
-        # Заголовок
         self.title_label = QtWidgets.QLabel(title)
         self.title_label.setStyleSheet("""
             QLabel {
@@ -65,8 +62,6 @@ class StatCard(QtWidgets.QFrame):
             }
         """)
         layout.addWidget(self.title_label)
-        
-        # Значение
         self.value_label = QtWidgets.QLabel(value)
         self.value_label.setStyleSheet("""
             QLabel {
@@ -76,8 +71,6 @@ class StatCard(QtWidgets.QFrame):
             }
         """)
         layout.addWidget(self.value_label)
-        
-        # Подзаголовок (опционально)
         if subtitle:
             self.subtitle_label = QtWidgets.QLabel(subtitle)
             self.subtitle_label.setStyleSheet("""
@@ -89,7 +82,6 @@ class StatCard(QtWidgets.QFrame):
             layout.addWidget(self.subtitle_label)
         else:
             self.subtitle_label = None
-            
         layout.addStretch()
         
     def update_value(self, value: str, subtitle: str = ""):
@@ -182,7 +174,14 @@ class StatsGrid(QtWidgets.QWidget):
         self.chart_view = QChartView()
         self.chart_view.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         self.chart_view.setMinimumHeight(400)
+        self.chart_view.setMaximumHeight(500)
         main_layout.addWidget(self.chart_view)
+        
+        # Разделитель
+        separator2 = QtWidgets.QFrame()
+        separator2.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        separator2.setStyleSheet("QFrame { background-color: #3F3F46; max-height: 1px; margin: 24px 0; }")
+        main_layout.addWidget(separator2)
         
         # Карточки для Big KO
         bigko_header = QtWidgets.QLabel("Статистика больших нокаутов")
@@ -211,7 +210,7 @@ class StatsGrid(QtWidgets.QWidget):
         
         bigko_positions = [
             ('x1.5', 0, 0), ('x2', 0, 1), ('x10', 0, 2),
-            ('x100', 0, 3), ('x1000', 0, 4), ('x10000', 0, 5),
+            ('x100', 1, 0), ('x1000', 1, 1), ('x10000', 1, 2),
         ]
         
         for key, row, col in bigko_positions:
@@ -222,92 +221,81 @@ class StatsGrid(QtWidgets.QWidget):
         
     def reload(self):
         """Перезагружает все данные из ApplicationService."""
+        logger.debug("=== Начало reload StatsGrid ===")
         logger.debug("Обновление UI StatsGrid...")
-        
-        # Получаем общую статистику
         overall_stats = self.app_service.get_overall_stats()
-        
-        # Получаем все турниры и руки для плагинов
+        logger.debug(f"Overall stats: tournaments={overall_stats.total_tournaments}, ko={overall_stats.total_knockouts}")
         all_tournaments = self.app_service.get_all_tournaments()
-        
-        # Обновляем основные карточки
         self.cards['tournaments'].update_value(str(overall_stats.total_tournaments))
+        logger.debug(f"Обновлена карточка tournaments: {overall_stats.total_tournaments}")
         self.cards['knockouts'].update_value(str(overall_stats.total_knockouts))
+        logger.debug(f"Обновлена карточка knockouts: {overall_stats.total_knockouts}")
         self.cards['avg_ko'].update_value(f"{overall_stats.avg_ko_per_tournament:.2f}")
-        
-        # ROI
+        logger.debug(f"Обновлена карточка avg_ko: {overall_stats.avg_ko_per_tournament:.2f}")
         roi_result = ROIStat().compute([], [], [], overall_stats)
+        logger.debug(f"ROI result: {roi_result}")
         roi_value = roi_result.get('roi', 0.0)
         roi_text = f"{roi_value:+.1f}%"
         self.cards['roi'].update_value(roi_text)
+        logger.debug(f"Обновлена карточка roi: {roi_text}")
         apply_cell_color_by_value(self.cards['roi'].value_label, roi_value)
-        
-        # ITM%
         itm_result = ITMStat().compute(all_tournaments, [], [], overall_stats)
+        logger.debug(f"ITM result: {itm_result}")
         itm_value = itm_result.get('itm_percent', 0.0)
         self.cards['itm'].update_value(f"{itm_value:.1f}%")
-        
-        # % Достижения FT
+        logger.debug(f"Обновлена карточка itm: {itm_value:.1f}%")
         ft_reach_result = FinalTableReachStat().compute(all_tournaments, [], [], overall_stats)
+        logger.debug(f"FT Reach result: {ft_reach_result}")
         ft_reach_value = ft_reach_result.get('final_table_reach_percent', 0.0)
         self.cards['ft_reach'].update_value(f"{ft_reach_value:.1f}%")
-        
-        # Средний стек на FT
+        logger.debug(f"Обновлена карточка ft_reach: {ft_reach_value:.1f}%")
         avg_ft_stack_result = AvgFTInitialStackStat().compute(all_tournaments, [], [], overall_stats)
+        logger.debug(f"Avg FT Stack result: {avg_ft_stack_result}")
         avg_chips = avg_ft_stack_result.get('avg_ft_initial_stack_chips', 0.0)
         avg_bb = avg_ft_stack_result.get('avg_ft_initial_stack_bb', 0.0)
         self.cards['avg_ft_stack'].update_value(
             f"{avg_chips:,.0f}",
             f"{avg_chips:,.0f} фишек / {avg_bb:.1f} BB"
         )
-        
-        # Early FT KO
+        logger.debug(f"Обновлена карточка avg_ft_stack: {avg_chips:,.0f} / {avg_bb:.1f} BB")
         early_ft_result = EarlyFTKOStat().compute([], [], [], overall_stats)
+        logger.debug(f"Early FT KO result: {early_ft_result}")
         early_ko_count = early_ft_result.get('early_ft_ko_count', 0)
         early_ko_per = early_ft_result.get('early_ft_ko_per_tournament', 0.0)
         self.cards['early_ft_ko'].update_value(
             str(early_ko_count),
             f"{early_ko_per:.2f} за турнир с FT"
         )
-        
-        # Обновляем Big KO карточки
+        logger.debug(f"Обновлена карточка early_ft_ko: {early_ko_count} / {early_ko_per:.2f}")
         self.bigko_cards['x1.5'].update_value(str(overall_stats.big_ko_x1_5))
         self.bigko_cards['x2'].update_value(str(overall_stats.big_ko_x2))
         self.bigko_cards['x10'].update_value(str(overall_stats.big_ko_x10))
         self.bigko_cards['x100'].update_value(str(overall_stats.big_ko_x100))
         self.bigko_cards['x1000'].update_value(str(overall_stats.big_ko_x1000))
         self.bigko_cards['x10000'].update_value(str(overall_stats.big_ko_x10000))
-        
-        # Обновляем гистограмму
+        logger.debug(f"Обновлены карточки Big KO: x1.5={overall_stats.big_ko_x1_5}, x2={overall_stats.big_ko_x2}, x10={overall_stats.big_ko_x10}, x100={overall_stats.big_ko_x100}, x1000={overall_stats.big_ko_x1000}, x10000={overall_stats.big_ko_x10000}")
         self._update_chart()
+        logger.debug("=== Конец reload StatsGrid ===")
         
     def _update_chart(self):
         """Обновляет гистограмму распределения мест."""
         place_dist = self.app_service.get_place_distribution()
-        
         # Проверяем, есть ли данные
         if not place_dist or all(count == 0 for count in place_dist.values()):
             logger.warning("Нет данных для построения гистограммы распределения мест")
-            # Показываем пустой график с сообщением
             chart = QChart()
             chart.setTitle("Нет данных о финишах на финальном столе")
             chart.setTheme(QChart.ChartTheme.ChartThemeDark)
             chart.setBackgroundBrush(QtGui.QBrush(QtGui.QColor("#18181B")))
             self.chart_view.setChart(chart)
             return
-        
-        # Создаем новый график
         chart = QChart()
         chart.setTitle("")  # Убираем заголовок, так как он уже есть над графиком
         chart.setAnimationOptions(QChart.AnimationOption.SeriesAnimations)
         chart.setTheme(QChart.ChartTheme.ChartThemeDark)
         chart.setBackgroundBrush(QtGui.QBrush(QtGui.QColor("#18181B")))
         chart.legend().setVisible(False)
-        
-        # Создаем серию данных
         series = QBarSeries()
-        
-        # Цвета для разных мест (от зеленого к красному)
         colors = [
             "#10B981",  # 1 место - ярко-зеленый
             "#34D399",  # 2 место - зеленый
@@ -319,8 +307,6 @@ class StatsGrid(QtWidgets.QWidget):
             "#B91C1C",  # 8 место - еще темнее
             "#991B1B",  # 9 место - самый темный красный
         ]
-        
-        # Создаем отдельный BarSet для каждого места, чтобы можно было задать цвет
         categories = []
         for place in range(1, 10):
             count = place_dist.get(place, 0)
@@ -329,37 +315,26 @@ class StatsGrid(QtWidgets.QWidget):
             bar_set.setColor(QtGui.QColor(colors[place-1]))
             series.append(bar_set)
             categories.append(str(place))
-        
         chart.addSeries(series)
-        
-        # Настраиваем оси
         axis_x = QBarCategoryAxis()
         axis_x.append(categories)
         axis_x.setTitleText("Место")
         axis_x.setLabelsColor(QtGui.QColor("#E4E4E7"))
         axis_x.setGridLineVisible(False)
-        
         axis_y = QValueAxis()
         axis_y.setTitleText("Количество финишей")
         axis_y.setLabelsColor(QtGui.QColor("#E4E4E7"))
         axis_y.setGridLineColor(QtGui.QColor("#3F3F46"))
         axis_y.setMinorGridLineVisible(False)
-        
-        # Определяем максимум для оси Y
         max_count = max(place_dist.values())
-        axis_y.setRange(0, max_count * 1.1)  # Добавляем 10% сверху
-        
-        # Устанавливаем целочисленные метки
+        axis_y.setRange(0, max_count * 1.1)
         if max_count <= 10:
             axis_y.setTickCount(max_count + 1)
         else:
-            axis_y.setTickCount(min(11, max_count // 5 + 1))  # Максимум 11 меток
-        axis_y.setLabelFormat("%d")  # Целые числа
-        
+            axis_y.setTickCount(min(11, max_count // 5 + 1))
+        axis_y.setLabelFormat("%d")
         chart.addAxis(axis_x, QtCore.Qt.AlignmentFlag.AlignBottom)
         chart.addAxis(axis_y, QtCore.Qt.AlignmentFlag.AlignLeft)
         series.attachAxis(axis_x)
         series.attachAxis(axis_y)
-        
-        # Устанавливаем график в view
         self.chart_view.setChart(chart)

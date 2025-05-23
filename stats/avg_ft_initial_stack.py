@@ -34,6 +34,9 @@ class AvgFTInitialStackStat(BaseStat):
         Returns:
             Словарь с ключами 'avg_ft_initial_stack_chips' и 'avg_ft_initial_stack_bb'.
         """
+        if not tournaments and not overall_stats:
+            return {"avg_ft_initial_stack_chips": 0.0, "avg_ft_initial_stack_bb": 0.0}
+
         # Эти статы уже рассчитываются и хранятся в OverallStats
         # Плагин просто извлекает их.
 

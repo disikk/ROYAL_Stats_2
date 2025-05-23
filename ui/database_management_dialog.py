@@ -235,15 +235,16 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
                 
             try:
                 self.app_service.create_new_database(name)
-                self._load_databases()  # Перезагружаем список
-                
-                # Выбираем новую БД
+                # Принудительно обновляем список БД
+                self._load_databases()
+                # Находим и выбираем созданную БД
                 for i in range(self.db_list.count()):
                     item = self.db_list.item(i)
-                    if os.path.basename(item.data(QtCore.Qt.ItemDataRole.UserRole)) == name:
+                    item_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+                    if item_path and name in os.path.basename(item_path):
                         self.db_list.setCurrentItem(item)
                         break
-                        
+                
                 QtWidgets.QMessageBox.information(
                     self,
                     "Успех",

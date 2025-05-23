@@ -33,6 +33,9 @@ class AvgKOPerTournamentStat(BaseStat):
         Returns:
             Словарь с ключом 'avg_ko_per_tournament'.
         """
+        if not tournaments and not overall_stats:
+            return {"avg_ko_per_tournament": 0.0}
+
         # Этот стат уже рассчитывается и хранится в OverallStats
         # Плагин просто извлекает его. Это демонстрирует, как плагины
         # могут использовать уже посчитанные агрегаты.
