@@ -160,7 +160,8 @@ class HandHistoryParser(BaseParser):
                             logger.debug(f"Найдена первая раздача финального стола ({hand_data.table_size}-max, BB={hand_data.bb}) в турнире {self._tournament_id}. Раздача #{hand_data.hand_number}. Стек Hero: {hand_data.hero_stack}")
                         
                         # Определяем, является ли раздача "ранней" стадией финалки (9-6 игроков)
-                        if 6 <= hand_data.table_size <= config.FINAL_TABLE_SIZE:
+                        actual_players_count = len(hand_data.seats)
+                        if hand_data.table_size == config.FINAL_TABLE_SIZE and 6 <= actual_players_count <= 9:
                             hand_data.is_early_final = True
                             
             except Exception as e:
