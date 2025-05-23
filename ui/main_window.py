@@ -70,24 +70,48 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Панель инструментов
         toolbar = self.addToolBar("Панель инструментов")
-        toolbar.setIconSize(QtCore.QSize(24, 24))
+        toolbar.setIconSize(QtCore.QSize(18, 18))  # Меньшие иконки
+        toolbar.setStyleSheet("""
+            QToolBar {
+                background-color: #18181B;
+                border: none;
+                padding: 8px;
+                spacing: 8px;
+            }
+            QToolButton {
+                background-color: transparent;
+                border-radius: 8px;
+                padding: 8px;
+                margin: 0 4px;
+            }
+            QToolButton:hover {
+                background-color: #27272A;
+            }
+            QToolButton:pressed {
+                background-color: #3F3F46;
+            }
+        """)
 
         # Кнопки панели инструментов
-        refresh_action = QtGui.QAction(QtGui.QIcon.fromTheme("view-refresh"), "Обновить все", self)
+        refresh_action = QtGui.QAction(QtGui.QIcon.fromTheme("view-refresh"), "", self)  # Убираем текст
+        refresh_action.setToolTip("Обновить все данные")
         refresh_action.triggered.connect(self.refresh_all_data)
         toolbar.addAction(refresh_action)
 
-        manage_db_action = QtGui.QAction(QtGui.QIcon.fromTheme("preferences-system"), "Управление БД", self)
+        manage_db_action = QtGui.QAction(QtGui.QIcon.fromTheme("preferences-system"), "", self)
+        manage_db_action.setToolTip("Управление базами данных")
         manage_db_action.triggered.connect(self.manage_databases)
         toolbar.addAction(manage_db_action)
 
         toolbar.addSeparator()
 
-        import_files_action = QtGui.QAction(QtGui.QIcon.fromTheme("document-import"), "Импорт файлов...", self)
+        import_files_action = QtGui.QAction(QtGui.QIcon.fromTheme("document-import"), "", self)
+        import_files_action.setToolTip("Импорт отдельных файлов")
         import_files_action.triggered.connect(self.import_files)
         toolbar.addAction(import_files_action)
 
-        import_dir_action = QtGui.QAction(QtGui.QIcon.fromTheme("folder"), "Импорт папки...", self)
+        import_dir_action = QtGui.QAction(QtGui.QIcon.fromTheme("folder"), "", self)
+        import_dir_action.setToolTip("Импорт целой папки")
         import_dir_action.triggered.connect(self.import_directory)
         toolbar.addAction(import_dir_action)
 

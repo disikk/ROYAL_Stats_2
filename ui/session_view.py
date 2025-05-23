@@ -60,9 +60,11 @@ class SessionView(QtWidgets.QWidget):
         header_layout.addLayout(search_layout)
 
         # Кнопка обновления
-        self.refresh_btn = QtWidgets.QPushButton("Обновить")
+        self.refresh_btn = QtWidgets.QPushButton("")
         self.refresh_btn.setIcon(QtGui.QIcon.fromTheme("view-refresh"))
-        self.refresh_btn.setToolTip("Обновить данные сессий")
+        self.refresh_btn.setToolTip("Обновить данные")
+        self.refresh_btn.setMaximumWidth(32)
+        self.refresh_btn.setMaximumHeight(28)
         self.refresh_btn.clicked.connect(self.reload)
         header_layout.addWidget(self.refresh_btn)
 
@@ -358,9 +360,11 @@ class SessionView(QtWidgets.QWidget):
 
         # Настраиваем стиль для темной темы
         plt.style.use('dark_background')
-        bg_color = '#3a3a3a' # Фон для графика внутри панели деталей
-        text_color = '#ffffff'
-        grid_color = '#555555'
+        bg_color = '#2d2d30'
+        text_color = '#FAFAFA'
+        grid_color = '#4a4a4a'
+        colors = ['#10B981', '#34D399', '#6366F1', '#818CF8', '#F59E0B',
+                  '#FCD34D', '#F97316', '#FB923C', '#EF4444']
 
         self.ft_places_figure.patch.set_facecolor(bg_color)
 
@@ -372,10 +376,6 @@ class SessionView(QtWidgets.QWidget):
 
         percentages = [(count / total_final_tables_in_session * 100) if total_final_tables_in_session > 0 else 0.0 for count in counts]
         percentages = [round(p, 2) for p in percentages] # Округляем проценты
-
-        # Создаем градиент цветов для столбцов: первые места - зеленые, последние - красные
-        colors = ['#27ae60', '#2ecc71', '#3498db', '#3498db', '#f1c40f',
-                 '#f1c40f', '#e67e22', '#e67e22', '#e74c3c'][:len(places)]
 
         # Строим гистограмму
         bars = ax.bar(places, counts, color=colors)

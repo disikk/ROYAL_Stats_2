@@ -40,7 +40,7 @@ class StatCard(QtWidgets.QGroupBox):
 
         self.value_label = QtWidgets.QLabel(self.format_func(value))
         font = self.value_label.font()
-        font.setPointSize(16) # Увеличиваем размер шрифта значения
+        font.setPointSize(13)
         font.setBold(True)
         self.value_label.setFont(font)
         self.value_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -51,14 +51,32 @@ class StatCard(QtWidgets.QGroupBox):
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.value_label, alignment=QtCore.Qt.AlignmentFlag.AlignCenter) # Центрируем значение
         self.setLayout(layout)
-        self.setFixedHeight(80) # Немного увеличиваем высоту для лучшего вида
+        self.setFixedHeight(65) # Немного увеличиваем высоту для лучшего вида
 
-        # Тень для карточки
-        shadow = QtWidgets.QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(10)
-        shadow.setColor(QtGui.QColor(0, 0, 0, 80))
-        shadow.setOffset(2, 2)
-        self.setGraphicsEffect(shadow)
+        # Убираем тень - плоский дизайн
+        # Добавляем стиль для карточки
+        self.setStyleSheet("""
+            QGroupBox::title { 
+                font-weight: 600; 
+                color: #e0e0e0; 
+                font-size: 11px;
+                padding: 2px 8px;
+                background-color: #404043;
+                border-radius: 2px;
+            }
+            QGroupBox {
+                background-color: #37373a;
+                border: 1px solid #4a4a4a;
+                border-radius: 3px;
+                margin-top: 12px;
+                padding-top: 8px;
+            }
+        """)
+
+        # Улучшаем читаемость заголовка
+        title_font = self.font()
+        title_font.setPointSize(10)
+        title_font.setWeight(QtGui.QFont.Weight.Medium)
 
     def set_value(self, value: Any):
         """Обновляет значение в карточке и перекрашивает его."""
@@ -71,13 +89,13 @@ class StatCard(QtWidgets.QGroupBox):
             try:
                 val = float(value)
                 if val > self.value_color_threshold:
-                    self.value_label.setStyleSheet("color: #2ecc71;")  # Зеленый (для положительной прибыли/ROI)
+                    self.value_label.setStyleSheet("color: #10B981;")  # Современный зеленый
                 elif val < self.value_color_threshold:
-                    self.value_label.setStyleSheet("color: #e74c3c;")  # Красный (для отрицательной прибыли/ROI)
+                    self.value_label.setStyleSheet("color: #EF4444;")  # Современный красный
                 else:
-                    self.value_label.setStyleSheet("") # Сброс цвета для нуля
+                    self.value_label.setStyleSheet("")  # Сброс цвета для нуля
             except (ValueError, TypeError):
-                self.value_label.setStyleSheet("") # Сброс цвета для нечисловых значений
+                self.value_label.setStyleSheet("")  # Сброс цвета для нечисловых значений
 
 
 class StatsGrid(QtWidgets.QWidget):
@@ -119,8 +137,8 @@ class StatsGrid(QtWidgets.QWidget):
         scroll_layout = QtWidgets.QVBoxLayout(scroll_content)
 
         self.cards_grid = QtWidgets.QGridLayout()
-        self.cards_grid.setSpacing(16)
-        self.cards_grid.setContentsMargins(10, 10, 10, 10) # Увеличим отступы
+        self.cards_grid.setSpacing(8)
+        self.cards_grid.setContentsMargins(6, 6, 6, 6)
         self.cards_widget = QtWidgets.QWidget()
         self.cards_widget.setLayout(self.cards_grid)
         scroll_layout.addWidget(self.cards_widget)
@@ -183,7 +201,7 @@ class StatsGrid(QtWidgets.QWidget):
 
         # Определяем количество колонок в гриде (адаптивно или фиксированно)
         # Давайте сделаем фиксировано, например, 4 колонки.
-        cols = 4
+        cols = 5
 
         # Создаем карточки и добавляем их в грид
         for i, (name, key_or_lambda, format_func, color_threshold) in enumerate(self.stats_to_display):
@@ -238,40 +256,33 @@ class StatsGrid(QtWidgets.QWidget):
         self._update_places_chart()
 
     def _update_places_chart(self):
-        """Обновляет график гистограммы распределения мест."""
-        distribution = self.app_service.get_place_distribution()
-        overall_stats = self.app_service.get_overall_stats()
-
-        self.figure.clear() # Очищаем предыдущий график
-
-        # Получаем текущие цвета из темы приложения
-        # (Можно получить через QPalette или жестко задать для согласованности с QSS)
-        # Используем жестко заданные для темной темы, как в app_style.py
-        bg_color = '#353535'  # Фон графика
-        text_color = '#ffffff'  # Цвет текста
-        grid_color = '#555555'  # Цвет сетки
-        # bar_color = '#2a82da'  # Основной цвет для столбцов (синий)
-
-        # Настраиваем стиль графика для темной темы
-        plt.style.use('dark_background')
-        # Устанавливаем фон фигуры явно (может быть переопределен стилем)
-        self.figure.patch.set_facecolor(bg_color)
-
-
+        """Обновляет гистограмму распределения мест на финалке."""
+        stats = self.app_service.get_overall_stats()
+        places = stats.place_distribution if hasattr(stats, 'place_distribution') else {}
+        self.figure.clear()
         ax = self.figure.add_subplot(111)
+        bg_color = '#2d2d30'
+        text_color = '#FAFAFA'
+        grid_color = '#4a4a4a'
+        colors = ['#10B981', '#34D399', '#6366F1', '#818CF8', '#F59E0B',
+                  '#FCD34D', '#F97316', '#FB923C', '#EF4444']
         ax.set_facecolor(bg_color)
+        self.figure.set_facecolor(bg_color)
+        ax.tick_params(axis='x', colors=text_color)
+        ax.tick_params(axis='y', colors=text_color)
+        ax.spines['bottom'].set_color(grid_color)
+        ax.spines['top'].set_color(grid_color)
+        ax.spines['right'].set_color(grid_color)
+        ax.spines['left'].set_color(grid_color)
+        ax.grid(color=grid_color, linestyle='--', linewidth=0.5, alpha=0.5)
 
-        places = list(distribution.keys()) # Места от 1 до 9
-        counts = [distribution[p] for p in places] # Количество финишей на каждом месте
+        places = list(places.keys()) # Места от 1 до 9
+        counts = [places[p] for p in places] # Количество финишей на каждом месте
 
-        total_final_tables = overall_stats.total_final_tables if overall_stats else sum(counts) # Общее количество финалок для нормализации
+        total_final_tables = stats.total_final_tables if stats else sum(counts) # Общее количество финалок для нормализации
 
         percentages = [(count / total_final_tables * 100) if total_final_tables > 0 else 0.0 for count in counts]
         percentages = [round(p, 2) for p in percentages] # Округляем проценты
-
-        # Создаем градиент цветов для столбцов: первые места - зеленые, последние - красные
-        colors = ['#27ae60', '#2ecc71', '#3498db', '#3498db', '#f1c40f',
-                 '#f1c40f', '#e67e22', '#e67e22', '#e74c3c'][:len(places)]
 
         # Строим гистограмму
         bars = ax.bar(places, counts, color=colors)
@@ -287,7 +298,7 @@ class StatsGrid(QtWidgets.QWidget):
 
             # Отображаем процент только если он > 0
             if percentage > 0:
-                 ax.text(bar.get_x() + bar.get_width()/2., height + (overall_stats.total_tournaments * 0.01), # Немного выше, чем count
+                 ax.text(bar.get_x() + bar.get_width()/2., height + (stats.total_tournaments * 0.01), # Немного выше, чем count
                          f'{percentage:.1f}%', # Отображаем процент с одним знаком после запятой
                          ha='center', va='bottom', color=text_color, fontsize=9)
 
