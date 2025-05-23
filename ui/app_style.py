@@ -293,20 +293,12 @@ def apply_cell_color_by_value(widget_or_item, value: Optional[float]):
     if isinstance(widget_or_item, QtWidgets.QTableWidgetItem):
         # Для QTableWidgetItem используем setForeground
         widget_or_item.setForeground(QtGui.QBrush(QtGui.QColor(color)))
-    elif hasattr(widget_or_item, 'styleSheet'):
-        # Для виджетов используем styleSheet
-        current_style = widget_or_item.styleSheet()
-        # Обновляем или добавляем цвет в стиль
-        if "color:" in current_style:
-            # Заменяем существующий цвет
-            import re
-            new_style = re.sub(r'color:\s*[^;]+;', f'color: {color};', current_style)
-            widget_or_item.setStyleSheet(new_style)
-        else:
-            # Добавляем цвет к существующему стилю
-            if current_style and not current_style.endswith(';'):
-                current_style += ';'
-            widget_or_item.setStyleSheet(current_style + f" color: {color};")
+    elif isinstance(widget_or_item, QtWidgets.QLabel):
+        # Для QLabel просто устанавливаем color через styleSheet
+        widget_or_item.setStyleSheet(f"color: {color}; font-weight: bold;")
+    elif hasattr(widget_or_item, 'setStyleSheet'):
+        # Для других виджетов используем styleSheet
+        widget_or_item.setStyleSheet(f"color: {color};")
 
 
 def create_separator() -> QtWidgets.QFrame:

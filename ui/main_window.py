@@ -21,6 +21,7 @@ from ui.app_style import apply_dark_theme, format_money, format_percentage, appl
 from ui.stats_grid import StatsGrid
 from ui.tournament_view import TournamentView
 from ui.session_view import SessionView
+from ui.custom_icons import CustomIcons  # Импортируем кастомные иконки
 
 # Импортируем диалог управления БД
 from ui.database_management_dialog import DatabaseManagementDialog # Предполагаем, что такой файл будет создан
@@ -70,7 +71,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Панель инструментов
         toolbar = self.addToolBar("Панель инструментов")
-        toolbar.setIconSize(QtCore.QSize(18, 18))  # Меньшие иконки
+        toolbar.setIconSize(QtCore.QSize(20, 20))  # Размер иконок
         toolbar.setStyleSheet("""
             QToolBar {
                 background-color: #18181B;
@@ -83,6 +84,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 border-radius: 8px;
                 padding: 8px;
                 margin: 0 4px;
+                color: #E4E4E7;
+                font-size: 14px;
+                font-weight: bold;
             }
             QToolButton:hover {
                 background-color: #27272A;
@@ -92,25 +96,25 @@ class MainWindow(QtWidgets.QMainWindow):
             }
         """)
 
-        # Кнопки панели инструментов
-        refresh_action = QtGui.QAction(QtGui.QIcon.fromTheme("view-refresh"), "", self)  # Убираем текст
+        # Кнопки панели инструментов с кастомными SVG иконками
+        refresh_action = QtGui.QAction(CustomIcons.refresh_icon("#10B981"), "Обновить", self)
         refresh_action.setToolTip("Обновить все данные")
         refresh_action.triggered.connect(self.refresh_all_data)
         toolbar.addAction(refresh_action)
 
-        manage_db_action = QtGui.QAction(QtGui.QIcon.fromTheme("preferences-system"), "", self)
+        manage_db_action = QtGui.QAction(CustomIcons.database_icon("#3B82F6"), "База данных", self)
         manage_db_action.setToolTip("Управление базами данных")
         manage_db_action.triggered.connect(self.manage_databases)
         toolbar.addAction(manage_db_action)
 
         toolbar.addSeparator()
 
-        import_files_action = QtGui.QAction(QtGui.QIcon.fromTheme("document-import"), "", self)
+        import_files_action = QtGui.QAction(CustomIcons.file_icon("#F59E0B"), "Файлы", self)
         import_files_action.setToolTip("Импорт отдельных файлов")
         import_files_action.triggered.connect(self.import_files)
         toolbar.addAction(import_files_action)
 
-        import_dir_action = QtGui.QAction(QtGui.QIcon.fromTheme("folder"), "", self)
+        import_dir_action = QtGui.QAction(CustomIcons.folder_icon("#8B5CF6"), "Папка", self)
         import_dir_action.setToolTip("Импорт целой папки")
         import_dir_action.triggered.connect(self.import_directory)
         toolbar.addAction(import_dir_action)
@@ -146,10 +150,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tournament_view = TournamentView(self.app_service)
         self.session_view = SessionView(self.app_service)
 
-        # Добавляем вкладки
-        self.tabs.addTab(self.stats_grid, QtGui.QIcon.fromTheme("office-chart-bar"), "Дашборд")
-        self.tabs.addTab(self.tournament_view, QtGui.QIcon.fromTheme("view-list-details"), "Турниры")
-        self.tabs.addTab(self.session_view, QtGui.QIcon.fromTheme("x-office-calendar"), "Сессии")
+        # Добавляем вкладки с иконками
+        self.tabs.addTab(self.stats_grid, CustomIcons.chart_icon("#10B981"), "Дашборд")
+        self.tabs.addTab(self.tournament_view, CustomIcons.list_icon("#3B82F6"), "Турниры")
+        self.tabs.addTab(self.session_view, CustomIcons.calendar_icon("#F59E0B"), "Сессии")
 
         # Подключаем сигнал изменения вкладки
         self.tabs.currentChanged.connect(self.tab_changed)

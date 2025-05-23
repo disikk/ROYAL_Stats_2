@@ -1,0 +1,126 @@
+# -*- coding: utf-8 -*-
+
+"""
+Кастомные SVG иконки для приложения Royal Stats.
+"""
+
+from PyQt6 import QtGui, QtCore, QtSvg
+
+
+class CustomIcons:
+    """Класс для создания кастомных SVG иконок в плоском стиле."""
+    
+    @staticmethod
+    def create_icon_from_svg(svg_content: str, color: str = "#E4E4E7") -> QtGui.QIcon:
+        """Создает QIcon из SVG контента с заданным цветом."""
+        # Заменяем плейсхолдер цвета
+        svg_content = svg_content.replace("currentColor", color)
+        
+        # Создаем QSvgRenderer
+        svg_bytes = svg_content.encode('utf-8')
+        renderer = QtSvg.QSvgRenderer(svg_bytes)
+        
+        # Создаем pixmap и рисуем SVG
+        pixmap = QtGui.QPixmap(24, 24)
+        pixmap.fill(QtCore.Qt.GlobalColor.transparent)
+        painter = QtGui.QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        
+        return QtGui.QIcon(pixmap)
+    
+    @staticmethod
+    def refresh_icon(color: str = "#E4E4E7") -> QtGui.QIcon:
+        """Иконка обновления (незамкнутая круговая стрелка)."""
+        svg = '''<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4.5 12C4.5 16.1421 7.85786 19.5 12 19.5C15.0376 19.5 17.6476 17.6038 18.7223 14.8999M19.5 12C19.5 7.85786 16.1421 4.5 12 4.5C8.96244 4.5 6.35238 6.39624 5.27768 9.10009" 
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M19.5 8V14H13.5" 
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>'''
+        return CustomIcons.create_icon_from_svg(svg, color)
+    
+    @staticmethod
+    def database_icon(color: str = "#E4E4E7") -> QtGui.QIcon:
+        """Иконка базы данных."""
+        svg = '''<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <ellipse cx="12" cy="5" rx="8" ry="3" stroke="currentColor" stroke-width="2"/>
+            <path d="M4 5V19C4 20.6569 7.58172 22 12 22C16.4183 22 20 20.6569 20 19V5" 
+                  stroke="currentColor" stroke-width="2"/>
+            <path d="M4 12C4 13.6569 7.58172 15 12 15C16.4183 15 20 13.6569 20 12" 
+                  stroke="currentColor" stroke-width="2"/>
+        </svg>'''
+        return CustomIcons.create_icon_from_svg(svg, color)
+    
+    @staticmethod
+    def file_icon(color: str = "#E4E4E7") -> QtGui.QIcon:
+        """Иконка файла."""
+        svg = '''<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M13 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V9L13 2Z" 
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M13 2V9H20" 
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>'''
+        return CustomIcons.create_icon_from_svg(svg, color)
+    
+    @staticmethod
+    def folder_icon(color: str = "#E4E4E7") -> QtGui.QIcon:
+        """Иконка папки."""
+        svg = '''<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M22 19C22 20.1046 21.1046 21 20 21H4C2.89543 21 2 20.1046 2 19V5C2 3.89543 2.89543 3 4 3H9L11 6H20C21.1046 6 22 6.89543 22 7V19Z" 
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>'''
+        return CustomIcons.create_icon_from_svg(svg, color)
+    
+    @staticmethod
+    def chart_icon(color: str = "#E4E4E7") -> QtGui.QIcon:
+        """Иконка графика."""
+        svg = '''<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="3" y="10" width="4" height="11" stroke="currentColor" stroke-width="2"/>
+            <rect x="10" y="6" width="4" height="15" stroke="currentColor" stroke-width="2"/>
+            <rect x="17" y="3" width="4" height="18" stroke="currentColor" stroke-width="2"/>
+        </svg>'''
+        return CustomIcons.create_icon_from_svg(svg, color)
+    
+    @staticmethod
+    def list_icon(color: str = "#E4E4E7") -> QtGui.QIcon:
+        """Иконка списка."""
+        svg = '''<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <line x1="8" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="8" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="8" y1="18" x2="21" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="3" cy="6" r="1" fill="currentColor"/>
+            <circle cx="3" cy="12" r="1" fill="currentColor"/>
+            <circle cx="3" cy="18" r="1" fill="currentColor"/>
+        </svg>'''
+        return CustomIcons.create_icon_from_svg(svg, color)
+    
+    @staticmethod
+    def calendar_icon(color: str = "#E4E4E7") -> QtGui.QIcon:
+        """Иконка календаря."""
+        svg = '''<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
+            <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="2"/>
+        </svg>'''
+        return CustomIcons.create_icon_from_svg(svg, color)
+    
+    @staticmethod
+    def delete_icon(color: str = "#E4E4E7") -> QtGui.QIcon:
+        """Иконка удаления."""
+        svg = '''<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 6H5H21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M8 6V4C8 3.44772 8.44772 3 9 3H15C15.5523 3 16 3.44772 16 4V6M19 6V20C19 20.5523 18.5523 21 18 21H6C5.44772 21 5 20.5523 5 20V6H19Z" 
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M10 11V17M14 11V17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>'''
+        return CustomIcons.create_icon_from_svg(svg, color)
+    
+    @staticmethod
+    def plus_icon(color: str = "#E4E4E7") -> QtGui.QIcon:
+        """Иконка плюса."""
+        svg = '''<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 5V19M5 12H19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>'''
+        return CustomIcons.create_icon_from_svg(svg, color)

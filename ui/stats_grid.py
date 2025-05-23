@@ -407,31 +407,19 @@ class StatsGrid(QtWidgets.QWidget):
         
         # Создаем серию баров
         series = QBarSeries()
-        series.setBarWidth(0.8)  # Ширина столбцов относительно категории
         
-        colors = [
-            "#10B981",  # 1 место - ярко-зеленый
-            "#34D399",  # 2 место - зеленый
-            "#6EE7B7",  # 3 место - светло-зеленый
-            "#FCD34D",  # 4 место - желтый
-            "#F59E0B",  # 5 место - оранжевый
-            "#EF4444",  # 6 место - красный
-            "#DC2626",  # 7 место - темно-красный
-            "#B91C1C",  # 8 место - еще темнее
-            "#991B1B",  # 9 место - самый темный красный
-        ]
+        # Создаем один QBarSet со всеми значениями
+        bar_set = QBarSet("")
         
-        # Создаем отдельный QBarSet для каждого места
+        # Добавляем значения для каждого места
         for place in range(1, 10):
             count = place_dist.get(place, 0)
-            bar_set = QBarSet(str(place))
             bar_set.append(count)
-            bar_set.setColor(QtGui.QColor(colors[place-1]))
-            series.append(bar_set)
             
+        series.append(bar_set)
         chart.addSeries(series)
         
-        # Настройка оси X (категории)
+        # Настройка оси X (категории) - места от 1 до 9
         axis_x = QBarCategoryAxis()
         axis_x.append([str(i) for i in range(1, 10)])
         axis_x.setTitleText("Место")
@@ -463,5 +451,26 @@ class StatsGrid(QtWidgets.QWidget):
         
         # Устанавливаем отступы для графика
         chart.setMargins(QtCore.QMargins(10, 10, 10, 10))
+        
+        # Настраиваем цвета для столбцов через делегат отрисовки
+        colors = [
+            "#10B981",  # 1 место - ярко-зеленый
+            "#34D399",  # 2 место - зеленый
+            "#6EE7B7",  # 3 место - светло-зеленый
+            "#FCD34D",  # 4 место - желтый
+            "#F59E0B",  # 5 место - оранжевый
+            "#EF4444",  # 6 место - красный
+            "#DC2626",  # 7 место - темно-красный
+            "#B91C1C",  # 8 место - еще темнее
+            "#991B1B",  # 9 место - самый темный красный
+        ]
+        
+        # Применяем градиент к bar_set
+        gradient = QtGui.QLinearGradient(0, 0, 1, 0)
+        gradient.setCoordinateMode(QtGui.QGradient.CoordinateMode.ObjectBoundingMode)
+        gradient.setColorAt(0.0, QtGui.QColor(colors[0]))
+        gradient.setColorAt(0.5, QtGui.QColor(colors[4]))
+        gradient.setColorAt(1.0, QtGui.QColor(colors[8]))
+        bar_set.setBrush(QtGui.QBrush(gradient))
         
         self.chart_view.setChart(chart)
