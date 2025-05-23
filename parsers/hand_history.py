@@ -26,7 +26,7 @@ RE_TABLE_INFO = re.compile(r"^Table '\d+' (?P<table_size>\d+)-max Seat #\d+ is t
 RE_BLINDS_HEADER = re.compile(r"Level\d+\(([\d,]+)/([\d,]+)\)") # Для поиска блайндов в заголовке раздачи
 RE_SEAT = re.compile(r'^Seat \d+: (?P<player_name>[^()]+?) \((?P<stack>[-\d,]+) in chips\)')
 RE_ACTION = re.compile(
-    r'^(?P<player_name>[^:]+): (?P<action>posts|bets|calls|raises|all-in|checks|folds)\b'
+    r'^(?P<player_name>[^:]+): (?P<action>posts|bets|calls|raises|all-in|checks|folds|shows)\b'
     r'(?:.*?([\d,]+))?.*?$'
 )
 RE_RAISE_TO = re.compile(r'raises [\d,]+ to ([\d,]+)')
@@ -322,7 +322,53 @@ class HandHistoryParser(BaseParser):
         # финальные стеки и all-in статусы
         final_stacks = {pl: seats[pl] - contrib.get(pl, 0) + collects.get(pl, 0)
                         for pl in seats}
-        all_in_players = {pl for pl in seats if contrib.get(pl, 0) >= seats[pl]}
+        
+        # Определяем all-in игроков (включая авто-олл-ины)
+        all_in_players = set()
+        auto_all_ins = set()
+        
+        # Проверяем авто-олл-ины
+        for pl, stack in seats.items():
+            forced_bet = 0
+            ante_amount = 0
+            blind_amount = 0
+            
+            # Ищем анте и блайнды для этого игрока
+            for line in lines[:idx]:
+                if f"{pl}: posts the ante" in line:
+                    m = re.search(r'ante (\d+)', line)
+                    if m:
+                        ante_amount = int(m.group(1))
+                elif f"{pl}: posts small blind" in line:
+                    m = re.search(r'blind (\d+)', line)
+                    if m:
+                        blind_amount = int(m.group(1))
+                elif f"{pl}: posts big blind" in line:
+                    m = re.search(r'blind (\d+)', line)
+                    if m:
+                        blind_amount = int(m.group(1))
+            
+            # Определяем обязательную ставку в зависимости от позиции
+            if blind_amount > 0:
+                # Игрок на SB или BB
+                forced_bet = blind_amount + ante_amount
+            else:
+                # Игрок на других позициях - только анте
+                forced_bet = ante_amount
+            
+            # Если стек <= обязательной ставки - это авто-олл-ин
+            if forced_bet > 0 and stack <= forced_bet:
+                auto_all_ins.add(pl)
+                logger.debug(f"Auto all-in: {pl} with stack {stack} <= forced bet {forced_bet}")
+        
+        # Добавляем обычные all-in
+        for pl in seats:
+            # Игрок all-in если вложил весь стек ИЛИ его стек после раздачи = 0
+            if contrib.get(pl, 0) >= seats[pl] or final_stacks.get(pl, 0) <= 0:
+                all_in_players.add(pl)
+        
+        # Объединяем с авто-олл-инами
+        all_in_players.update(auto_all_ins)
 
         hand_data.contrib = contrib
         hand_data.collects = collects
@@ -340,69 +386,84 @@ class HandHistoryParser(BaseParser):
     def _parse_actions_and_collects(self, lines: List[str], preflop_blinds: Dict[str, int] = None) -> Tuple[Dict[str, int], Dict[str, int]]:
         """
         Парсит действия и сборы из части раздачи, начиная с *** HOLE CARDS ***.
+        
+        ВАЖНО: preflop_blinds содержит ТОЛЬКО блайнды (не анте!)
+        Анте уже учтены в preflop_contrib в вызывающем методе.
         """
         contrib: Dict[str, int] = {}
-        committed: Dict[str, int] = {}  # Сколько вложено в текущем стрите
+        street_contrib: Dict[str, int] = {}  # Вклады на текущей улице
         collects: Dict[str, int] = {}
         
+        # На префлопе игроки с блайндами уже имеют вклады
+        if preflop_blinds:
+            street_contrib = preflop_blinds.copy()
+        
         idx = 0
-        # Парсим действия до SHOWDOWN или SUMMARY
+        current_street = 'PREFLOP'
+        
         while idx < len(lines) and not lines[idx].strip().startswith(('*** SHOWDOWN', '*** SUMMARY')):
             line = lines[idx].strip()
             
-            # Проверяем начало нового стрита
-            if line.startswith('*** FLOP ***') or line.startswith('*** TURN ***') or line.startswith('*** RIVER ***'):
-                committed.clear()  # Сбрасываем committed для нового раунда торговли
+            # Новая улица - сбрасываем street_contrib
+            if line.startswith('*** FLOP ***'):
+                street_contrib.clear()
+                current_street = 'FLOP'
+            elif line.startswith('*** TURN ***'):
+                street_contrib.clear()
+                current_street = 'TURN'
+            elif line.startswith('*** RIVER ***'):
+                street_contrib.clear()
+                current_street = 'RIVER'
             
-            # Парсим действия
             m_action = RE_ACTION.match(line)
             if m_action:
                 pl = NAME(m_action.group('player_name'))
                 act = m_action.group('action')
-                # Get amount from the third group (index 2)
                 amt_str = m_action.group(3) if len(m_action.groups()) > 2 else None
                 amt = CHIP(amt_str) if amt_str else 0
                 
                 if act in ('posts', 'bets', 'calls', 'all-in'):
                     contrib[pl] = contrib.get(pl, 0) + amt
-                    committed[pl] = committed.get(pl, 0) + amt
+                    street_contrib[pl] = street_contrib.get(pl, 0) + amt
                 elif act == 'raises':
+                    # Пример: "d16ad03f: raises 2,846 to 3,146"
+                    # Это значит рейз НА 2,846, всего ставка 3,146
                     m_raise_to = RE_RAISE_TO.search(line)
                     if m_raise_to:
                         total_to = CHIP(m_raise_to.group(1))
-                        prev_committed = committed.get(pl, 0)
+                        # Сколько игрок уже поставил на этой улице
+                        already_on_street = street_contrib.get(pl, 0)
+                        # Сколько нужно доставить
+                        to_add = total_to - already_on_street
                         
-                        # Если это первый рейз игрока и у него был блайнд, учитываем его
-                        if prev_committed == 0 and preflop_blinds and pl in preflop_blinds:
-                            prev_committed = preflop_blinds[pl]
-                            committed[pl] = prev_committed  # Инициализируем committed блайндом
-                            
-                        diff = total_to - prev_committed
-                        contrib[pl] = contrib.get(pl, 0) + diff
-                        committed[pl] = total_to
-                    else:
-                        logger.warning(f"Found 'raises' action without 'to' amount: {line}")
+                        if to_add < 0:
+                            logger.warning(f"Negative raise amount: {pl} raises to {total_to}, but already has {already_on_street} on street")
+                            to_add = 0
                         
-            # Парсим Uncalled bet
+                        contrib[pl] = contrib.get(pl, 0) + to_add
+                        street_contrib[pl] = total_to
+                        
+                        logger.debug(f"{current_street}: {pl} raises to {total_to} (was {already_on_street}, adds {to_add})")
+            
+            # Uncalled bet
             m_unc = RE_UNCALLED.match(line)
             if m_unc:
                 amt_str, pl_name = m_unc.groups()
                 pl = NAME(pl_name)
                 val = CHIP(amt_str)
-                contrib[pl] = contrib.get(pl, 0) - val
-                committed[pl] = committed.get(pl, 0) - val
-                
-            idx += 1
+                contrib[pl] = max(0, contrib.get(pl, 0) - val)
+                street_contrib[pl] = max(0, street_contrib.get(pl, 0) - val)
             
-        # Парсим collected из всей оставшейся части раздачи
-        # (collected находится между SHOWDOWN и SUMMARY в файлах GG Poker)
+            idx += 1
+        
+        # Парсим collected
         for j in range(idx, len(lines)):
             line = lines[j].strip()
             m_collected = RE_COLLECTED.match(line)
             if m_collected:
                 pl, amt_str = m_collected.groups()
                 collects[NAME(pl)] = collects.get(NAME(pl), 0) + CHIP(amt_str)
-                
+        
         return contrib, collects
 
     def _identify_eliminated_players(self):
@@ -452,43 +513,36 @@ class HandHistoryParser(BaseParser):
 
     def _count_ko_in_hand_from_data(self, hand: HandData) -> int:
         """
-        Подсчитывает количество нокаутов Hero в данной раздаче, используя данные HandData.
-        Игрок считается выбитым Hero если:
-        1. Он отсутствует в следующей раздаче (определено в _identify_eliminated_players)
-        2. Hero покрывал его стек
-        3. Hero выиграл пот, к которому игрок имел отношение
+        Подсчитывает количество нокаутов Hero в данной раздаче.
+        Логика: если игрок выбыл И Hero выиграл пот с его фишками = KO
         """
         if config.HERO_NAME not in hand.seats:
-            return 0 # Hero не участвовал в раздаче
+            return 0
 
-        hero_stack_at_start = hand.hero_stack # Стек Hero в начале раздачи
         ko_count = 0
         
-        
-        # Используем информацию о выбывших игроках, добавленную методом _identify_eliminated_players
+        # Проходим по всем выбывшим игрокам
         for knocked_out_player in hand.eliminated_players:
             if knocked_out_player == config.HERO_NAME:
                 continue
-
-            # Находим пот(ы), к которым имел отношение выбывший игрок
-            relevant_pots = [
-                pot for pot in hand.pots
-                if knocked_out_player in pot.eligible
-            ]
-
-            # Проверяем условие покрытия стека
-            knocked_out_stack = hand.seats.get(knocked_out_player, 0)
-            went_all_in = knocked_out_player in hand.all_in_players
-            covered = hero_stack_at_start is not None and hero_stack_at_start >= knocked_out_stack
-
-            if went_all_in and covered:
-                # Если Hero покрывал стек, проверяем, выиграл ли Hero какой-либо из релевантных потов
-                hero_won_relevant_pot = any(
-                    config.HERO_NAME in pot.winners for pot in relevant_pots
-                )
-
-                if hero_won_relevant_pot:
-                    ko_count += 1
-                    logger.debug(f"Турнир {hand.tournament_id}, Раздача {hand.hand_number}: KO Hero за {knocked_out_player}. All-in: {went_all_in}, Покрывал: {covered}, Hero выиграл пот: {hero_won_relevant_pot}.")
-
+            
+            # Находим поты, в которых участвовал выбывший
+            relevant_pots = [pot for pot in hand.pots if knocked_out_player in pot.eligible]
+            
+            if not relevant_pots:
+                logger.warning(f"No pots found for eliminated player {knocked_out_player}")
+                continue
+            
+            # Проверяем, выиграл ли Hero хотя бы один из этих потов
+            hero_won_pot = False
+            for pot in relevant_pots:
+                if config.HERO_NAME in pot.winners:
+                    hero_won_pot = True
+                    break
+            
+            if hero_won_pot:
+                # Hero выиграл пот с фишками выбывшего = KO
+                ko_count += 1
+                logger.debug(f"KO counted: {config.HERO_NAME} knocked out {knocked_out_player} in hand {hand.hand_id}")
+        
         return ko_count
