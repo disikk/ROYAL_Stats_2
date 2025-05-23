@@ -27,7 +27,7 @@ RE_BLINDS_HEADER = re.compile(r"Level\d+\(([\d,]+)/([\d,]+)\)") # Для пои�
 RE_SEAT = re.compile(r'^Seat \d+: (?P<player_name>[^()]+?) \((?P<stack>[-\d,]+) in chips\)')
 RE_ACTION = re.compile(
     r'^(?P<player_name>[^:]+): (?P<action>posts|bets|calls|raises|all-in|checks|folds)\b'
-    r'(?:.*?)(?P<amount>[\d,]+)?'
+    r'(?:.*?([\d,]+))?.*?$'
 )
 RE_RAISE_TO = re.compile(r'raises [\d,]+ to ([\d,]+)')
 RE_UNCALLED = re.compile(r'^Uncalled bet \(([\d,]+)\) returned to ([^\n]+)')
@@ -298,16 +298,24 @@ class HandHistoryParser(BaseParser):
         
         # --- ante / SB / BB до HOLE CARDS ---
         preflop_contrib: Dict[str, int] = {}
+        preflop_blinds: Dict[str, int] = {}  # Отдельно отслеживаем блайнды для рейзов
         for pre_line in lines[:idx]:
             m_post = RE_ACTION.match(pre_line.strip())
             if m_post and m_post.group('action') == 'posts':
                 pl = NAME(m_post.group('player_name'))
-                preflop_contrib[pl] = preflop_contrib.get(pl, 0) + CHIP(m_post.group('amount'))
+                # Get amount from the third group (index 2)
+                amount_str = m_post.group(3) if len(m_post.groups()) > 2 else None
+                amount = CHIP(amount_str) if amount_str else 0
+                if amount > 0:
+                    preflop_contrib[pl] = preflop_contrib.get(pl, 0) + amount
+                    # Если это блайнд (не анте), сохраняем для учета в рейзах
+                    if 'blind' in pre_line.lower():
+                        preflop_blinds[pl] = preflop_blinds.get(pl, 0) + amount
 
-        contrib_act, collects = self._parse_actions_and_collects(lines[idx:])
+        contrib_act, collects = self._parse_actions_and_collects(lines[idx:], preflop_blinds)
 
         # объединяем
-        contrib = contrib_act
+        contrib = contrib_act.copy()  # Start with a copy to avoid modifying contrib_act
         for pl, val in preflop_contrib.items():
             contrib[pl] = contrib.get(pl, 0) + val
 
@@ -321,7 +329,7 @@ class HandHistoryParser(BaseParser):
         hand_data.final_stacks = final_stacks
         hand_data.all_in_players = all_in_players
         # --- сразу фиксируем, кто вылетел в этой же раздаче ---
-        hand_data.eliminated_players = {pl for pl, stk in final_stacks.items() if stk == 0}
+        hand_data.eliminated_players = {pl for pl, stk in final_stacks.items() if stk <= 0}
         
         if hand_data.contrib:  # Строим банки только если были вклады
             hand_data.pots = self._build_pots(hand_data.contrib)
@@ -329,7 +337,7 @@ class HandHistoryParser(BaseParser):
             
         return hand_data
         
-    def _parse_actions_and_collects(self, lines: List[str]) -> Tuple[Dict[str, int], Dict[str, int]]:
+    def _parse_actions_and_collects(self, lines: List[str], preflop_blinds: Dict[str, int] = None) -> Tuple[Dict[str, int], Dict[str, int]]:
         """
         Парсит действия и сборы из части раздачи, начиная с *** HOLE CARDS ***.
         """
@@ -342,14 +350,18 @@ class HandHistoryParser(BaseParser):
         while idx < len(lines) and not lines[idx].strip().startswith(('*** SHOWDOWN', '*** SUMMARY')):
             line = lines[idx].strip()
             
+            # Проверяем начало нового стрита
+            if line.startswith('*** FLOP ***') or line.startswith('*** TURN ***') or line.startswith('*** RIVER ***'):
+                committed.clear()  # Сбрасываем committed для нового раунда торговли
+            
             # Парсим действия
             m_action = RE_ACTION.match(line)
             if m_action:
-                action_groups = m_action.groupdict()
-                pl = NAME(action_groups['player_name'])
-                act = action_groups['action']
-                amt_str = action_groups.get('amount')
-                amt = CHIP(amt_str)
+                pl = NAME(m_action.group('player_name'))
+                act = m_action.group('action')
+                # Get amount from the third group (index 2)
+                amt_str = m_action.group(3) if len(m_action.groups()) > 2 else None
+                amt = CHIP(amt_str) if amt_str else 0
                 
                 if act in ('posts', 'bets', 'calls', 'all-in'):
                     contrib[pl] = contrib.get(pl, 0) + amt
@@ -359,6 +371,12 @@ class HandHistoryParser(BaseParser):
                     if m_raise_to:
                         total_to = CHIP(m_raise_to.group(1))
                         prev_committed = committed.get(pl, 0)
+                        
+                        # Если это первый рейз игрока и у него был блайнд, учитываем его
+                        if prev_committed == 0 and preflop_blinds and pl in preflop_blinds:
+                            prev_committed = preflop_blinds[pl]
+                            committed[pl] = prev_committed  # Инициализируем committed блайндом
+                            
                         diff = total_to - prev_committed
                         contrib[pl] = contrib.get(pl, 0) + diff
                         committed[pl] = total_to
@@ -376,23 +394,14 @@ class HandHistoryParser(BaseParser):
                 
             idx += 1
             
-        # Ищем секцию SUMMARY
-        summary_idx = -1
+        # Парсим collected из всей оставшейся части раздачи
+        # (collected находится между SHOWDOWN и SUMMARY в файлах GG Poker)
         for j in range(idx, len(lines)):
-            if RE_SUMMARY.match(lines[j]):
-                summary_idx = j
-                break
-                
-        # Парсим сборы после SUMMARY
-        if summary_idx != -1:
-            collect_idx = summary_idx + 1
-            while collect_idx < len(lines):
-                line = lines[collect_idx]
-                m_collected = RE_COLLECTED.match(line)
-                if m_collected:
-                    pl, amt_str = m_collected.groups()
-                    collects[NAME(pl)] = collects.get(NAME(pl), 0) + CHIP(amt_str)
-                collect_idx += 1
+            line = lines[j].strip()
+            m_collected = RE_COLLECTED.match(line)
+            if m_collected:
+                pl, amt_str = m_collected.groups()
+                collects[NAME(pl)] = collects.get(NAME(pl), 0) + CHIP(amt_str)
                 
         return contrib, collects
 
@@ -454,6 +463,7 @@ class HandHistoryParser(BaseParser):
 
         hero_stack_at_start = hand.hero_stack # Стек Hero в начале раздачи
         ko_count = 0
+        
         
         # Используем информацию о выбывших игроках, добавленную методом _identify_eliminated_players
         for knocked_out_player in hand.eliminated_players:
