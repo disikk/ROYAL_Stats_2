@@ -419,6 +419,20 @@ class ApplicationService:
                   self.place_dist_repo.increment_place_count(tourney.finish_place)
         logger.debug("Распределение мест обновлено.")
 
+        # --- Обновление KO count для турниров ---
+        logger.debug("Обновление ko_count для турниров...")
+        all_tournaments = self.tournament_repo.get_all_tournaments()
+        for tournament in all_tournaments:
+            # Получаем все руки финального стола для этого турнира
+            tournament_ft_hands = self.ft_hand_repo.get_hands_by_tournament(tournament.tournament_id)
+            # Суммируем KO из всех рук
+            total_ko = sum(hand.hero_ko_this_hand for hand in tournament_ft_hands)
+            # Обновляем ko_count у турнира
+            tournament.ko_count = total_ko
+            # Сохраняем обновленный турнир
+            self.tournament_repo.add_or_update_tournament(tournament)
+        logger.debug("KO count для турниров обновлен.")
+
         # --- Обновление Session Stats ---
         logger.debug("Обновление статистики сессий...")
         sessions_to_update = self.session_repo.get_all_sessions()
