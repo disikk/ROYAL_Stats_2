@@ -1,220 +1,356 @@
 # -*- coding: utf-8 -*-
 
 """
-Модуль для стилизации приложения с помощью QSS (CSS для Qt).
-Содержит темную тему и вспомогательные функции для форматирования/стилизации виджетов.
+Стили и функции форматирования для приложения Royal Stats.
 """
-import logging
-from PyQt6 import QtWidgets, QtGui
-from PyQt6.QtCore import Qt, QLocale # Импортируем QLocale для форматирования денег
+
+from PyQt6 import QtWidgets, QtGui, QtCore
 from typing import Optional
 
-logger = logging.getLogger('ROYAL_Stats.AppStyle')
 
 def apply_dark_theme(app: QtWidgets.QApplication):
-    """Применяет темную тему ко всему приложению"""
+    """Применяет темную тему к приложению."""
     app.setStyle("Fusion")
-
-    # Создаем темную палитру
-    dark_palette = QtGui.QPalette()
-
-    # Определяем цвета
-    dark_color = QtGui.QColor(42, 42, 42)  # #2a2a2a
-    darker_color = QtGui.QColor(26, 26, 26)  # #1a1a1a
-    highlight_color = QtGui.QColor(34, 197, 94)  # #22c55e
-    disabled_color = QtGui.QColor(127, 127, 127)
-    text_color = QtGui.QColor(255, 255, 255)
-    bright_text = QtGui.QColor(255, 255, 255)
-    link_color = QtGui.QColor(99, 102, 241)
-    accent_color = QtGui.QColor(236, 72, 153)  # Розовый акцент для важных элементов
-
-    # Устанавливаем цвета в палитру
-    dark_palette.setColor(QtGui.QPalette.ColorRole.Window, dark_color)
-    dark_palette.setColor(QtGui.QPalette.ColorRole.WindowText, text_color)
-    dark_palette.setColor(QtGui.QPalette.ColorRole.Base, darker_color)
-    dark_palette.setColor(QtGui.QPalette.ColorRole.AlternateBase, dark_color.lighter(105)) # Слегка светлее для чередования строк
-    dark_palette.setColor(QtGui.QPalette.ColorRole.ToolTipBase, darker_color)
-    dark_palette.setColor(QtGui.QPalette.ColorRole.ToolTipText, text_color)
-    dark_palette.setColor(QtGui.QPalette.ColorRole.Text, text_color)
-    dark_palette.setColor(QtGui.QPalette.ColorRole.Button, dark_color)
-    dark_palette.setColor(QtGui.QPalette.ColorRole.ButtonText, text_color)
-    dark_palette.setColor(QtGui.QPalette.ColorRole.BrightText, bright_text)
-    dark_palette.setColor(QtGui.QPalette.ColorRole.Link, link_color)
-    dark_palette.setColor(QtGui.QPalette.ColorRole.Highlight, highlight_color) # Цвет выделения
-    dark_palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, text_color) # Цвет текста в выделенном элементе
-    dark_palette.setColor(QtGui.QPalette.ColorRole.PlaceholderText, disabled_color) # Цвет текста-подсказки
-
-    # Для неактивных элементов
-    dark_palette.setColor(QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.Text, disabled_color)
-    dark_palette.setColor(QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.ButtonText, disabled_color)
-    dark_palette.setColor(QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.WindowText, disabled_color)
-    dark_palette.setColor(QtGui.QPalette.ColorGroup.Disabled, QtGui.QPalette.ColorRole.HighlightedText, disabled_color)
-
-
-    # Применяем палитру
-    app.setPalette(dark_palette)
-
-    # Дополнительный QSS для улучшения стиля
-    # Используем более мягкие границы и фон
+    
+    # Основная палитра темной темы
+    palette = QtGui.QPalette()
+    palette.setColor(QtGui.QPalette.ColorRole.Window, QtGui.QColor(24, 24, 27))  # #18181B
+    palette.setColor(QtGui.QPalette.ColorRole.WindowText, QtGui.QColor(244, 244, 245))  # #F4F4F5
+    palette.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor(39, 39, 42))  # #27272A
+    palette.setColor(QtGui.QPalette.ColorRole.AlternateBase, QtGui.QColor(45, 45, 48))  # #2D2D30
+    palette.setColor(QtGui.QPalette.ColorRole.ToolTipBase, QtCore.Qt.GlobalColor.black)
+    palette.setColor(QtGui.QPalette.ColorRole.ToolTipText, QtCore.Qt.GlobalColor.white)
+    palette.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor(228, 228, 231))  # #E4E4E7
+    palette.setColor(QtGui.QPalette.ColorRole.Button, QtGui.QColor(63, 63, 70))  # #3F3F46
+    palette.setColor(QtGui.QPalette.ColorRole.ButtonText, QtGui.QColor(244, 244, 245))  # #F4F4F5
+    palette.setColor(QtGui.QPalette.ColorRole.BrightText, QtCore.Qt.GlobalColor.red)
+    palette.setColor(QtGui.QPalette.ColorRole.Link, QtGui.QColor(59, 130, 246))  # #3B82F6
+    palette.setColor(QtGui.QPalette.ColorRole.Highlight, QtGui.QColor(59, 130, 246))  # #3B82F6
+    palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtCore.Qt.GlobalColor.white)
+    
+    app.setPalette(palette)
+    
+    # Дополнительные стили для виджетов
     app.setStyleSheet("""
-    * {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    }
-    QMainWindow {
-        background-color: #1a1a1a;
-    }
-    QTabWidget::pane {
-        border: 1px solid #374151;
-        border-radius: 4px;
-        padding: 4px;
-        background-color: #2a2a2a;
-    }
-    QTabBar::tab {
-        background: #2a2a2a;
-        color: #9ca3af;
-        border: 1px solid #374151;
-        border-bottom: none;
-        padding: 4px 8px;
-        margin-right: 3px;
-        border-top-left-radius: 5px;
-        border-top-right-radius: 5px;
-        font-size: 12px;
-    }
-    QTabBar::tab:selected {
-        background: #2a2a2a;
-        color: #ffffff;
-        border: 1px solid #374151;
-        border-bottom-color: #2a2a2a;
-    }
-    QTabBar::tab:hover {
-        background: #374151;
-    }
-    QPushButton {
-        background-color: #22c55e;
-        color: white;
-        border: none;
-        padding: 6px 12px;
-        border-radius: 4px;
-        font-weight: bold;
-    }
-    QPushButton:hover {
-        background-color: #16a34a;
-    }
-    QGroupBox {
-        border: 1px solid #374151;
-        border-radius: 6px;
-        margin-top: 20px;
-        background-color: #2a2a2a;
-        padding: 8px;
-        padding-top: 16px;
-    }
-    QGroupBox::title {
-        subcontrol-origin: margin;
-        subcontrol-position: top center;
-        padding: 0 8px;
-        background-color: #2a2a2a;
-        color: #9ca3af;
-        font-weight: 600;
-        font-size: 12px;
-        border-radius: 4px;
-    }
+        QToolTip {
+            color: #FAFAFA;
+            background-color: #27272A;
+            border: 1px solid #3F3F46;
+            padding: 4px;
+            border-radius: 4px;
+        }
+        
+        QMenu {
+            background-color: #27272A;
+            border: 1px solid #3F3F46;
+            padding: 4px;
+            border-radius: 8px;
+        }
+        
+        QMenu::item {
+            padding: 8px 20px;
+            border-radius: 4px;
+        }
+        
+        QMenu::item:selected {
+            background-color: #3F3F46;
+        }
+        
+        QPushButton {
+            background-color: #3F3F46;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+        
+        QPushButton:hover {
+            background-color: #52525B;
+        }
+        
+        QPushButton:pressed {
+            background-color: #27272A;
+        }
+        
+        QLineEdit {
+            background-color: #27272A;
+            border: 1px solid #3F3F46;
+            padding: 8px;
+            border-radius: 6px;
+            selection-background-color: #3B82F6;
+        }
+        
+        QLineEdit:focus {
+            border: 1px solid #3B82F6;
+        }
+        
+        QComboBox {
+            background-color: #27272A;
+            border: 1px solid #3F3F46;
+            padding: 6px 12px;
+            border-radius: 6px;
+            min-width: 100px;
+        }
+        
+        QComboBox:hover {
+            border: 1px solid #52525B;
+        }
+        
+        QComboBox::drop-down {
+            border: none;
+            padding-right: 8px;
+        }
+        
+        QComboBox::down-arrow {
+            image: none;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 5px solid #A1A1AA;
+            margin-right: 5px;
+        }
+        
+        QTableWidget {
+            background-color: #18181B;
+            gridline-color: #3F3F46;
+            border: none;
+        }
+        
+        QTableWidget::item {
+            padding: 8px;
+            border: none;
+        }
+        
+        QTableWidget::item:selected {
+            background-color: #3B82F6;
+        }
+        
+        QHeaderView::section {
+            background-color: #27272A;
+            color: #A1A1AA;
+            padding: 8px;
+            border: none;
+            border-bottom: 2px solid #3F3F46;
+            font-weight: 600;
+        }
+        
+        QScrollBar:vertical {
+            background-color: #18181B;
+            width: 12px;
+            border-radius: 6px;
+        }
+        
+        QScrollBar::handle:vertical {
+            background-color: #3F3F46;
+            border-radius: 6px;
+            min-height: 20px;
+        }
+        
+        QScrollBar::handle:vertical:hover {
+            background-color: #52525B;
+        }
+        
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+            height: 0px;
+        }
+        
+        QTabWidget::pane {
+            border: none;
+            background-color: #18181B;
+        }
+        
+        QTabBar::tab {
+            background-color: #27272A;
+            color: #A1A1AA;
+            padding: 10px 20px;
+            margin-right: 4px;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+        }
+        
+        QTabBar::tab:selected {
+            background-color: #18181B;
+            color: #FAFAFA;
+        }
+        
+        QTabBar::tab:hover:!selected {
+            background-color: #3F3F46;
+        }
+        
+        QProgressDialog {
+            background-color: #27272A;
+            border-radius: 12px;
+        }
+        
+        QProgressBar {
+            background-color: #3F3F46;
+            border-radius: 6px;
+            text-align: center;
+            color: #FAFAFA;
+        }
+        
+        QProgressBar::chunk {
+            background-color: #3B82F6;
+            border-radius: 6px;
+        }
     """)
 
 
-def format_money(value: Optional[float], with_plus: bool = False) -> str:
+def format_money(value: Optional[float], decimals: int = 2, currency: str = "$", with_plus: bool = False) -> str:
     """
-    Форматирует денежное значение с символом валюты и локалью.
-    Всегда использует US English локаль для форматирования в формате "$X.XX".
+    Форматирует денежное значение.
+    
+    Args:
+        value: Числовое значение (может быть None)
+        decimals: Количество знаков после запятой
+        currency: Символ валюты
+        with_plus: Добавлять ли знак + для положительных значений
+    
+    Returns:
+        Отформатированная строка
     """
+    # Обрабатываем None значения как 0
     if value is None:
-        return "$-.--"
-
-    try:
-        # Используем US English локаль для постоянного форматирования в формате $X.XX
-        locale = QLocale(QLocale.Language.English, QLocale.Country.UnitedStates)
-        # Отключаем стандартный символ валюты локали, чтобы добавить $ вручную
-        locale.setNumberOptions(QLocale.NumberOption.OmitGroupSeparator | QLocale.NumberOption.OmitLeadingZeroInExponent)
-        formatted_value = locale.toString(value, 'f', 2)  # 2 знака после запятой
-
-        prefix = "+" if with_plus and value > 0 else ""
-        # Возвращаем отформатированное значение с символом валюты в начале
-        return f"{prefix}${formatted_value}"
-    except (ValueError, TypeError):
-        return str(value)  # Возвращаем исходное значение как строку, если форматирование не удалось
-
-def format_percentage(value: Optional[float], decimals: int = 2) -> str:
-    """
-    Форматирует значение как процент.
-    Всегда использует US English локаль для постоянного форматирования.
-    """
-    if value is None:
-        return "-.-- %"
-    try:
-        locale = QLocale(QLocale.Language.English, QLocale.Country.UnitedStates)
-        # Отключаем разделители групп для обеспечения единообразного форматирования
-        locale.setNumberOptions(QLocale.NumberOption.OmitGroupSeparator | QLocale.NumberOption.OmitLeadingZeroInExponent)
-        formatted_value = locale.toString(value, 'f', decimals)
-        return f"{formatted_value} %"
-    except (ValueError, TypeError):
-         return str(value)
-
-
-def apply_cell_color_by_value(item, value: Optional[float]):
-    """
-    Применяет цвет текста к виджету в зависимости от значения (для прибыли/убытка).
-    Поддерживает как QTableWidgetItem, так и QLabel.
-    """
-    if value is None:
-        color = QtGui.QColor(200, 200, 200)  # Серый для None
+        value = 0.0
+    
+    if value >= 0:
+        sign = "+" if with_plus else ""
     else:
-        try:
-            val = float(value)
-            if val > 0:
-                color = QtGui.QColor(46, 204, 113)  # Зеленый
-            elif val < 0:
-                color = QtGui.QColor(231, 76, 60)  # Красный
-            else:
-                color = QtGui.QColor(255, 255, 255)  # Белый или нейтральный
-        except (ValueError, TypeError):
-            color = QtGui.QColor(200, 200, 200)  # Серый для нечисловых
-            
-    # Применяем цвет в зависимости от типа виджета
-    if isinstance(item, QtWidgets.QTableWidgetItem):
-        item.setForeground(QtGui.QBrush(color))
-    elif isinstance(item, QtWidgets.QLabel):
-        item.setStyleSheet(f"color: rgb({color.red()}, {color.green()}, {color.blue()});")
+        sign = "-"
+        value = abs(value)
+    
+    if decimals == 0:
+        return f"{sign}{currency}{value:,.0f}"
     else:
-        logger.warning(f"Неподдерживаемый тип виджета для apply_cell_color_by_value: {type(item)}")
+        return f"{sign}{currency}{value:,.{decimals}f}"
+
+
+def format_percentage(value: float, decimals: int = 1, with_plus: bool = False) -> str:
+    """
+    Форматирует процентное значение.
+    
+    Args:
+        value: Числовое значение процента
+        decimals: Количество знаков после запятой
+        with_plus: Добавлять ли знак + для положительных значений
+    
+    Returns:
+        Отформатированная строка
+    """
+    if value >= 0 and with_plus:
+        return f"+{value:.{decimals}f}%"
+    else:
+        return f"{value:.{decimals}f}%"
+
+
+def apply_cell_color_by_value(widget_or_item, value: Optional[float]):
+    """
+    Применяет цвет к виджету или элементу таблицы в зависимости от значения (красный/зеленый).
+    
+    Args:
+        widget_or_item: QWidget или QTableWidgetItem для изменения цвета
+        value: Значение для определения цвета (может быть None)
+    """
+    # Обрабатываем None значения
+    if value is None:
+        color = "#71717A"  # Темно-серый для None
+    elif value > 0:
+        color = "#10B981"  # Зеленый для положительных
+    elif value < 0:
+        color = "#EF4444"  # Красный для отрицательных
+    else:
+        color = "#A1A1AA"  # Серый для нулевых
+    
+    # Проверяем тип объекта
+    if isinstance(widget_or_item, QtWidgets.QTableWidgetItem):
+        # Для QTableWidgetItem используем setForeground
+        widget_or_item.setForeground(QtGui.QBrush(QtGui.QColor(color)))
+    elif hasattr(widget_or_item, 'styleSheet'):
+        # Для виджетов используем styleSheet
+        current_style = widget_or_item.styleSheet()
+        # Обновляем или добавляем цвет в стиль
+        if "color:" in current_style:
+            # Заменяем существующий цвет
+            import re
+            new_style = re.sub(r'color:\s*[^;]+;', f'color: {color};', current_style)
+            widget_or_item.setStyleSheet(new_style)
+        else:
+            # Добавляем цвет к существующему стилю
+            widget_or_item.setStyleSheet(current_style + f" color: {color};")
+
+
+def create_separator() -> QtWidgets.QFrame:
+    """Создает горизонтальный разделитель."""
+    separator = QtWidgets.QFrame()
+    separator.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+    separator.setStyleSheet("QFrame { background-color: #3F3F46; max-height: 1px; margin: 16px 0; }")
+    return separator
+
 
 def setup_table_widget(table: QtWidgets.QTableWidget):
     """
-    Настраивает таблицу с улучшенным внешним видом и поведением.
+    Настраивает внешний вид таблицы в соответствии с темной темой.
+    
+    Args:
+        table: Виджет таблицы для настройки
     """
-    # Настройка растяжения содержимого
-    # table.horizontalHeader().setStretchLastSection(True) # Последняя секция растягивается
-    table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive) # Пользователь может менять размер
-    table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents) # ID по содержимому
-    table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Stretch) # Название турнира - растягивается
-    # Остальные колонки - ResizeToContents или Interactive по необходимости
-
-    # Альтернативная окраска строк
+    # Растягиваем последнюю колонку
+    table.horizontalHeader().setStretchLastSection(True)
+    
+    # Скрываем вертикальные линии сетки
+    table.setShowGrid(False)
+    
+    # Чередующиеся цвета строк
     table.setAlternatingRowColors(True)
-
-    # Подсказки на всю ячейку (можно убрать, если не нужно)
-    # table.setMouseTracking(True)
-    # table.setToolTipDuration(5000)
-
-    # Полноразмерная прокрутка
-    # scrollbar = table.verticalScrollBar()
-    # scrollbar.setSingleStep(1) # Оставляем дефолтный шаг или настраиваем
-
-    # Убираем фокусную рамку (может влиять на доступность)
-    # table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-
-    table.setWordWrap(False) # Отключаем перенос слов в ячейках
-
-    # Выравнивание текста в ячейках (по умолчанию слева)
-    # Можно настроить для конкретных колонок при заполнении данными
-
-
-    return table
+    
+    # Выделение целой строки
+    table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+    
+    # Запрет редактирования
+    table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+    
+    # Сортировка по клику на заголовок
+    table.setSortingEnabled(True)
+    
+    # Дополнительные стили
+    table.setStyleSheet("""
+        QTableWidget {
+            background-color: #18181B;
+            alternate-background-color: #1F1F23;
+            border: none;
+            gridline-color: #3F3F46;
+        }
+        
+        QTableWidget::item {
+            padding: 8px;
+            border: none;
+        }
+        
+        QTableWidget::item:selected {
+            background-color: #3B82F6;
+            color: white;
+        }
+        
+        QHeaderView::section {
+            background-color: #27272A;
+            color: #A1A1AA;
+            padding: 10px;
+            border: none;
+            border-bottom: 2px solid #3F3F46;
+            font-weight: 600;
+            text-align: left;
+        }
+        
+        QHeaderView::section:hover {
+            background-color: #3F3F46;
+            color: #FAFAFA;
+        }
+        
+        QTableWidget::item:hover {
+            background-color: #27272A;
+        }
+        
+        QTableCornerButton::section {
+            background-color: #27272A;
+            border: none;
+        }
+    """)

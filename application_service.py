@@ -546,8 +546,23 @@ class ApplicationService:
         # Среднее KO в ранней финалке на турнир (считаем только для турниров, достигших финалки)
         stats.early_ft_ko_per_tournament = stats.early_ft_ko_count / stats.total_final_tables if stats.total_final_tables > 0 else 0.0
 
+        # Логируем статистику по выплатам для отладки
+        tournaments_with_payout = sum(1 for t in all_tournaments if t.payout is not None and t.payout > 0)
+        tournaments_without_payout = sum(1 for t in all_tournaments if t.payout is None or t.payout == 0)
+        logger.info(f"Турниры с выплатами: {tournaments_with_payout}, без выплат: {tournaments_without_payout}")
+
+        # Логируем примеры турниров с выплатами для отладки Big KO
+        tournaments_with_big_payout = [t for t in all_tournaments 
+                                      if t.payout is not None and t.payout > 0 and t.buyin is not None 
+                                      and t.payout >= t.buyin * 10]
+        if tournaments_with_big_payout:
+            logger.info(f"Найдено {len(tournaments_with_big_payout)} турниров с выплатой >= 10x buyin:")
+            for t in tournaments_with_big_payout[:5]:  # Показываем первые 5
+                logger.info(f"  - Турнир {t.tournament_id}: место {t.finish_place}, "
+                           f"buyin=${t.buyin}, payout=${t.payout} "
+                           f"(ratio: {t.payout/t.buyin:.1f}x)")
+
         # Расчет Big KO (требует buyin и payout из турниров)
-        # Эта логика находится в плагине BigKOStat. Вызовем его.
         big_ko_results = BigKOStat().compute(all_tournaments, all_ft_hands, [], stats)
         logger.info(f"BigKO результаты: {big_ko_results}")
         stats.big_ko_x1_5 = big_ko_results.get("x1.5", 0)
