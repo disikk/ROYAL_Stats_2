@@ -192,6 +192,35 @@ def apply_dark_theme(app: QtWidgets.QApplication):
             background-color: #3B82F6;
             border-radius: 6px;
         }
+        
+        QLabel {
+            background-color: transparent;
+        }
+        
+        QScrollArea {
+            background-color: transparent;
+            border: none;
+        }
+        
+        QScrollBar:horizontal {
+            background-color: #18181B;
+            height: 12px;
+            border-radius: 6px;
+        }
+        
+        QScrollBar::handle:horizontal {
+            background-color: #3F3F46;
+            border-radius: 6px;
+            min-width: 20px;
+        }
+        
+        QScrollBar::handle:horizontal:hover {
+            background-color: #52525B;
+        }
+        
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+            width: 0px;
+        }
     """)
 
 
@@ -275,6 +304,8 @@ def apply_cell_color_by_value(widget_or_item, value: Optional[float]):
             widget_or_item.setStyleSheet(new_style)
         else:
             # Добавляем цвет к существующему стилю
+            if current_style and not current_style.endswith(';'):
+                current_style += ';'
             widget_or_item.setStyleSheet(current_style + f" color: {color};")
 
 
