@@ -59,7 +59,7 @@ class FinalTableHandRepository:
             ORDER BY hand_number ASC
         """
         results = self.db.execute_query(query, (tournament_id,))
-        return [FinalTableHand.from_dict(row) for row in results]
+        return [FinalTableHand.from_dict(dict(row)) for row in results]
 
     def get_hands_by_session(self, session_id: str) -> List[FinalTableHand]:
         """
@@ -74,7 +74,7 @@ class FinalTableHandRepository:
             ORDER BY hand_number ASC
         """
         results = self.db.execute_query(query, (session_id,))
-        return [FinalTableHand.from_dict(row) for row in results]
+        return [FinalTableHand.from_dict(dict(row)) for row in results]
 
     def get_all_hands(self) -> List[FinalTableHand]:
          """
@@ -88,7 +88,7 @@ class FinalTableHandRepository:
              ORDER BY hand_number ASC -- Порядок важен для определения первой руки
          """
          results = self.db.execute_query(query)
-         return [FinalTableHand.from_dict(row) for row in results]
+         return [FinalTableHand.from_dict(dict(row)) for row in results]
 
 
     def get_early_final_hands(self, session_id: Optional[str] = None) -> List[FinalTableHand]:
@@ -111,7 +111,7 @@ class FinalTableHandRepository:
         query += " ORDER BY hand_number ASC"
 
         results = self.db.execute_query(query, params)
-        return [FinalTableHand.from_dict(row) for row in results]
+        return [FinalTableHand.from_dict(dict(row)) for row in results]
 
     def get_first_final_table_hand_for_tournament(self, tournament_id: str) -> Optional[FinalTableHand]:
          """
@@ -131,5 +131,5 @@ class FinalTableHandRepository:
          """
          result = self.db.execute_query(query, (tournament_id, config.FINAL_TABLE_SIZE))
          if result:
-             return FinalTableHand.from_dict(result[0])
+             return FinalTableHand.from_dict(dict(result[0]))
          return None

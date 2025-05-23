@@ -314,6 +314,20 @@ class ApplicationService:
              except Exception as e:
                   logger.error(f"Ошибка сохранения финальной раздачи {hand_data.get('hand_id')} турнира {hand_data.get('tournament_id')}: {e}")
 
+        # Подсчитываем ko_count для каждого турнира на основе сохраненных рук
+        logger.info("Подсчет ko_count для турниров...")
+        for tourney_id in parsed_tournaments_data:
+            try:
+                # Получаем все руки финального стола для этого турнира из БД
+                tournament_ft_hands = self.ft_hand_repo.get_hands_by_tournament(tourney_id)
+                # Суммируем KO из всех рук
+                total_ko = sum(hand.hero_ko_this_hand for hand in tournament_ft_hands)
+                # Обновляем ko_count в parsed_tournaments_data
+                parsed_tournaments_data[tourney_id]['ko_count'] = total_ko
+                if total_ko > 0:
+                    logger.debug(f"Турнир {tourney_id}: найдено {total_ko} KO в {len(tournament_ft_hands)} руках")
+            except Exception as e:
+                logger.error(f"Ошибка подсчета KO для турнира {tourney_id}: {e}")
 
         # 2. Сохраняем/обновляем данные турниров
         for tourney_id, data in parsed_tournaments_data.items():
