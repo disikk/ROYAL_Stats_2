@@ -31,7 +31,7 @@ FINAL_TABLE_SIZE = 9
 MIN_KO_BLIND_LEVEL_BB = 100 # BB >= 100
 
 # ==== Интерфейс / GUI ====
-APP_TITLE = "Royal Stats — Hero-only"
+APP_TITLE = "MBR Stats by disikk"
 THEME = "dark"         # dark / light
 LANG = "ru"            # ru / en
 UI_SCALE = 1.0         # Масштаб интерфейса
