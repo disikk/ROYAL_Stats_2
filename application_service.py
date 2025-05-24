@@ -136,8 +136,19 @@ class ApplicationService:
                  progress_callback(0, 0, "Нет файлов для обработки")
             return
 
+        # Рассчитываем общее количество шагов прогресса
+        # Этапы: парсинг файлов + сохранение в БД + обновление статистики
+        # Парсинг: 1 шаг на файл
+        # Сохранение в БД: примерно 20% от общего времени
+        # Обновление статистики: примерно 10% от общего времени
+        PARSING_WEIGHT = 70  # 70% времени на парсинг
+        SAVING_WEIGHT = 20   # 20% времени на сохранение
+        STATS_WEIGHT = 10    # 10% времени на обновление статистики
+        
+        total_steps = 100  # Работаем с процентами
+        current_progress = 0
+        
         logger.info(f"Начат импорт {total_files} файлов в сессию '{session_name}'")
-        processed_count = 0
 
         # Создаем новую сессию для этого импорта
         try:
@@ -147,7 +158,7 @@ class ApplicationService:
         except Exception as e:
             logger.error(f"Не удалось создать сессию для импорта: {e}")
             if progress_callback:
-                 progress_callback(0, total_files, f"Ошибка: Не удалось создать сессию: {e}")
+                 progress_callback(0, total_steps, f"Ошибка: Не удалось создать сессию: {e}")
             return
 
 
@@ -157,17 +168,23 @@ class ApplicationService:
         # Список данных финальных рук для пакетного сохранения
         all_final_table_hands_data: List[Dict[str, Any]] = []
 
-
+        # ЭТАП 1: Парсинг файлов
+        if progress_callback:
+            progress_callback(current_progress, total_steps, "Начинаем обработку файлов...")
+        
+        files_processed = 0
         for file_path in all_files_to_process:
             # Проверяем флаг отмены
             if is_canceled_callback and is_canceled_callback():
                 logger.info("Импорт отменен пользователем. Прерываем обработку файлов.")
                 if progress_callback:
-                    progress_callback(processed_count, total_files, "Импорт отменен пользователем")
+                    progress_callback(current_progress, total_steps, "Импорт отменен пользователем")
                 return
-                
+            
+            # Обновляем прогресс с учетом веса этапа парсинга
+            file_progress = int((files_processed / total_files) * PARSING_WEIGHT)
             if progress_callback:
-                progress_callback(processed_count, total_files, f"Обработка: {os.path.basename(file_path)}")
+                progress_callback(file_progress, total_steps, f"Обработка: {os.path.basename(file_path)}")
 
             try:
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -214,13 +231,13 @@ class ApplicationService:
                     except Exception as e:
                         # Если оба парсера вызвали исключение, пропускаем файл
                         logger.warning(f"Не удалось определить тип файла: {file_path}. Файл пропущен. Ошибка: {e}")
-                        processed_count += 1
+                        files_processed += 1
                         continue
 
                 # Если не удалось определить тип файла, пропускаем его
                 if not is_hh and not is_ts:
                     logger.warning(f"Не удалось определить тип файла: {file_path}. Файл пропущен.")
-                    processed_count += 1
+                    files_processed += 1
                     continue
                 
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -238,33 +255,14 @@ class ApplicationService:
 
                         # Добавляем данные из HH к временной записи турнира
                         parsed_tournaments_data[tourney_id]['start_time'] = parsed_tournaments_data[tourney_id].get('start_time') or hh_data.get('start_time')
-                        # Общее KO в турнире - это сумма KO по всем HH файлам для этого турнира
-                        # Обновленная версия HandHistoryParser теперь:                        
-                        # 1. Обрабатывает руки в хронологическом порядке
-                        # 2. Отслеживает временные метки для каждой раздачи
-                        # 3. Идентифицирует выбывших игроков, сравнивая последовательные раздачи
-                        # 4. Записывает информацию о нокаутах, основываясь на выбывших игроках
-                        #
-                        # **Решение**: ko_count в таблице tournaments - это сумма hero_ko_this_hand
-                        # из всех строк hero_final_table_hands для этого турнира.
-                        # Это будет пересчитываться при обновлении статистики.
-                        # Парсер HH теперь точно определяет нокауты путем отслеживания выбывших игроков
-                        # между последовательными раздачами и заполняет hero_final_table_hands
-                        # с правильной информацией о нокаутах.
-
+                        
                         # Обновляем временные данные турнира из HH
-                        # Если это первый HH файл для турнира, который достиг финалки
-                        # Обновленный HandHistoryParser теперь точно определяет первую раздачу финального стола
-                        # благодаря хронологической обработке раздач
                         if hh_data.get('reached_final_table', False):
                              parsed_tournaments_data[tourney_id]['reached_final_table'] = True
                              parsed_tournaments_data[tourney_id]['final_table_initial_stack_chips'] = hh_data.get('final_table_initial_stack_chips')
                              parsed_tournaments_data[tourney_id]['final_table_initial_stack_bb'] = hh_data.get('final_table_initial_stack_bb')
 
                         # Собираем данные финальных раздач
-                        # Обновленный HandHistoryParser обрабатывает раздачи в хронологическом порядке,
-                        # определяет выбывших игроков путем сравнения списков игроков между соседними раздачами,
-                        # и корректно подсчитывает hero_ko_this_hand для каждой раздачи финалки.
                         ft_hands_data = hh_data.get('final_table_hands_data', [])
                         for hand_data in ft_hands_data:
                              hand_data['session_id'] = session_id # Добавляем session_id к каждой руке
@@ -296,32 +294,52 @@ class ApplicationService:
                 logger.error(f"Ошибка обработки файла {file_path}: {e}")
                 # Продолжаем обрабатывать другие файлы
 
-            processed_count += 1
-            if progress_callback:
-                 progress_callback(processed_count, total_files, f"Обработано: {os.path.basename(file_path)}")
+            files_processed += 1
 
+
+        # Завершаем этап парсинга
+        current_progress = PARSING_WEIGHT
 
         # --- Сохранение данных в БД ---
+        # ЭТАП 2: Сохранение данных в БД
         # Проверяем флаг отмены перед сохранением в БД
         if is_canceled_callback and is_canceled_callback():
             logger.info("Импорт отменен пользователем. Пропускаем сохранение данных в БД.")
             if progress_callback:
-                progress_callback(processed_count, total_files, "Импорт отменен пользователем")
+                progress_callback(current_progress, total_steps, "Импорт отменен пользователем")
             return
             
         logger.info("Сохранение обработанных данных в БД...")
-        total_saved = 0
+        if progress_callback:
+            progress_callback(current_progress, total_steps, "Сохранение данных в базу...")
 
         # 1. Сохраняем данные финальных раздач (с ON CONFLICT DO NOTHING)
+        total_hands_to_save = len(all_final_table_hands_data)
+        hands_saved = 0
+        
         for hand_data in all_final_table_hands_data:
              try:
                   hand = FinalTableHand.from_dict(hand_data)
                   self.ft_hand_repo.add_hand(hand)
+                  hands_saved += 1
+                  
+                  # Обновляем прогресс для сохранения рук
+                  if hands_saved % 10 == 0 or hands_saved == total_hands_to_save:  # Обновляем каждые 10 рук
+                      hands_progress = current_progress + int((hands_saved / max(total_hands_to_save, 1)) * (SAVING_WEIGHT * 0.3))
+                      if progress_callback:
+                          progress_callback(hands_progress, total_steps, f"Сохранено рук: {hands_saved}/{total_hands_to_save}")
+                          
              except Exception as e:
                   logger.error(f"Ошибка сохранения финальной раздачи {hand_data.get('hand_id')} турнира {hand_data.get('tournament_id')}: {e}")
 
         # Подсчитываем ko_count для каждого турнира на основе сохраненных рук
         logger.info("Подсчет ko_count для турниров...")
+        if progress_callback:
+            progress_callback(current_progress + int(SAVING_WEIGHT * 0.3), total_steps, "Подсчет нокаутов...")
+        
+        tournaments_processed = 0
+        total_tournaments = len(parsed_tournaments_data)
+        
         for tourney_id in parsed_tournaments_data:
             try:
                 # Получаем все руки финального стола для этого турнира из БД
@@ -332,21 +350,24 @@ class ApplicationService:
                 parsed_tournaments_data[tourney_id]['ko_count'] = total_ko
                 if total_ko > 0:
                     logger.debug(f"Турнир {tourney_id}: найдено {total_ko} KO в {len(tournament_ft_hands)} руках")
+                tournaments_processed += 1
+                
+                # Обновляем прогресс
+                if tournaments_processed % 5 == 0 or tournaments_processed == total_tournaments:
+                    ko_progress = current_progress + int(SAVING_WEIGHT * 0.3) + int((tournaments_processed / max(total_tournaments, 1)) * (SAVING_WEIGHT * 0.2))
+                    if progress_callback:
+                        progress_callback(ko_progress, total_steps, f"Обработано турниров: {tournaments_processed}/{total_tournaments}")
+                        
             except Exception as e:
                 logger.error(f"Ошибка подсчета KO для турнира {tourney_id}: {e}")
 
         # 2. Сохраняем/обновляем данные турниров
+        if progress_callback:
+            progress_callback(current_progress + int(SAVING_WEIGHT * 0.5), total_steps, "Сохранение турниров...")
+        
+        tournaments_saved = 0
         for tourney_id, data in parsed_tournaments_data.items():
              try:
-                 # Перед сохранением, получаем существующий турнир из БД,
-                 # чтобы объединить ko_count, т.к. ko_count теперь вычисляется
-                 # суммированием hero_ko_this_hand из hero_final_table_hands.
-                 # Новая схема подразумевает, что ko_count в `tournaments`
-                 # это просто сумма KO_THIS_HAND из всех рук финалки для этого турнира.
-                 # Это значение пересчитывается при обновлении стат.
-                 # Здесь мы просто сохраняем то, что получили из TS/HH,
-                 # позволяя ApplicationService сделать финальные расчеты KO count.
-
                  # Запрашиваем текущий турнир для merge
                  existing_tourney = self.tournament_repo.get_tournament_by_id(tourney_id)
 
@@ -358,15 +379,11 @@ class ApplicationService:
                  final_tourney_data.update(data) # Override with data from parsed file batch
 
                  # Специальная логика для полей, которые должны объединяться, а не перезаписываться
-                 # ko_count теперь вычисляется в ApplicationService на основе hero_ko_this_hand из рук финалки
                  # reached_final_table = Existing OR New
                  if existing_tourney and existing_tourney.reached_final_table:
                      final_tourney_data['reached_final_table'] = True # Если хоть раз достигли финалки, флаг остается TRUE
 
                  # final_table_initial_stack - сохраняем только если это первая раздача финалки в истории парсинга этого турнира
-                 # Обновленный HandHistoryParser теперь корректно определяет first_ft_hand благодаря хронологической
-                 # обработке раздач. ApplicationService должен решить, является ли это первой FT рукой ВООБЩЕ для турнира.
-                 # Это можно сделать, проверив наличие initial_stack в БД перед обновлением.
                  if existing_tourney and existing_tourney.final_table_initial_stack_chips is not None:
                       # Если стек уже сохранен в БД, не перезаписываем его
                       final_tourney_data['final_table_initial_stack_chips'] = existing_tourney.final_table_initial_stack_chips
@@ -385,49 +402,74 @@ class ApplicationService:
                  # Создаем объект Tournament из объединенных данных
                  merged_tournament = Tournament.from_dict(final_tourney_data)
                  self.tournament_repo.add_or_update_tournament(merged_tournament)
-                 total_saved += 1
+                 tournaments_saved += 1
+                 
+                 # Обновляем прогресс
+                 if tournaments_saved % 5 == 0 or tournaments_saved == total_tournaments:
+                     save_progress = current_progress + int(SAVING_WEIGHT * 0.5) + int((tournaments_saved / max(total_tournaments, 1)) * (SAVING_WEIGHT * 0.5))
+                     if progress_callback:
+                         progress_callback(save_progress, total_steps, f"Сохранено турниров: {tournaments_saved}/{total_tournaments}")
 
              except Exception as e:
                   logger.error(f"Ошибка сохранения/обновления турнира {tourney_id}: {e}")
 
-        logger.info(f"Сохранено/обновлено {total_saved} турниров. Сохранено {len(all_final_table_hands_data)} рук финального стола.")
+        current_progress = PARSING_WEIGHT + SAVING_WEIGHT
+        logger.info(f"Сохранено/обновлено {tournaments_saved} турниров. Сохранено {len(all_final_table_hands_data)} рук финального стола.")
 
 
         # --- Обновление статистики ---
+        # ЭТАП 3: Обновление статистики
         # Проверяем флаг отмены перед обновлением статистики
         if is_canceled_callback and is_canceled_callback():
             logger.info("Импорт отменен пользователем. Пропускаем обновление статистики.")
             if progress_callback:
-                progress_callback(total_files, total_files, "Импорт отменен пользователем")
+                progress_callback(current_progress, total_steps, "Импорт отменен пользователем")
             return
             
         logger.info("Обновление агрегированной статистики...")
+        if progress_callback:
+            progress_callback(current_progress, total_steps, "Обновление статистики...")
+        
         try:
-             self._update_all_statistics(session_id)
+             # Передаем callback в _update_all_statistics для отслеживания прогресса
+             self._update_all_statistics(session_id, 
+                                        progress_callback=lambda step, total: progress_callback(
+                                            current_progress + int((step / total) * STATS_WEIGHT), 
+                                            total_steps, 
+                                            f"Обновление статистики... {step}/{total}"
+                                        ))
              logger.info("Обновление статистики завершено.")
         except Exception as e:
              logger.error(f"Ошибка при обновлении статистики: {e}")
              if progress_callback:
-                  progress_callback(total_files, total_files, f"Ошибка при обновлении статистики: {e}")
+                  progress_callback(total_steps, total_steps, f"Ошибка при обновлении статистики: {e}")
              # В реальном приложении здесь может потребоваться более детальная обработка
+             return
 
+        # Завершение импорта
         if progress_callback:
-            progress_callback(total_files, total_files, "Импорт завершен")
+            progress_callback(total_steps, total_steps, "Импорт завершен успешно!")
 
 
-    def _update_all_statistics(self, session_id: str):
+    def _update_all_statistics(self, session_id: str, progress_callback=None):
         """
         Пересчитывает и обновляет все агрегированные статистики (общие и по сессии).
         Вызывается после импорта данных.
         """
         logger.debug("Запущен пересчет всей статистики.")
+        
+        total_steps = 4  # 4 основных этапа обновления
+        current_step = 0
 
         # --- Обновление Overall Stats ---
         try:
+            if progress_callback:
+                progress_callback(current_step, total_steps)
             logger.debug("Обновление общей статистики...")
             overall_stats = self._calculate_overall_stats()
             self.overall_stats_repo.update_overall_stats(overall_stats)
             logger.info("Общая статистика обновлена успешно.")
+            current_step += 1
         except Exception as e:
             logger.error(f"Ошибка при обновлении overall_stats: {e}")
             import traceback
@@ -436,6 +478,8 @@ class ApplicationService:
 
         # --- Обновление Place Distribution ---
         try:
+            if progress_callback:
+                progress_callback(current_step, total_steps)
             logger.debug("Обновление распределения мест...")
             self.place_dist_repo.reset_distribution()
             all_final_tournaments = self.tournament_repo.get_all_tournaments()
@@ -447,6 +491,7 @@ class ApplicationService:
                     count += 1
             
             logger.info(f"Распределение мест обновлено для {count} турниров.")
+            current_step += 1
         except Exception as e:
             logger.error(f"Ошибка при обновлении place_distribution: {e}")
             import traceback
@@ -454,6 +499,8 @@ class ApplicationService:
 
         # --- Обновление KO count для турниров ---
         try:
+            if progress_callback:
+                progress_callback(current_step, total_steps)
             logger.debug("Обновление ko_count для турниров...")
             all_tournaments = self.tournament_repo.get_all_tournaments()
             updated_count = 0
@@ -467,6 +514,7 @@ class ApplicationService:
                     updated_count += 1
             
             logger.info(f"KO count обновлен для {updated_count} турниров.")
+            current_step += 1
         except Exception as e:
             logger.error(f"Ошибка при обновлении ko_count: {e}")
             import traceback
@@ -474,6 +522,8 @@ class ApplicationService:
 
         # --- Обновление Session Stats ---
         try:
+            if progress_callback:
+                progress_callback(current_step, total_steps)
             logger.debug("Обновление статистики сессий...")
             sessions_to_update = self.session_repo.get_all_sessions()
             
@@ -484,6 +534,7 @@ class ApplicationService:
                     logger.error(f"Ошибка при обновлении сессии {session.session_id}: {e}")
             
             logger.info(f"Статистика обновлена для {len(sessions_to_update)} сессий.")
+            current_step += 1
         except Exception as e:
             logger.error(f"Ошибка при обновлении session stats: {e}")
             import traceback
