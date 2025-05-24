@@ -224,12 +224,8 @@ class SessionView(QtWidgets.QWidget):
         
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
             try:
-                # Удаляем сессию (каскадное удаление удалит и связанные турниры)
-                from db.repositories import session_repository
-                session_repository.delete_session_by_id(session.session_id)
-                
-                # Обновляем общую статистику
-                self.app_service._update_all_statistics(None)
+                # Удаляем сессию через ApplicationService
+                self.app_service.delete_session(session.session_id)
                 
                 # Перезагружаем данные
                 self.reload()

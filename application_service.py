@@ -12,6 +12,7 @@ import uuid
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import math # Для округления в BB
+import re  # Добавить к существующим импортам
 
 import config
 from db.manager import database_manager # Используем синглтон менеджер БД
@@ -58,6 +59,24 @@ STAT_PLUGINS: List[BaseStat] = [
     AvgFinishPlaceFTStat(),
     AvgFinishPlaceNoFTStat(),
 ]
+
+def is_poker_file(file_path: str) -> bool:
+    """
+    Предварительная проверка файла по первой строке.
+    Возвращает True, если файл соответствует ожидаемым форматам покерных файлов.
+    """
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            first_line = f.readline().strip()
+        # Регулярка для Tournament Summary: "Tournament #[цифры], Mystery Battle Royale"
+        ts_pattern = re.compile(r'^Tournament #\d+, Mystery Battle Royale')
+        # Регулярка для Hand History: "Poker Hand #[буквы/цифры]: Tournament #[цифры],"
+        hh_pattern = re.compile(r'^Poker Hand #[A-Za-z0-9]+: Tournament #\d+,')
+        # Проверяем соответствие любому из паттернов
+        return bool(ts_pattern.match(first_line) or hh_pattern.match(first_line))
+    except Exception as e:
+        logger.warning(f"Не удалось прочитать первую строку файла {file_path}: {e}")
+        return False  # В случае ошибки исключаем файл из обработки
 
 class ApplicationService:
     """
@@ -118,16 +137,27 @@ class ApplicationService:
             is_canceled_callback: Optional function() that returns True if the import should be cancelled.
         """
         all_files_to_process = []
+        filtered_files_count = 0
         for path in paths:
             if os.path.isdir(path):
-                # Рекурсивно собираем все .txt файлы из папки
                 for root, _, filenames in os.walk(path):
                     for fname in filenames:
-                        if fname.lower().endswith((".txt", ".log", ".hh", ".summary")):
-                             all_files_to_process.append(os.path.join(root, fname))
+                        if fname.lower().endswith((".txt")):
+                            full_path = os.path.join(root, fname)
+                            if is_poker_file(full_path):
+                                all_files_to_process.append(full_path)
+                            else:
+                                filtered_files_count += 1
+                                logger.debug(f"Файл отфильтрован (нет покерных шаблонов): {fname}")
             elif os.path.isfile(path):
-                if path.lower().endswith((".txt", ".log", ".hh", ".summary")):
-                     all_files_to_process.append(path)
+                if path.lower().endswith((".txt")):
+                    if is_poker_file(path):
+                        all_files_to_process.append(path)
+                    else:
+                        filtered_files_count += 1
+                        logger.debug(f"Файл отфильтрован (нет покерных шаблонов): {os.path.basename(path)}")
+        if filtered_files_count > 0:
+            logger.info(f"Отфильтровано {filtered_files_count} файлов без покерных шаблонов")
 
         total_files = len(all_files_to_process)
         if total_files == 0:
@@ -724,6 +754,13 @@ class ApplicationService:
 
          # Возвращаем распределение и общее количество финалок в сессии для нормализации в UI
          return distribution, total_final_tables_in_session
+
+    def delete_session(self, session_id: str):
+        """Удаляет сессию и все связанные данные."""
+        # Удаляем сессию (каскадное удаление удалит связанные турниры и руки)
+        self.session_repo.delete_session_by_id(session_id)
+        # Обновляем статистику после удаления
+        self._update_all_statistics(None)
 
 
 # Создаем синглтон экземпляр ApplicationService
