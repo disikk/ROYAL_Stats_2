@@ -238,8 +238,9 @@ class SessionView(QtWidgets.QWidget):
                 )
                 
                 # Оповещаем родительское окно о необходимости обновить все данные
-                if self.parent() and hasattr(self.parent(), 'refresh_all_data'):
-                    self.parent().refresh_all_data()
+                main_window = self.window()  # Получаем главное окно
+                if hasattr(main_window, 'refresh_all_data'):
+                    main_window.refresh_all_data()
                     
             except Exception as e:
                 QtWidgets.QMessageBox.critical(

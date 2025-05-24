@@ -52,6 +52,7 @@ class ThreadLocalConnection:
         if not hasattr(self.local, 'connection') or self.local.connection is None:
             try:
                 self.local.connection = sqlite3.connect(self.db_path)
+                self.local.connection.execute("PRAGMA foreign_keys = ON")  # Включаем поддержку внешних ключей
                 self.local.connection.row_factory = sqlite3.Row # Добавляем Row Factory
                 self.local.cursor = self.local.connection.cursor()
                 current_thread = threading.current_thread()
