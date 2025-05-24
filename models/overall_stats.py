@@ -20,6 +20,7 @@ class OverallStats:
     total_knockouts: int = 0
     avg_finish_place: float = 0.0 # Среднее место по всем турнирам
     avg_finish_place_ft: float = 0.0 # Среднее место только на финалке (1-9)
+    avg_finish_place_no_ft: float = 0.0  # Среднее место когда не дошел до финалки
     total_prize: float = 0.0
     total_buy_in: float = 0.0
     avg_ko_per_tournament: float = 0.0 # Среднее KO за турнир (по всем турнирам)
@@ -46,6 +47,7 @@ class OverallStats:
             "total_knockouts": self.total_knockouts,
             "avg_finish_place": self.avg_finish_place,
             "avg_finish_place_ft": self.avg_finish_place_ft,
+            "avg_finish_place_no_ft": self.avg_finish_place_no_ft,
             "total_prize": self.total_prize,
             "total_buy_in": self.total_buy_in,
             "avg_ko_per_tournament": self.avg_ko_per_tournament,
@@ -79,6 +81,7 @@ class OverallStats:
                     total_knockouts=data.get("total_knockouts", 0),
                     avg_finish_place=data.get("avg_finish_place", 0.0),
                     avg_finish_place_ft=data.get("avg_finish_place_ft", 0.0),
+                    avg_finish_place_no_ft=data.get("avg_finish_place_no_ft", 0.0),
                     total_prize=data.get("total_prize", 0.0),
                     total_buy_in=data.get("total_buy_in", 0.0),
                     avg_ko_per_tournament=data.get("avg_ko_per_tournament", 0.0),
@@ -103,6 +106,7 @@ class OverallStats:
                     total_knockouts=data["total_knockouts"] if "total_knockouts" in data.keys() else 0,
                     avg_finish_place=data["avg_finish_place"] if "avg_finish_place" in data.keys() else 0.0,
                     avg_finish_place_ft=data["avg_finish_place_ft"] if "avg_finish_place_ft" in data.keys() else 0.0,
+                    avg_finish_place_no_ft=data["avg_finish_place_no_ft"] if "avg_finish_place_no_ft" in data.keys() else 0.0,
                     total_prize=data["total_prize"] if "total_prize" in data.keys() else 0.0,
                     total_buy_in=data["total_buy_in"] if "total_buy_in" in data.keys() else 0.0,
                     avg_ko_per_tournament=data["avg_ko_per_tournament"] if "avg_ko_per_tournament" in data.keys() else 0.0,

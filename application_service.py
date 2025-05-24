@@ -35,6 +35,9 @@ from stats import (
     FinalTableReachStat, # Новый
     AvgFTInitialStackStat, # Новый
     EarlyFTKOStat, # Новый
+    AvgFinishPlaceStat,
+    AvgFinishPlaceFTStat,
+    AvgFinishPlaceNoFTStat,
 )
 
 logger = logging.getLogger('ROYAL_Stats.ApplicationService')
@@ -51,6 +54,9 @@ STAT_PLUGINS: List[BaseStat] = [
     FinalTableReachStat(),
     AvgFTInitialStackStat(),
     EarlyFTKOStat(),
+    AvgFinishPlaceStat(),
+    AvgFinishPlaceFTStat(),
+    AvgFinishPlaceNoFTStat(),
 ]
 
 class ApplicationService:
@@ -572,6 +578,12 @@ class ApplicationService:
         stats.big_ko_x1000 = big_ko_results.get("x1000", 0)
         stats.big_ko_x10000 = big_ko_results.get("x10000", 0)
 
+
+        # Среднее место когда НЕ дошел до финалки
+        no_ft_places = [t.finish_place for t in all_tournaments 
+                       if not t.reached_final_table and t.finish_place is not None]
+        stats.avg_finish_place_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
+        stats.avg_finish_place_no_ft = round(stats.avg_finish_place_no_ft, 2)
 
         # Можно округлить некоторые значения для хранения
         stats.avg_finish_place = round(stats.avg_finish_place, 2)

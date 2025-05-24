@@ -27,6 +27,9 @@ from stats import (
     FinalTableReachStat,
     AvgFTInitialStackStat,
     EarlyFTKOStat,
+    AvgFinishPlaceStat,
+    AvgFinishPlaceFTStat,
+    AvgFinishPlaceNoFTStat,
 )
 
 logger = logging.getLogger('ROYAL_Stats.StatsGrid')
@@ -228,16 +231,22 @@ class StatsGrid(QtWidgets.QWidget):
             'ft_reach': StatCard("% Достижения FT", "-"),
             'avg_ft_stack': SpecialStatCard("Средний стек на FT", "-"),
             'early_ft_ko': SpecialStatCard("KO в ранней FT", "-"),
+            'avg_place_all': StatCard("Среднее место (все)", "-"),
+            'avg_place_ft': StatCard("Среднее место (FT)", "-"),
+            'avg_place_no_ft': StatCard("Среднее место (не FT)", "-"),
+            'avg_place_empty': QtWidgets.QWidget(),
         }
         
         # Размещаем карточки в сетке (4 колонки)
         positions = [
             ('tournaments', 0, 0), ('knockouts', 0, 1), ('avg_ko', 0, 2), ('roi', 0, 3),
             ('itm', 1, 0), ('ft_reach', 1, 1), ('avg_ft_stack', 1, 2), ('early_ft_ko', 1, 3),
+            ('avg_place_all', 2, 0), ('avg_place_ft', 2, 1), ('avg_place_no_ft', 2, 2), ('avg_place_empty', 2, 3),
         ]
         
         for key, row, col in positions:
-            stats_grid.addWidget(self.cards[key], row, col)
+            if key in self.cards:
+                stats_grid.addWidget(self.cards[key], row, col)
             
         content_layout.addLayout(stats_grid)
         
@@ -381,6 +390,23 @@ class StatsGrid(QtWidgets.QWidget):
         self.bigko_cards['x1000'].update_value(str(overall_stats.big_ko_x1000))
         self.bigko_cards['x10000'].update_value(str(overall_stats.big_ko_x10000))
         logger.debug(f"Обновлены карточки Big KO: x1.5={overall_stats.big_ko_x1_5}, x2={overall_stats.big_ko_x2}, x10={overall_stats.big_ko_x10}, x100={overall_stats.big_ko_x100}, x1000={overall_stats.big_ko_x1000}, x10000={overall_stats.big_ko_x10000}")
+        
+        # Статы средних мест (fallback расчет, пока не обновлены другие компоненты)
+        # Среднее место по всем турнирам
+        all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
+        avg_all = sum(all_places) / len(all_places) if all_places else 0.0
+        self.cards['avg_place_all'].update_value(f"{avg_all:.2f}")
+        # Среднее место на финалке
+        ft_places = [t.finish_place for t in all_tournaments 
+                     if t.reached_final_table and t.finish_place is not None 
+                     and 1 <= t.finish_place <= 9]
+        avg_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
+        self.cards['avg_place_ft'].update_value(f"{avg_ft:.2f}")
+        # Среднее место без финалки
+        no_ft_places = [t.finish_place for t in all_tournaments 
+                        if not t.reached_final_table and t.finish_place is not None]
+        avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
+        self.cards['avg_place_no_ft'].update_value(f"{avg_no_ft:.2f}")
         
         self._update_chart()
         logger.debug("=== Конец reload StatsGrid ===")

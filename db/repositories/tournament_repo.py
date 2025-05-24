@@ -340,6 +340,34 @@ class TournamentRepository:
         results = self.db.execute_query(query)
         return [row[0] for row in results if row[0] is not None]
 
+    def get_avg_finish_place_no_ft(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> float:
+        """
+        Рассчитывает среднее финишное место только по турнирам, где НЕ достиг финального стола,
+        опционально фильтруя по сессии или бай-ину.
+        Возвращает 0.0 если нет таких турниров.
+        """
+        query = """
+            SELECT AVG(finish_place)
+            FROM tournaments
+            WHERE reached_final_table = 0 AND finish_place IS NOT NULL
+        """
+        conditions = []
+        params = []
+
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+
+        if conditions:
+            query += " AND " + " AND ".join(conditions)
+
+        result = self.db.execute_query(query, params)
+        return result[0][0] if result and result[0][0] is not None else 0.0
+
 
 # Создаем синглтон экземпляр репозитория
 tournament_repository = TournamentRepository()

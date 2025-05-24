@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS overall_stats (
     total_knockouts INTEGER DEFAULT 0,
     avg_finish_place REAL DEFAULT 0, -- Среднее место по всем турнирам (включая не финалку)
     avg_finish_place_ft REAL DEFAULT 0, -- Среднее место только на финалке (1-9)
+    avg_finish_place_no_ft REAL DEFAULT 0,
     total_prize REAL DEFAULT 0,
     total_buy_in REAL DEFAULT 0,
     avg_ko_per_tournament REAL DEFAULT 0,
@@ -174,6 +175,7 @@ UPDATE overall_stats SET
     total_knockouts = ?,
     avg_finish_place = ?,
     avg_finish_place_ft = ?,
+    avg_finish_place_no_ft = ?,
     total_prize = ?,
     total_buy_in = ?,
     avg_ko_per_tournament = ?,
