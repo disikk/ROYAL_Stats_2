@@ -265,6 +265,7 @@ class StatsGrid(QtWidgets.QWidget):
         self.chart_view.setMinimumHeight(350)
         self.chart_view.setMaximumHeight(450)
         content_layout.addWidget(self.chart_view)
+        self.chart_view.chart_labels = []  # Список для хранения меток
         
         # Разделитель
         separator2 = QtWidgets.QFrame()
@@ -485,40 +486,43 @@ class StatsGrid(QtWidgets.QWidget):
         
         # Добавляем кастомные текстовые метки с процентами после установки графика
         if total_finishes > 0:
-            # Небольшая задержка для правильного позиционирования
+            # Подключаем обработчик изменения геометрии
+            self.chart_view.chart().plotAreaChanged.connect(
+                lambda: self._update_percentage_labels_position(chart, place_dist, total_finishes)
+            )
+            # Первоначальное размещение меток
             QtCore.QTimer.singleShot(100, lambda: self._add_percentage_labels(chart, place_dist, total_finishes))
     
     def _add_percentage_labels(self, chart, place_dist, total_finishes):
         """Добавляет текстовые метки с процентами над барами."""
-        # Получаем координаты области графика
-        plot_area = chart.plotArea()
+        # Удаляем старые метки, если есть
+        for label in getattr(self.chart_view, 'chart_labels', []):
+            chart.scene().removeItem(label)
+        self.chart_view.chart_labels = []
         
-        # Ширина одного столбца
+        # Создаем новые метки
+        plot_area = chart.plotArea()
         bar_width = plot_area.width() / 9
         
-        # Для каждого места создаем текстовую метку
         for place in range(1, 10):
             count = place_dist.get(place, 0)
             if count > 0:
                 percentage = (count / total_finishes) * 100
                 
-                # Создаем текстовый элемент
                 text = QtWidgets.QGraphicsTextItem(f"{percentage:.1f}%")
                 text.setDefaultTextColor(QtGui.QColor("#FAFAFA"))
                 text.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Weight.Bold))
                 
-                # Вычисляем позицию текста
-                # X позиция - центр соответствующего бара
+                # Вычисляем позицию
                 x_pos = plot_area.left() + bar_width * (place - 0.5) - text.boundingRect().width() / 2
-                
-                # Y позиция - вычисляем на основе значения
-                # Нормализуем высоту бара относительно максимального значения на оси Y
-                max_y_value = max(place_dist.values()) * 1.1  # Соответствует axis_y.setRange(0, max_count * 1.1)
+                max_y_value = max(place_dist.values()) * 1.1
                 bar_height_ratio = count / max_y_value
                 y_pos = plot_area.bottom() - (plot_area.height() * bar_height_ratio) - text.boundingRect().height() - 5
                 
-                # Устанавливаем позицию
                 text.setPos(x_pos, y_pos)
-                
-                # Добавляем текст на сцену графика
                 chart.scene().addItem(text)
+                self.chart_view.chart_labels.append(text)
+    
+    def _update_percentage_labels_position(self, chart, place_dist, total_finishes):
+        """Обновляет позиции меток при изменении размера графика."""
+        self._add_percentage_labels(chart, place_dist, total_finishes)
