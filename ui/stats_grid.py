@@ -271,8 +271,8 @@ class StatsGrid(QtWidgets.QWidget):
         # Создаем виджет для графика
         self.chart_view = QChartView()
         self.chart_view.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        self.chart_view.setMinimumHeight(350)
-        self.chart_view.setMaximumHeight(450)
+        self.chart_view.setMinimumHeight(315)
+        self.chart_view.setMaximumHeight(405)
         content_layout.addWidget(self.chart_view)
         self.chart_view.chart_labels = []  # Список для хранения меток
         
