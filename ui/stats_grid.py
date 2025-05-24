@@ -6,7 +6,7 @@
 """
 
 from PyQt6 import QtWidgets, QtCore, QtGui
-from PyQt6.QtCharts import QChart, QChartView, QBarSeries, QBarSet, QBarCategoryAxis, QValueAxis
+from PyQt6.QtCharts import QChart, QChartView, QBarSeries, QBarSet, QBarCategoryAxis, QValueAxis, QStackedBarSeries
 import logging
 from typing import Dict, List, Any
 
@@ -405,18 +405,40 @@ class StatsGrid(QtWidgets.QWidget):
         chart.setBackgroundBrush(QtGui.QBrush(QtGui.QColor("#18181B")))
         chart.legend().setVisible(False)
         
-        # Создаем серию баров
-        series = QBarSeries()
+        # Создаем серию стековых баров
+        series = QStackedBarSeries()
         
-        # Создаем один QBarSet со всеми значениями
-        bar_set = QBarSet("")
+        # Настраиваем цвета для столбцов
+        colors = [
+            "#10B981",  # 1 место - ярко-зеленый
+            "#34D399",  # 2 место - зеленый
+            "#6EE7B7",  # 3 место - светло-зеленый
+            "#FCD34D",  # 4 место - желтый
+            "#F59E0B",  # 5 место - оранжевый
+            "#EF4444",  # 6 место - красный
+            "#DC2626",  # 7 место - темно-красный
+            "#B91C1C",  # 8 место - еще темнее
+            "#991B1B",  # 9 место - самый темный красный
+        ]
         
-        # Добавляем значения для каждого места
-        for place in range(1, 10):
-            count = place_dist.get(place, 0)
-            bar_set.append(count)
+        # Создаем отдельный QBarSet для каждого места
+        for i in range(9):
+            bar_set = QBarSet("")
             
-        series.append(bar_set)
+            # Для каждой позиции добавляем значение только если это соответствующее место
+            for place in range(1, 10):
+                if place == i + 1:
+                    bar_set.append(place_dist.get(place, 0))
+                else:
+                    bar_set.append(0)
+            
+            # Устанавливаем цвет
+            bar_set.setColor(QtGui.QColor(colors[i]))
+            series.append(bar_set)
+        
+        # Устанавливаем ширину баров
+        series.setBarWidth(0.8)
+        
         chart.addSeries(series)
         
         # Настройка оси X (категории) - места от 1 до 9
@@ -451,26 +473,5 @@ class StatsGrid(QtWidgets.QWidget):
         
         # Устанавливаем отступы для графика
         chart.setMargins(QtCore.QMargins(10, 10, 10, 10))
-        
-        # Настраиваем цвета для столбцов через делегат отрисовки
-        colors = [
-            "#10B981",  # 1 место - ярко-зеленый
-            "#34D399",  # 2 место - зеленый
-            "#6EE7B7",  # 3 место - светло-зеленый
-            "#FCD34D",  # 4 место - желтый
-            "#F59E0B",  # 5 место - оранжевый
-            "#EF4444",  # 6 место - красный
-            "#DC2626",  # 7 место - темно-красный
-            "#B91C1C",  # 8 место - еще темнее
-            "#991B1B",  # 9 место - самый темный красный
-        ]
-        
-        # Применяем градиент к bar_set
-        gradient = QtGui.QLinearGradient(0, 0, 1, 0)
-        gradient.setCoordinateMode(QtGui.QGradient.CoordinateMode.ObjectBoundingMode)
-        gradient.setColorAt(0.0, QtGui.QColor(colors[0]))
-        gradient.setColorAt(0.5, QtGui.QColor(colors[4]))
-        gradient.setColorAt(1.0, QtGui.QColor(colors[8]))
-        bar_set.setBrush(QtGui.QBrush(gradient))
         
         self.chart_view.setChart(chart)
