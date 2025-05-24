@@ -421,6 +421,9 @@ class StatsGrid(QtWidgets.QWidget):
             "#991B1B",  # 9 место - самый темный красный
         ]
         
+        # Подсчитываем общее количество финишей для расчета процентов
+        total_finishes = sum(place_dist.values())
+        
         # Создаем отдельный QBarSet для каждого места
         for i in range(9):
             bar_set = QBarSet("")
@@ -432,8 +435,11 @@ class StatsGrid(QtWidgets.QWidget):
                 else:
                     bar_set.append(0)
             
-            # Устанавливаем цвет
-            bar_set.setColor(QtGui.QColor(colors[i]))
+            # Устанавливаем цвет с прозрачностью
+            color = QtGui.QColor(colors[i])
+            color.setAlpha(int(255 * 0.65))  # 35% прозрачности
+            bar_set.setColor(color)
+            
             series.append(bar_set)
         
         # Устанавливаем ширину баров
@@ -474,4 +480,45 @@ class StatsGrid(QtWidgets.QWidget):
         # Устанавливаем отступы для графика
         chart.setMargins(QtCore.QMargins(10, 10, 10, 10))
         
+        # Устанавливаем график в view
         self.chart_view.setChart(chart)
+        
+        # Добавляем кастомные текстовые метки с процентами после установки графика
+        if total_finishes > 0:
+            # Небольшая задержка для правильного позиционирования
+            QtCore.QTimer.singleShot(100, lambda: self._add_percentage_labels(chart, place_dist, total_finishes))
+    
+    def _add_percentage_labels(self, chart, place_dist, total_finishes):
+        """Добавляет текстовые метки с процентами над барами."""
+        # Получаем координаты области графика
+        plot_area = chart.plotArea()
+        
+        # Ширина одного столбца
+        bar_width = plot_area.width() / 9
+        
+        # Для каждого места создаем текстовую метку
+        for place in range(1, 10):
+            count = place_dist.get(place, 0)
+            if count > 0:
+                percentage = (count / total_finishes) * 100
+                
+                # Создаем текстовый элемент
+                text = QtWidgets.QGraphicsTextItem(f"{percentage:.1f}%")
+                text.setDefaultTextColor(QtGui.QColor("#FAFAFA"))
+                text.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Weight.Bold))
+                
+                # Вычисляем позицию текста
+                # X позиция - центр соответствующего бара
+                x_pos = plot_area.left() + bar_width * (place - 0.5) - text.boundingRect().width() / 2
+                
+                # Y позиция - вычисляем на основе значения
+                # Нормализуем высоту бара относительно максимального значения на оси Y
+                max_y_value = max(place_dist.values()) * 1.1  # Соответствует axis_y.setRange(0, max_count * 1.1)
+                bar_height_ratio = count / max_y_value
+                y_pos = plot_area.bottom() - (plot_area.height() * bar_height_ratio) - text.boundingRect().height() - 5
+                
+                # Устанавливаем позицию
+                text.setPos(x_pos, y_pos)
+                
+                # Добавляем текст на сцену графика
+                chart.scene().addItem(text)
