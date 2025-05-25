@@ -60,23 +60,57 @@ STAT_PLUGINS: List[BaseStat] = [
     AvgFinishPlaceNoFTStat(),
 ]
 
-def is_poker_file(file_path: str) -> bool:
+def determine_file_type(file_path: str) -> Optional[str]:
     """
-    Предварительная проверка файла по первой строке.
-    Возвращает True, если файл соответствует ожидаемым форматам покерных файлов.
+    Определяет тип покерного файла по первым двум строкам.
+    
+    Returns:
+        'ts' - Tournament Summary
+        'hh' - Hand History  
+        None - файл не соответствует ожидаемым форматам
     """
     try:
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            first_line = f.readline().strip()
-        # Регулярка для Tournament Summary: "Tournament #[цифры], Mystery Battle Royale"
-        ts_pattern = re.compile(r'^Tournament #\d+, Mystery Battle Royale')
-        # Регулярка для Hand History: "Poker Hand #[буквы/цифры]: Tournament #[цифры],"
-        hh_pattern = re.compile(r'^Poker Hand #[A-Za-z0-9]+: Tournament #\d+,')
-        # Проверяем соответствие любому из паттернов
-        return bool(ts_pattern.match(first_line) or hh_pattern.match(first_line))
+            lines = f.readlines()
+        
+        # Нужно минимум 2 строки для проверки
+        if len(lines) < 2:
+            return None
+            
+        first_line = lines[0].strip()
+        second_line = lines[1].strip()
+        
+        # Проверка Tournament Summary
+        if (first_line.startswith("Tournament #") and 
+            "Mystery Battle Royale" in first_line and 
+            second_line.startswith("Buy-in:")):
+            logger.debug(f"Файл определен как Tournament Summary: {file_path}")
+            return 'ts'
+            
+        # Проверка Hand History
+        if (first_line.startswith("Poker Hand #") and 
+            "Mystery Battle Royale" in first_line and 
+            second_line.startswith("Table")):
+            logger.debug(f"Файл определен как Hand History: {file_path}")
+            return 'hh'
+            
+        # Если не подходит ни под один формат
+        logger.debug(f"Файл отфильтрован (не соответствует покерным форматам): {file_path}")
+        logger.debug(f"  1-я строка: {first_line[:50]}...")
+        logger.debug(f"  2-я строка: {second_line[:50]}...")
+        return None
+        
     except Exception as e:
-        logger.warning(f"Не удалось прочитать первую строку файла {file_path}: {e}")
-        return False  # В случае ошибки исключаем файл из обработки
+        logger.warning(f"Не удалось прочитать файл {file_path}: {e}")
+        return None
+
+
+def is_poker_file(file_path: str) -> bool:
+    """
+    Предварительная проверка файла - является ли покерным файлом.
+    Возвращает True, если файл соответствует ожидаемым форматам.
+    """
+    return determine_file_type(file_path) is not None
 
 class ApplicationService:
     """
@@ -224,55 +258,16 @@ class ApplicationService:
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.read()
                     
-                # Проверяем первые несколько строк, чтобы определить тип файла
-                first_lines = content.splitlines()[:5]  # Берем первые 5 строк для анализа
-                
-                # Проверяем, похож ли файл на Tournament Summary
-                # Характерные признаки TS: "Tournament #", "Buy-in:", "You finished the tournament"
-                ts_markers = ["Tournament #", "Buy-in:", "You finished the tournament", "You received a total of"]
-                has_ts_markers = any(marker in line for line in first_lines for marker in ts_markers)
-                
-                # Проверяем, похож ли файл на Hand History
-                # Характерные признаки HH: "Poker Hand #", "Table", "Seat"
-                hh_markers = ["Poker Hand #", "Table", "Seat"]
-                has_hh_markers = any(marker in line for line in first_lines for marker in hh_markers)
-                
-                # Если больше признаков TS, считаем файл турнирным саммари
-                # Если больше признаков HH, считаем файл историей рук
-                is_ts = False
-                is_hh = False
-                
-                if has_ts_markers and not has_hh_markers:
-                    is_ts = True
-                    logger.debug(f"Файл определен как Tournament Summary по содержимому: {file_path}")
-                elif has_hh_markers:
-                    is_hh = True
-                    logger.debug(f"Файл определен как Hand History по содержимому: {file_path}")
-                else:
-                    # Если нельзя определить тип, пробуем сначала TS-парсер (он делает меньше предположений)
-                    # а затем HH-парсер, если TS-парсер не смог распознать файл
-                    try:
-                        ts_data = self.ts_parser.parse(content, filename=os.path.basename(file_path))
-                        if ts_data.get('tournament_id'):
-                            is_ts = True
-                            logger.debug(f"Файл определен как Tournament Summary после попытки парсинга: {file_path}")
-                        else:
-                            # Если TS-парсер не смог распознать, пробуем HH-парсер
-                            hh_data = self.hh_parser.parse(content, filename=os.path.basename(file_path))
-                            if hh_data.get('tournament_id'):
-                                is_hh = True
-                                logger.debug(f"Файл определен как Hand History после попытки парсинга: {file_path}")
-                    except Exception as e:
-                        # Если оба парсера вызвали исключение, пропускаем файл
-                        logger.warning(f"Не удалось определить тип файла: {file_path}. Файл пропущен. Ошибка: {e}")
-                        files_processed += 1
-                        continue
-
-                # Если не удалось определить тип файла, пропускаем его
-                if not is_hh and not is_ts:
-                    logger.warning(f"Не удалось определить тип файла: {file_path}. Файл пропущен.")
+                # Определяем тип файла
+                file_type = determine_file_type(file_path)
+                if file_type is None:
+                    logger.warning(f"Файл не соответствует ожидаемым форматам: {file_path}. Файл пропущен.")
                     files_processed += 1
                     continue
+
+                is_ts = file_type == 'ts'
+                is_hh = file_type == 'hh'
+
                 
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.read()
