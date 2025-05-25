@@ -268,13 +268,9 @@ class MainWindow(QtWidgets.QMainWindow):
             # Теперь обновляем UI
             self._update_toolbar_info()
             
-            # Обновляем вкладки
-            if hasattr(self, 'stats_grid') and self.stats_grid:
-                self.stats_grid.reload()
-            if hasattr(self, 'tournament_view') and self.tournament_view:
-                self.tournament_view.reload()
-            if hasattr(self, 'session_view') and self.session_view:
-                self.session_view.reload()
+            # Инвалидируем кеш и обновляем вкладки
+            self.invalidate_all_caches()
+            self.refresh_all_views()
             
             self.statusBar().showMessage(f"Импорт завершен. База данных: {os.path.basename(self.app_service.db_path)}", 3000)
             
@@ -282,6 +278,23 @@ class MainWindow(QtWidgets.QMainWindow):
             logger.error(f"Ошибка при обновлении после импорта: {e}")
             self.statusBar().showMessage(f"Ошибка обновления: {e}", 5000)
 
+    def invalidate_all_caches(self):
+        """Инвалидирует кеш данных во всех view компонентах."""
+        if hasattr(self, 'stats_grid') and self.stats_grid:
+            self.stats_grid.invalidate_cache()
+        if hasattr(self, 'tournament_view') and self.tournament_view:
+            self.tournament_view.invalidate_cache()
+        if hasattr(self, 'session_view') and self.session_view:
+            self.session_view.invalidate_cache()
+
+    def refresh_all_views(self):
+        """Обновляет все view компоненты."""
+        if hasattr(self, 'stats_grid') and self.stats_grid:
+            self.stats_grid.reload()
+        if hasattr(self, 'tournament_view') and self.tournament_view:
+            self.tournament_view.reload()
+        if hasattr(self, 'session_view') and self.session_view:
+            self.session_view.reload()
 
     def refresh_all_data(self):
         """
@@ -316,13 +329,9 @@ class MainWindow(QtWidgets.QMainWindow):
         # Обновляем UI компоненты в основном потоке
         self._update_toolbar_info()
         
-        # Обновляем вкладки
-        if hasattr(self, 'stats_grid') and self.stats_grid:
-            self.stats_grid.reload()
-        if hasattr(self, 'tournament_view') and self.tournament_view:
-            self.tournament_view.reload()
-        if hasattr(self, 'session_view') and self.session_view:
-            self.session_view.reload()
+        # Инвалидируем кеш и обновляем вкладки
+        self.invalidate_all_caches()
+        self.refresh_all_views()
         
         # Восстанавливаем кнопку обновления
         if hasattr(self, 'refresh_action'):
