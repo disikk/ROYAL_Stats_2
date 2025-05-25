@@ -465,10 +465,11 @@ class RefreshThread(QtCore.QThread):
             self.error_occurred.emit(str(e))
     
     def _report_progress(self, step: int, total: int):
-        """Отправляет прогресс в процентах."""
+        """Отправляет прогресс в процентах через сигналы Qt."""
         if total > 0:
             percent = int((step / total) * 100)
             self.progress_percent.emit(percent)
+            
             # Обновляем текст в зависимости от этапа
             if step == 1:
                 self.progress_update.emit("Обновление общей статистики...")
