@@ -187,6 +187,8 @@ class StatsGrid(QtWidgets.QWidget):
     def __init__(self, app_service: ApplicationService, parent=None):
         super().__init__(parent)
         self.app_service = app_service
+        self._data_cache = {}  # Кеш для данных
+        self._cache_valid = False  # Флаг валидности кеша
         self._init_ui()
         
     def _init_ui(self):
@@ -195,9 +197,9 @@ class StatsGrid(QtWidgets.QWidget):
         main_layout.setContentsMargins(16, 16, 16, 16)
         
         # Создаем QScrollArea для всего содержимого
-        scroll_area = QtWidgets.QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.scroll_area = QtWidgets.QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         
         # Контейнер для всего содержимого
         content_widget = QtWidgets.QWidget()
@@ -318,98 +320,195 @@ class StatsGrid(QtWidgets.QWidget):
         content_layout.addSpacing(5)
         
         # Устанавливаем контент в scroll area
-        scroll_area.setWidget(content_widget)
+        self.scroll_area.setWidget(content_widget)
         
         # Добавляем scroll area в основной layout
-        main_layout.addWidget(scroll_area)
+        main_layout.addWidget(self.scroll_area)
+        
+        # Создаем loading overlay
+        self._create_loading_overlay()
+        
+    def _create_loading_overlay(self):
+        """Создает оверлей загрузки."""
+        self.loading_overlay = QtWidgets.QWidget(self)
+        self.loading_overlay.setStyleSheet("""
+            QWidget {
+                background-color: rgba(0, 0, 0, 0.7);
+            }
+        """)
+        
+        layout = QtWidgets.QVBoxLayout(self.loading_overlay)
+        
+        # Контейнер для индикатора
+        container = QtWidgets.QWidget()
+        container.setMaximumWidth(300)
+        container.setStyleSheet("""
+            QWidget {
+                background-color: #27272A;
+                border-radius: 12px;
+                padding: 20px;
+            }
+        """)
+        
+        container_layout = QtWidgets.QVBoxLayout(container)
+        
+        # Индикатор загрузки
+        self.progress_bar = QtWidgets.QProgressBar()
+        self.progress_bar.setRange(0, 0)  # Неопределенный прогресс
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                background-color: #3F3F46;
+                border-radius: 6px;
+                height: 8px;
+            }
+            QProgressBar::chunk {
+                background-color: #3B82F6;
+                border-radius: 6px;
+            }
+        """)
+        container_layout.addWidget(self.progress_bar)
+        
+        # Текст загрузки
+        self.loading_label = QtWidgets.QLabel("Загрузка данных...")
+        self.loading_label.setStyleSheet("""
+            QLabel {
+                color: #FAFAFA;
+                font-size: 16px;
+                font-weight: bold;
+                margin-top: 10px;
+            }
+        """)
+        self.loading_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        container_layout.addWidget(self.loading_label)
+        
+        layout.addWidget(container, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        
+        self.loading_overlay.hide()
+        
+    def show_loading_overlay(self):
+        """Показывает оверлей загрузки."""
+        self.loading_overlay.resize(self.size())
+        self.loading_overlay.raise_()
+        self.loading_overlay.show()
+        
+    def hide_loading_overlay(self):
+        """Скрывает оверлей загрузки."""
+        self.loading_overlay.hide()
+        
+    def resizeEvent(self, event):
+        """Обрабатывает изменение размера виджета."""
+        super().resizeEvent(event)
+        # Обновляем размер оверлея при изменении размера виджета
+        if hasattr(self, 'loading_overlay'):
+            self.loading_overlay.resize(self.size())
+            
+    def invalidate_cache(self):
+        """Сбрасывает кеш данных."""
+        self._cache_valid = False
+        self._data_cache.clear()
         
     def reload(self):
         """Перезагружает все данные из ApplicationService."""
         logger.debug("=== Начало reload StatsGrid ===")
-        logger.debug("Обновление UI StatsGrid...")
-        overall_stats = self.app_service.get_overall_stats()
-        logger.debug(f"Overall stats: tournaments={overall_stats.total_tournaments}, ko={overall_stats.total_knockouts}")
-        all_tournaments = self.app_service.get_all_tournaments()
         
-        self.cards['tournaments'].update_value(str(overall_stats.total_tournaments))
-        logger.debug(f"Обновлена карточка tournaments: {overall_stats.total_tournaments}")
+        # Показываем индикатор загрузки
+        self.show_loading_overlay()
         
-        self.cards['knockouts'].update_value(str(overall_stats.total_knockouts))
-        logger.debug(f"Обновлена карточка knockouts: {overall_stats.total_knockouts}")
+        # Используем QTimer для небольшой задержки, чтобы UI успел обновиться
+        QtCore.QTimer.singleShot(10, self._do_reload)
         
-        self.cards['avg_ko'].update_value(f"{overall_stats.avg_ko_per_tournament:.2f}")
-        logger.debug(f"Обновлена карточка avg_ko: {overall_stats.avg_ko_per_tournament:.2f}")
-        
-        roi_result = ROIStat().compute([], [], [], overall_stats)
-        logger.debug(f"ROI result: {roi_result}")
-        roi_value = roi_result.get('roi', 0.0)
-        roi_text = f"{roi_value:+.1f}%"
-        self.cards['roi'].update_value(roi_text)
-        logger.debug(f"Обновлена карточка roi: {roi_text}")
-        # Применяем цвет только к тексту, а не к фону
-        apply_cell_color_by_value(self.cards['roi'].value_label, roi_value)
-        
-        itm_result = ITMStat().compute(all_tournaments, [], [], overall_stats)
-        logger.debug(f"ITM result: {itm_result}")
-        itm_value = itm_result.get('itm_percent', 0.0)
-        self.cards['itm'].update_value(f"{itm_value:.1f}%")
-        logger.debug(f"Обновлена карточка itm: {itm_value:.1f}%")
-        
-        ft_reach_result = FinalTableReachStat().compute(all_tournaments, [], [], overall_stats)
-        logger.debug(f"FT Reach result: {ft_reach_result}")
-        ft_reach_value = ft_reach_result.get('final_table_reach_percent', 0.0)
-        self.cards['ft_reach'].update_value(f"{ft_reach_value:.1f}%")
-        logger.debug(f"Обновлена карточка ft_reach: {ft_reach_value:.1f}%")
-        
-        avg_ft_stack_result = AvgFTInitialStackStat().compute(all_tournaments, [], [], overall_stats)
-        logger.debug(f"Avg FT Stack result: {avg_ft_stack_result}")
-        avg_chips = avg_ft_stack_result.get('avg_ft_initial_stack_chips', 0.0)
-        avg_bb = avg_ft_stack_result.get('avg_ft_initial_stack_bb', 0.0)
-        # Форматируем основное значение и подзаголовок
-        self.cards['avg_ft_stack'].update_value(
-            f"{avg_chips:,.0f}",
-            f"{avg_chips:,.0f} фишек / {avg_bb:.1f} BB"
-        )
-        logger.debug(f"Обновлена карточка avg_ft_stack: {avg_chips:,.0f} / {avg_bb:.1f} BB")
-        
-        early_ft_result = EarlyFTKOStat().compute([], [], [], overall_stats)
-        logger.debug(f"Early FT KO result: {early_ft_result}")
-        early_ko_count = early_ft_result.get('early_ft_ko_count', 0)
-        early_ko_per = early_ft_result.get('early_ft_ko_per_tournament', 0.0)
-        # Форматируем основное значение и подзаголовок
-        self.cards['early_ft_ko'].update_value(
-            str(early_ko_count),
-            f"{early_ko_per:.2f} за турнир с FT"
-        )
-        logger.debug(f"Обновлена карточка early_ft_ko: {early_ko_count} / {early_ko_per:.2f}")
-        
-        self.bigko_cards['x1.5'].update_value(str(overall_stats.big_ko_x1_5))
-        self.bigko_cards['x2'].update_value(str(overall_stats.big_ko_x2))
-        self.bigko_cards['x10'].update_value(str(overall_stats.big_ko_x10))
-        self.bigko_cards['x100'].update_value(str(overall_stats.big_ko_x100))
-        self.bigko_cards['x1000'].update_value(str(overall_stats.big_ko_x1000))
-        self.bigko_cards['x10000'].update_value(str(overall_stats.big_ko_x10000))
-        logger.debug(f"Обновлены карточки Big KO: x1.5={overall_stats.big_ko_x1_5}, x2={overall_stats.big_ko_x2}, x10={overall_stats.big_ko_x10}, x100={overall_stats.big_ko_x100}, x1000={overall_stats.big_ko_x1000}, x10000={overall_stats.big_ko_x10000}")
-        
-        # Статы средних мест (fallback расчет, пока не обновлены другие компоненты)
-        # Среднее место по всем турнирам
-        all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
-        avg_all = sum(all_places) / len(all_places) if all_places else 0.0
-        self.cards['avg_place_all'].update_value(f"{avg_all:.2f}")
-        # Среднее место на финалке
-        ft_places = [t.finish_place for t in all_tournaments 
-                     if t.reached_final_table and t.finish_place is not None 
-                     and 1 <= t.finish_place <= 9]
-        avg_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
-        self.cards['avg_place_ft'].update_value(f"{avg_ft:.2f}")
-        # Среднее место без финалки
-        no_ft_places = [t.finish_place for t in all_tournaments 
-                        if not t.reached_final_table and t.finish_place is not None]
-        avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
-        self.cards['avg_place_no_ft'].update_value(f"{avg_no_ft:.2f}")
-        
-        self._update_chart()
-        logger.debug("=== Конец reload StatsGrid ===")
+    def _do_reload(self):
+        """Выполняет фактическую перезагрузку данных."""
+        try:
+            logger.debug("Обновление UI StatsGrid...")
+            overall_stats = self.app_service.get_overall_stats()
+            logger.debug(f"Overall stats: tournaments={overall_stats.total_tournaments}, ko={overall_stats.total_knockouts}")
+            all_tournaments = self.app_service.get_all_tournaments()
+            
+            self.cards['tournaments'].update_value(str(overall_stats.total_tournaments))
+            logger.debug(f"Обновлена карточка tournaments: {overall_stats.total_tournaments}")
+            
+            self.cards['knockouts'].update_value(str(overall_stats.total_knockouts))
+            logger.debug(f"Обновлена карточка knockouts: {overall_stats.total_knockouts}")
+            
+            self.cards['avg_ko'].update_value(f"{overall_stats.avg_ko_per_tournament:.2f}")
+            logger.debug(f"Обновлена карточка avg_ko: {overall_stats.avg_ko_per_tournament:.2f}")
+            
+            roi_result = ROIStat().compute([], [], [], overall_stats)
+            logger.debug(f"ROI result: {roi_result}")
+            roi_value = roi_result.get('roi', 0.0)
+            roi_text = f"{roi_value:+.1f}%"
+            self.cards['roi'].update_value(roi_text)
+            logger.debug(f"Обновлена карточка roi: {roi_text}")
+            # Применяем цвет только к тексту, а не к фону
+            apply_cell_color_by_value(self.cards['roi'].value_label, roi_value)
+            
+            itm_result = ITMStat().compute(all_tournaments, [], [], overall_stats)
+            logger.debug(f"ITM result: {itm_result}")
+            itm_value = itm_result.get('itm_percent', 0.0)
+            self.cards['itm'].update_value(f"{itm_value:.1f}%")
+            logger.debug(f"Обновлена карточка itm: {itm_value:.1f}%")
+            
+            ft_reach_result = FinalTableReachStat().compute(all_tournaments, [], [], overall_stats)
+            logger.debug(f"FT Reach result: {ft_reach_result}")
+            ft_reach_value = ft_reach_result.get('final_table_reach_percent', 0.0)
+            self.cards['ft_reach'].update_value(f"{ft_reach_value:.1f}%")
+            logger.debug(f"Обновлена карточка ft_reach: {ft_reach_value:.1f}%")
+            
+            avg_ft_stack_result = AvgFTInitialStackStat().compute(all_tournaments, [], [], overall_stats)
+            logger.debug(f"Avg FT Stack result: {avg_ft_stack_result}")
+            avg_chips = avg_ft_stack_result.get('avg_ft_initial_stack_chips', 0.0)
+            avg_bb = avg_ft_stack_result.get('avg_ft_initial_stack_bb', 0.0)
+            # Форматируем основное значение и подзаголовок
+            self.cards['avg_ft_stack'].update_value(
+                f"{avg_chips:,.0f}",
+                f"{avg_chips:,.0f} фишек / {avg_bb:.1f} BB"
+            )
+            logger.debug(f"Обновлена карточка avg_ft_stack: {avg_chips:,.0f} / {avg_bb:.1f} BB")
+            
+            early_ft_result = EarlyFTKOStat().compute([], [], [], overall_stats)
+            logger.debug(f"Early FT KO result: {early_ft_result}")
+            early_ko_count = early_ft_result.get('early_ft_ko_count', 0)
+            early_ko_per = early_ft_result.get('early_ft_ko_per_tournament', 0.0)
+            # Форматируем основное значение и подзаголовок
+            self.cards['early_ft_ko'].update_value(
+                str(early_ko_count),
+                f"{early_ko_per:.2f} за турнир с FT"
+            )
+            logger.debug(f"Обновлена карточка early_ft_ko: {early_ko_count} / {early_ko_per:.2f}")
+            
+            self.bigko_cards['x1.5'].update_value(str(overall_stats.big_ko_x1_5))
+            self.bigko_cards['x2'].update_value(str(overall_stats.big_ko_x2))
+            self.bigko_cards['x10'].update_value(str(overall_stats.big_ko_x10))
+            self.bigko_cards['x100'].update_value(str(overall_stats.big_ko_x100))
+            self.bigko_cards['x1000'].update_value(str(overall_stats.big_ko_x1000))
+            self.bigko_cards['x10000'].update_value(str(overall_stats.big_ko_x10000))
+            logger.debug(f"Обновлены карточки Big KO: x1.5={overall_stats.big_ko_x1_5}, x2={overall_stats.big_ko_x2}, x10={overall_stats.big_ko_x10}, x100={overall_stats.big_ko_x100}, x1000={overall_stats.big_ko_x1000}, x10000={overall_stats.big_ko_x10000}")
+            
+            # Статы средних мест (fallback расчет, пока не обновлены другие компоненты)
+            # Среднее место по всем турнирам
+            all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
+            avg_all = sum(all_places) / len(all_places) if all_places else 0.0
+            self.cards['avg_place_all'].update_value(f"{avg_all:.2f}")
+            # Среднее место на финалке
+            ft_places = [t.finish_place for t in all_tournaments 
+                         if t.reached_final_table and t.finish_place is not None 
+                         and 1 <= t.finish_place <= 9]
+            avg_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
+            self.cards['avg_place_ft'].update_value(f"{avg_ft:.2f}")
+            # Среднее место без финалки
+            no_ft_places = [t.finish_place for t in all_tournaments 
+                            if not t.reached_final_table and t.finish_place is not None]
+            avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
+            self.cards['avg_place_no_ft'].update_value(f"{avg_no_ft:.2f}")
+            
+            self._update_chart()
+            logger.debug("=== Конец reload StatsGrid ===")
+            
+        finally:
+            # Скрываем индикатор загрузки
+            self.hide_loading_overlay()
         
     def _update_chart(self):
         """Обновляет гистограмму распределения мест."""

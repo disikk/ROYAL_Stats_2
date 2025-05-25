@@ -70,9 +70,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setStatusBar(QtWidgets.QStatusBar(self))
 
         # Панель инструментов
-        toolbar = self.addToolBar("Панель инструментов")
-        toolbar.setIconSize(QtCore.QSize(20, 20))  # Размер иконок
-        toolbar.setStyleSheet("""
+        self.toolbar = self.addToolBar("Панель инструментов")
+        self.toolbar.setIconSize(QtCore.QSize(20, 20))  # Размер иконок
+        self.toolbar.setStyleSheet("""
             QToolBar {
                 background-color: #18181B;
                 border: none;
@@ -100,44 +100,46 @@ class MainWindow(QtWidgets.QMainWindow):
         refresh_action = QtGui.QAction(CustomIcons.refresh_icon("#10B981"), "Обновить", self)
         refresh_action.setToolTip("Обновить все данные")
         refresh_action.triggered.connect(self.refresh_all_data)
-        toolbar.addAction(refresh_action)
+        self.toolbar.addAction(refresh_action)
+        # Сохраняем ссылку на refresh action для блокировки
+        self.refresh_action = refresh_action
 
         manage_db_action = QtGui.QAction(CustomIcons.database_icon("#3B82F6"), "База данных", self)
         manage_db_action.setToolTip("Управление базами данных")
         manage_db_action.triggered.connect(self.manage_databases)
-        toolbar.addAction(manage_db_action)
+        self.toolbar.addAction(manage_db_action)
 
-        toolbar.addSeparator()
+        self.toolbar.addSeparator()
 
         import_files_action = QtGui.QAction(CustomIcons.file_icon("#F59E0B"), "Файлы", self)
         import_files_action.setToolTip("Импорт отдельных файлов")
         import_files_action.triggered.connect(self.import_files)
-        toolbar.addAction(import_files_action)
+        self.toolbar.addAction(import_files_action)
 
         import_dir_action = QtGui.QAction(CustomIcons.folder_icon("#8B5CF6"), "Папка", self)
         import_dir_action.setToolTip("Импорт целой папки")
         import_dir_action.triggered.connect(self.import_directory)
-        toolbar.addAction(import_dir_action)
+        self.toolbar.addAction(import_dir_action)
 
-        toolbar.addSeparator()
+        self.toolbar.addSeparator()
 
         # Информационные Label с общей статистикой (будут обновляться)
         self.total_tournaments_label = QtWidgets.QLabel("Турниров: -")
         self.total_tournaments_label.setStyleSheet("font-weight: bold; margin: 0 10px;")
-        toolbar.addWidget(self.total_tournaments_label)
+        self.toolbar.addWidget(self.total_tournaments_label)
 
         self.total_profit_label = QtWidgets.QLabel("Прибыль: -")
         self.total_profit_label.setStyleSheet("font-weight: bold; margin: 0 10px;")
-        toolbar.addWidget(self.total_profit_label)
+        self.toolbar.addWidget(self.total_profit_label)
 
         self.total_ko_label = QtWidgets.QLabel("KO: -")
         self.total_ko_label.setStyleSheet("font-weight: bold; margin: 0 10px;")
-        toolbar.addWidget(self.total_ko_label)
+        self.toolbar.addWidget(self.total_ko_label)
 
         # QToolBar doesn't have addStretch method, use spacer widget instead
         spacer = QtWidgets.QWidget()
         spacer.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
-        toolbar.addWidget(spacer)
+        self.toolbar.addWidget(spacer)
 
         # QTabWidget
         self.tabs = QtWidgets.QTabWidget()
@@ -257,28 +259,93 @@ class MainWindow(QtWidgets.QMainWindow):
         """Вызывается по завершении потока импорта."""
         logger.info("Поток импорта завершен.")
         # progress_dialog закроется автоматически если autoClose=True
-        self.refresh_all_data() # Обновляем UI после импорта
+        
+        # Обновляем статистику синхронно (не в отдельном потоке)
+        try:
+            self.statusBar().showMessage("Обновление статистики...")
+            self.app_service._update_all_statistics(None)
+            
+            # Теперь обновляем UI
+            self._update_toolbar_info()
+            
+            # Обновляем вкладки
+            if hasattr(self, 'stats_grid') and self.stats_grid:
+                self.stats_grid.reload()
+            if hasattr(self, 'tournament_view') and self.tournament_view:
+                self.tournament_view.reload()
+            if hasattr(self, 'session_view') and self.session_view:
+                self.session_view.reload()
+            
+            self.statusBar().showMessage(f"Импорт завершен. База данных: {os.path.basename(self.app_service.db_path)}", 3000)
+            
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении после импорта: {e}")
+            self.statusBar().showMessage(f"Ошибка обновления: {e}", 5000)
 
 
     def refresh_all_data(self):
         """
-        Обновляет данные во всех представлениях UI.
-        Вызывается после импорта или смены БД.
+        Обновляет данные во всех представлениях UI асинхронно.
         """
-        logger.info("Обновление всех данных в UI...")
-        # Обновить общие статы в тулбаре
+        logger.info("Запуск асинхронного обновления данных...")
+        
+        # Блокируем кнопку обновления на время операции
+        if hasattr(self, 'refresh_action'):
+            self.refresh_action.setEnabled(False)
+        
+        # Показываем индикатор загрузки в статусбаре
+        self.statusBar().showMessage("Обновление данных...")
+        
+        # Создаем и запускаем поток обновления
+        self.refresh_thread = RefreshThread(self.app_service)
+        self.refresh_thread.progress_update.connect(self._on_refresh_progress)
+        self.refresh_thread.finished_update.connect(self._on_refresh_finished)
+        self.refresh_thread.error_occurred.connect(self._on_refresh_error)
+        self.refresh_thread.start()
+
+    @QtCore.pyqtSlot(str)
+    def _on_refresh_progress(self, message: str):
+        """Обновляет статусбар во время обновления данных."""
+        self.statusBar().showMessage(message)
+
+    @QtCore.pyqtSlot()
+    def _on_refresh_finished(self):
+        """Вызывается по завершении обновления данных."""
+        logger.info("Асинхронное обновление данных завершено")
+        
+        # Обновляем UI компоненты в основном потоке
         self._update_toolbar_info()
-
-        # Обновить все вкладки
-        # Вкладки сами должны запросить данные у ApplicationService при вызове reload
+        
+        # Обновляем вкладки
         if hasattr(self, 'stats_grid') and self.stats_grid:
-             self.stats_grid.reload()
+            self.stats_grid.reload()
         if hasattr(self, 'tournament_view') and self.tournament_view:
-             self.tournament_view.reload()
+            self.tournament_view.reload()
         if hasattr(self, 'session_view') and self.session_view:
-             self.session_view.reload()
-
+            self.session_view.reload()
+        
+        # Восстанавливаем кнопку обновления
+        if hasattr(self, 'refresh_action'):
+            self.refresh_action.setEnabled(True)
+        
         self.statusBar().showMessage(f"Данные обновлены. База данных: {os.path.basename(self.app_service.db_path)}", 3000)
+
+    @QtCore.pyqtSlot(str)
+    def _on_refresh_error(self, error_message: str):
+        """Обработка ошибок при обновлении данных."""
+        logger.error(f"Ошибка обновления: {error_message}")
+        
+        # Восстанавливаем кнопку обновления
+        if hasattr(self, 'refresh_action'):
+            self.refresh_action.setEnabled(True)
+        
+        self.statusBar().showMessage(f"Ошибка обновления: {error_message}", 5000)
+        
+        QtWidgets.QMessageBox.critical(
+            self,
+            "Ошибка обновления",
+            f"Не удалось обновить данные:\n{error_message}"
+        )
 
 
     def _update_toolbar_info(self):
@@ -343,6 +410,30 @@ class ImportThread(QtCore.QThread):
          self._is_canceled = True
          # TODO: Реализовать проверку флага _is_canceled в ApplicationService.import_files
          # и парсерах, чтобы корректно прервать выполнение.
+
+
+class RefreshThread(QtCore.QThread):
+    """Поток для обновления данных без блокировки GUI."""
+    progress_update = QtCore.pyqtSignal(str)  # Сигнал для обновления статуса
+    finished_update = QtCore.pyqtSignal()     # Сигнал завершения
+    error_occurred = QtCore.pyqtSignal(str)   # Сигнал ошибки
+    
+    def __init__(self, app_service: ApplicationService):
+        super().__init__()
+        self.app_service = app_service
+        
+    def run(self):
+        """Выполняет обновление данных в отдельном потоке."""
+        try:
+            self.progress_update.emit("Обновление общей статистики...")
+            # Вызываем метод обновления статистики
+            self.app_service._update_all_statistics(None)
+            
+            self.progress_update.emit("Данные обновлены")
+            self.finished_update.emit()
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении данных: {e}")
+            self.error_occurred.emit(str(e))
 
 
 # Предполагаем, что DatabaseManagementDialog.py будет создан отдельно

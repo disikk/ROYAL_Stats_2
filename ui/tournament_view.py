@@ -23,12 +23,19 @@ class TournamentView(QtWidgets.QWidget):
         super().__init__(parent)
         self.app_service = app_service
         self.tournaments: List[Tournament] = []
+        self._data_cache = {}  # Кеш для данных
+        self._cache_valid = False  # Флаг валидности кеша
         self._init_ui()
         
     def _init_ui(self):
         """Инициализирует интерфейс."""
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
+        self.main_layout = QtWidgets.QVBoxLayout(self)
+        self.main_layout.setContentsMargins(16, 16, 16, 16)
+        
+        # Контейнер для содержимого
+        self.content_widget = QtWidgets.QWidget()
+        content_layout = QtWidgets.QVBoxLayout(self.content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
         
         # Заголовок
         header = QtWidgets.QLabel("Список турниров")
@@ -40,7 +47,7 @@ class TournamentView(QtWidgets.QWidget):
                 margin-bottom: 16px;
             }
         """)
-        layout.addWidget(header)
+        content_layout.addWidget(header)
         
         # Панель фильтров
         filter_layout = QtWidgets.QHBoxLayout()
@@ -68,7 +75,7 @@ class TournamentView(QtWidgets.QWidget):
         self.filter_info.setStyleSheet("color: #A1A1AA; font-size: 13px;")
         filter_layout.addWidget(self.filter_info)
         
-        layout.addLayout(filter_layout)
+        content_layout.addLayout(filter_layout)
         
         # Таблица турниров
         self.table = QtWidgets.QTableWidget()
@@ -86,7 +93,7 @@ class TournamentView(QtWidgets.QWidget):
         header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         
-        layout.addWidget(self.table)
+        content_layout.addWidget(self.table)
         
         # Статистика внизу
         self.stats_label = QtWidgets.QLabel("")
@@ -100,30 +107,143 @@ class TournamentView(QtWidgets.QWidget):
                 margin-top: 8px;
             }
         """)
-        layout.addWidget(self.stats_label)
+        content_layout.addWidget(self.stats_label)
+        
+        self.main_layout.addWidget(self.content_widget)
+        
+        # Создаем loading overlay
+        self._create_loading_overlay()
+        
+    def _create_loading_overlay(self):
+        """Создает оверлей загрузки."""
+        self.loading_overlay = QtWidgets.QWidget(self)
+        self.loading_overlay.setStyleSheet("""
+            QWidget {
+                background-color: rgba(0, 0, 0, 0.7);
+            }
+        """)
+        
+        layout = QtWidgets.QVBoxLayout(self.loading_overlay)
+        
+        # Контейнер для индикатора
+        container = QtWidgets.QWidget()
+        container.setMaximumWidth(300)
+        container.setStyleSheet("""
+            QWidget {
+                background-color: #27272A;
+                border-radius: 12px;
+                padding: 20px;
+            }
+        """)
+        
+        container_layout = QtWidgets.QVBoxLayout(container)
+        
+        # Индикатор загрузки
+        self.progress_bar = QtWidgets.QProgressBar()
+        self.progress_bar.setRange(0, 0)  # Неопределенный прогресс
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                background-color: #3F3F46;
+                border-radius: 6px;
+                height: 8px;
+            }
+            QProgressBar::chunk {
+                background-color: #3B82F6;
+                border-radius: 6px;
+            }
+        """)
+        container_layout.addWidget(self.progress_bar)
+        
+        # Текст загрузки
+        self.loading_label = QtWidgets.QLabel("Загрузка турниров...")
+        self.loading_label.setStyleSheet("""
+            QLabel {
+                color: #FAFAFA;
+                font-size: 16px;
+                font-weight: bold;
+                margin-top: 10px;
+            }
+        """)
+        self.loading_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        container_layout.addWidget(self.loading_label)
+        
+        layout.addWidget(container, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        
+        self.loading_overlay.hide()
+        
+    def show_loading_overlay(self):
+        """Показывает оверлей загрузки."""
+        self.loading_overlay.resize(self.size())
+        self.loading_overlay.raise_()
+        self.loading_overlay.show()
+        
+    def hide_loading_overlay(self):
+        """Скрывает оверлей загрузки."""
+        self.loading_overlay.hide()
+        
+    def resizeEvent(self, event):
+        """Обрабатывает изменение размера виджета."""
+        super().resizeEvent(event)
+        # Обновляем размер оверлея при изменении размера виджета
+        if hasattr(self, 'loading_overlay'):
+            self.loading_overlay.resize(self.size())
+            
+    def invalidate_cache(self):
+        """Сбрасывает кеш данных."""
+        self._cache_valid = False
+        self._data_cache.clear()
         
     def reload(self):
         """Перезагружает данные из ApplicationService."""
         logger.debug("Перезагрузка TournamentView...")
         
+        # Показываем индикатор загрузки
+        self.show_loading_overlay()
+        
+        # Используем QTimer для небольшой задержки, чтобы UI успел обновиться
+        QtCore.QTimer.singleShot(10, self._do_reload)
+        
+    def _do_reload(self):
+        """Выполняет фактическую перезагрузку данных."""
+        try:
+            # Загружаем данные только если кеш невалиден
+            if not self._cache_valid:
+                self._load_data()
+                self._cache_valid = True
+            
+            # Обновляем фильтр бай-инов
+            self._update_buyin_filter()
+            
+            # Применяем фильтры и обновляем таблицу
+            self._apply_filters()
+            
+            logger.debug("Перезагрузка TournamentView завершена.")
+            
+        finally:
+            # Скрываем индикатор загрузки
+            self.hide_loading_overlay()
+            
+    def _load_data(self):
+        """Загружает данные из ApplicationService в кеш."""
+        logger.debug("Загрузка данных в кеш TournamentView...")
+        
         # Загружаем все турниры
         self.tournaments = self.app_service.get_all_tournaments()
+        self._data_cache['tournaments'] = self.tournaments
         
-        # Обновляем фильтр бай-инов
-        self._update_buyin_filter()
+        # Загружаем уникальные бай-ины
+        self._data_cache['buyins'] = self.app_service.get_distinct_buyins()
         
-        # Применяем фильтры и обновляем таблицу
-        self._apply_filters()
-        
-        logger.debug("Перезагрузка TournamentView завершена.")
+        logger.debug(f"Загружено {len(self.tournaments)} турниров")
         
     def _update_buyin_filter(self):
         """Обновляет список доступных бай-инов."""
         current_text = self.buyin_filter.currentText()
         self.buyin_filter.clear()
         
-        # Получаем уникальные бай-ины
-        buyins = self.app_service.get_distinct_buyins()
+        # Получаем уникальные бай-ины из кеша
+        buyins = self._data_cache.get('buyins', [])
         
         # Добавляем "Все" и отсортированные бай-ины
         self.buyin_filter.addItem("Все")

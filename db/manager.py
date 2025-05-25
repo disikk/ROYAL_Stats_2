@@ -140,6 +140,9 @@ class DatabaseManager:
             logger.debug(f"ThreadLocalConnection создан для {self._db_path}")
 
         conn = self._conn_manager.get_connection()
+        
+        # Добавить отладку
+        logger.debug(f"get_connection вызван из потока {threading.current_thread().name} (id: {threading.current_thread().ident})")
 
         if not self._is_initialized:
              # При первом получении соединения для нового пути к БД,
@@ -193,6 +196,12 @@ class DatabaseManager:
     def execute_update(self, query: str, params=None) -> int:
         """Выполняет INSERT, UPDATE, DELETE запрос и возвращает кол-во измененных строк."""
         try:
+            logger.debug(f"=== ОТЛАДКА execute_update ===")
+            logger.debug(f"Query: {query[:100]}...")  # Первые 100 символов запроса
+            logger.debug(f"Params count: {len(params) if params else 0}")
+            if params and len(params) > 0:
+                logger.debug(f"First few params: {params[:3]}...")  # Первые 3 параметра
+            
             conn = self.get_connection()
             cursor = conn.cursor()
             if params is None:
@@ -200,11 +209,15 @@ class DatabaseManager:
             else:
                 cursor.execute(query, params)
             conn.commit()
+            
+            logger.debug(f"Rowcount после выполнения: {cursor.rowcount}")
             return cursor.rowcount
         except Exception as e:
             conn = self.get_connection() # Получаем соединение для текущего потока, чтобы откатить
             conn.rollback() # Откатываем изменения при ошибке
             logger.error(f"Ошибка выполнения UPDATE запроса: {query} с параметрами {params}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             # Пробрасываем исключение или обрабатываем иначе в зависимости от логики
             raise # Пробрасываем исключение
             return 0 # В случае проброса исключения, эта строка недостижима

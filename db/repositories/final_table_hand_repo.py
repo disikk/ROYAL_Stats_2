@@ -5,10 +5,14 @@
 """
 
 import sqlite3
+import logging
 from typing import List, Optional
 from db.manager import database_manager # Используем синглтон менеджер БД
 from models import FinalTableHand
 import config # Для определения MIN_KO_BLIND_LEVEL_BB
+
+logger = logging.getLogger('ROYAL_Stats.FinalTableHandRepository')
+logger.setLevel(logging.DEBUG)
 
 class FinalTableHandRepository:
     """
@@ -24,6 +28,9 @@ class FinalTableHandRepository:
         Использует ON CONFLICT(tournament_id, hand_id) DO NOTHING
         для игнорирования дубликатов при повторном парсинге тех же файлов.
         """
+        logger.info(f"=== ОТЛАДКА add_hand ===")
+        logger.info(f"Попытка сохранить руку: tournament_id={hand.tournament_id}, hand_id={hand.hand_id}, table_size={hand.table_size}")
+        
         query = """
             INSERT INTO hero_final_table_hands (
                 tournament_id, hand_id, hand_number, table_size, bb,
@@ -42,7 +49,9 @@ class FinalTableHandRepository:
             hand.session_id,
             hand.is_early_final,
         )
-        self.db.execute_update(query, params)
+        
+        result = self.db.execute_update(query, params)
+        logger.info(f"Результат execute_update: {result} строк изменено")
 
 
     def get_hands_by_tournament(self, tournament_id: str) -> List[FinalTableHand]:

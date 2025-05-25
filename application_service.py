@@ -136,6 +136,9 @@ class ApplicationService:
             progress_callback: Optional function(current, total, text) for UI progress.
             is_canceled_callback: Optional function() that returns True if the import should be cancelled.
         """
+        logger.info(f"=== НАЧАЛО ИМПОРТА ===")
+        logger.info(f"is_canceled_callback передан: {is_canceled_callback is not None}")
+        
         all_files_to_process = []
         filtered_files_count = 0
         for path in paths:
@@ -206,6 +209,7 @@ class ApplicationService:
         for file_path in all_files_to_process:
             # Проверяем флаг отмены
             if is_canceled_callback and is_canceled_callback():
+                logger.warning(f"=== ИМПОРТ ОТМЕНЕН при парсинге файлов ===")
                 logger.info("Импорт отменен пользователем. Прерываем обработку файлов.")
                 if progress_callback:
                     progress_callback(current_progress, total_steps, "Импорт отменен пользователем")
@@ -229,7 +233,7 @@ class ApplicationService:
                 has_ts_markers = any(marker in line for line in first_lines for marker in ts_markers)
                 
                 # Проверяем, похож ли файл на Hand History
-                # Характерные признаки HH: "Poker Hand #", "Table", "Seat", строки с действиями игроков
+                # Характерные признаки HH: "Poker Hand #", "Table", "Seat"
                 hh_markers = ["Poker Hand #", "Table", "Seat"]
                 has_hh_markers = any(marker in line for line in first_lines for marker in hh_markers)
                 
@@ -275,8 +279,15 @@ class ApplicationService:
 
                 # Обрабатываем файл соответствующим парсером
                 if is_hh:
+                    logger.debug(f"Обработка файла Hand History: {file_path}")
                     hh_data = self.hh_parser.parse(content, filename=os.path.basename(file_path))
                     tourney_id = hh_data.get('tournament_id')
+                    
+                    # ОТЛАДКА: проверяем что вернул парсер
+                    logger.info(f"=== ОТЛАДКА HH ПАРСЕР ===")
+                    logger.info(f"Tournament ID: {tourney_id}")
+                    logger.info(f"Reached final table: {hh_data.get('reached_final_table', False)}")
+                    logger.info(f"Final table hands data: {len(hh_data.get('final_table_hands_data', []))} рук")
 
                     if tourney_id:
                         # Инициализируем запись в словаре, если ее нет
@@ -294,9 +305,14 @@ class ApplicationService:
 
                         # Собираем данные финальных раздач
                         ft_hands_data = hh_data.get('final_table_hands_data', [])
+                        logger.debug(f"HH парсер вернул {len(ft_hands_data)} рук финального стола для турнира {tourney_id}")
                         for hand_data in ft_hands_data:
                              hand_data['session_id'] = session_id # Добавляем session_id к каждой руке
                              all_final_table_hands_data.append(hand_data)
+                             logger.debug(f"Добавлена рука: tournament_id={hand_data.get('tournament_id')}, "
+                                        f"hand_id={hand_data.get('hand_id')}, "
+                                        f"table_size={hand_data.get('table_size')}, "
+                                        f"hero_ko={hand_data.get('hero_ko_this_hand')}")
 
 
                 elif is_ts:
@@ -331,9 +347,15 @@ class ApplicationService:
         current_progress = PARSING_WEIGHT
 
         # --- Сохранение данных в БД ---
+        logger.info(f"=== ОТЛАДКА ПЕРЕД СОХРАНЕНИЕМ ===")
+        logger.info(f"Всего рук финального стола для сохранения: {len(all_final_table_hands_data)}")
+        if all_final_table_hands_data:
+            logger.info(f"Пример первой руки: {all_final_table_hands_data[0]}")
+        
         # ЭТАП 2: Сохранение данных в БД
         # Проверяем флаг отмены перед сохранением в БД
         if is_canceled_callback and is_canceled_callback():
+            logger.warning(f"=== ИМПОРТ ОТМЕНЕН перед сохранением в БД ===")
             logger.info("Импорт отменен пользователем. Пропускаем сохранение данных в БД.")
             if progress_callback:
                 progress_callback(current_progress, total_steps, "Импорт отменен пользователем")
@@ -344,14 +366,17 @@ class ApplicationService:
             progress_callback(current_progress, total_steps, "Сохранение данных в базу...")
 
         # 1. Сохраняем данные финальных раздач (с ON CONFLICT DO NOTHING)
+        logger.info(f"Начинаем сохранение {len(all_final_table_hands_data)} рук финального стола")
         total_hands_to_save = len(all_final_table_hands_data)
         hands_saved = 0
         
         for hand_data in all_final_table_hands_data:
              try:
+                  logger.debug(f"Сохраняем руку: {hand_data}")
                   hand = FinalTableHand.from_dict(hand_data)
                   self.ft_hand_repo.add_hand(hand)
                   hands_saved += 1
+                  logger.debug(f"Рука сохранена успешно: {hand.hand_id}")
                   
                   # Обновляем прогресс для сохранения рук
                   if hands_saved % 10 == 0 or hands_saved == total_hands_to_save:  # Обновляем каждые 10 рук
@@ -361,6 +386,19 @@ class ApplicationService:
                           
              except Exception as e:
                   logger.error(f"Ошибка сохранения финальной раздачи {hand_data.get('hand_id')} турнира {hand_data.get('tournament_id')}: {e}")
+                  import traceback
+                  logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        logger.info(f"Сохранение рук завершено: {hands_saved} из {total_hands_to_save}")
+        
+        # Добавить явный commit после сохранения всех рук
+        if hands_saved > 0:
+            try:
+                conn = self.db.get_connection()
+                conn.commit()
+                logger.info(f"Commit выполнен для {hands_saved} рук")
+            except Exception as e:
+                logger.error(f"Ошибка при commit: {e}")
 
         # Подсчитываем ko_count для каждого турнира на основе сохраненных рук
         logger.info("Подсчет ko_count для турниров...")
@@ -451,6 +489,7 @@ class ApplicationService:
         # ЭТАП 3: Обновление статистики
         # Проверяем флаг отмены перед обновлением статистики
         if is_canceled_callback and is_canceled_callback():
+            logger.warning(f"=== ИМПОРТ ОТМЕНЕН перед обновлением статистики ===")
             logger.info("Импорт отменен пользователем. Пропускаем обновление статистики.")
             if progress_callback:
                 progress_callback(current_progress, total_steps, "Импорт отменен пользователем")
@@ -475,6 +514,16 @@ class ApplicationService:
                   progress_callback(total_steps, total_steps, f"Ошибка при обновлении статистики: {e}")
              # В реальном приложении здесь может потребоваться более детальная обработка
              return
+
+        # В самом конце метода import_files
+        logger.info("=== ПРОВЕРКА БД ПОСЛЕ ИМПОРТА ===")
+        test_query = "SELECT COUNT(*) FROM hero_final_table_hands"
+        result = self.db.execute_query(test_query)
+        logger.info(f"Количество рук в hero_final_table_hands: {result[0][0] if result else 0}")
+
+        test_query2 = "SELECT COUNT(*) FROM tournaments"  
+        result2 = self.db.execute_query(test_query2)
+        logger.info(f"Количество турниров в tournaments: {result2[0][0] if result2 else 0}")
 
         # Завершение импорта
         if progress_callback:

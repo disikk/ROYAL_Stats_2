@@ -23,12 +23,19 @@ class SessionView(QtWidgets.QWidget):
         super().__init__(parent)
         self.app_service = app_service
         self.sessions: List[Session] = []
+        self._data_cache = {}  # Кеш для данных
+        self._cache_valid = False  # Флаг валидности кеша
         self._init_ui()
         
     def _init_ui(self):
         """Инициализирует интерфейс."""
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
+        self.main_layout = QtWidgets.QVBoxLayout(self)
+        self.main_layout.setContentsMargins(16, 16, 16, 16)
+        
+        # Контейнер для содержимого
+        self.content_widget = QtWidgets.QWidget()
+        content_layout = QtWidgets.QVBoxLayout(self.content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
         
         # Заголовок
         header = QtWidgets.QLabel("Игровые сессии")
@@ -40,7 +47,7 @@ class SessionView(QtWidgets.QWidget):
                 margin-bottom: 16px;
             }
         """)
-        layout.addWidget(header)
+        content_layout.addWidget(header)
         
         # Описание
         description = QtWidgets.QLabel(
@@ -55,7 +62,7 @@ class SessionView(QtWidgets.QWidget):
             }
         """)
         description.setWordWrap(True)
-        layout.addWidget(description)
+        content_layout.addWidget(description)
         
         # Таблица сессий
         self.table = QtWidgets.QTableWidget()
@@ -76,7 +83,7 @@ class SessionView(QtWidgets.QWidget):
         self.table.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._show_context_menu)
         
-        layout.addWidget(self.table)
+        content_layout.addWidget(self.table)
         
         # Панель кнопок
         button_layout = QtWidgets.QHBoxLayout()
@@ -98,22 +105,132 @@ class SessionView(QtWidgets.QWidget):
         
         button_layout.addStretch()
         
-        layout.addLayout(button_layout)
+        content_layout.addLayout(button_layout)
         
         # Подключаем сигналы
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
+        
+        self.main_layout.addWidget(self.content_widget)
+        
+        # Создаем loading overlay
+        self._create_loading_overlay()
+        
+    def _create_loading_overlay(self):
+        """Создает оверлей загрузки."""
+        self.loading_overlay = QtWidgets.QWidget(self)
+        self.loading_overlay.setStyleSheet("""
+            QWidget {
+                background-color: rgba(0, 0, 0, 0.7);
+            }
+        """)
+        
+        layout = QtWidgets.QVBoxLayout(self.loading_overlay)
+        
+        # Контейнер для индикатора
+        container = QtWidgets.QWidget()
+        container.setMaximumWidth(300)
+        container.setStyleSheet("""
+            QWidget {
+                background-color: #27272A;
+                border-radius: 12px;
+                padding: 20px;
+            }
+        """)
+        
+        container_layout = QtWidgets.QVBoxLayout(container)
+        
+        # Индикатор загрузки
+        self.progress_bar = QtWidgets.QProgressBar()
+        self.progress_bar.setRange(0, 0)  # Неопределенный прогресс
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                background-color: #3F3F46;
+                border-radius: 6px;
+                height: 8px;
+            }
+            QProgressBar::chunk {
+                background-color: #3B82F6;
+                border-radius: 6px;
+            }
+        """)
+        container_layout.addWidget(self.progress_bar)
+        
+        # Текст загрузки
+        self.loading_label = QtWidgets.QLabel("Загрузка сессий...")
+        self.loading_label.setStyleSheet("""
+            QLabel {
+                color: #FAFAFA;
+                font-size: 16px;
+                font-weight: bold;
+                margin-top: 10px;
+            }
+        """)
+        self.loading_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        container_layout.addWidget(self.loading_label)
+        
+        layout.addWidget(container, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        
+        self.loading_overlay.hide()
+        
+    def show_loading_overlay(self):
+        """Показывает оверлей загрузки."""
+        self.loading_overlay.resize(self.size())
+        self.loading_overlay.raise_()
+        self.loading_overlay.show()
+        
+    def hide_loading_overlay(self):
+        """Скрывает оверлей загрузки."""
+        self.loading_overlay.hide()
+        
+    def resizeEvent(self, event):
+        """Обрабатывает изменение размера виджета."""
+        super().resizeEvent(event)
+        # Обновляем размер оверлея при изменении размера виджета
+        if hasattr(self, 'loading_overlay'):
+            self.loading_overlay.resize(self.size())
+            
+    def invalidate_cache(self):
+        """Сбрасывает кеш данных."""
+        self._cache_valid = False
+        self._data_cache.clear()
         
     def reload(self):
         """Перезагружает данные из ApplicationService."""
         logger.debug("Перезагрузка SessionView...")
         
+        # Показываем индикатор загрузки
+        self.show_loading_overlay()
+        
+        # Используем QTimer для небольшой задержки, чтобы UI успел обновиться
+        QtCore.QTimer.singleShot(10, self._do_reload)
+        
+    def _do_reload(self):
+        """Выполняет фактическую перезагрузку данных."""
+        try:
+            # Загружаем данные только если кеш невалиден
+            if not self._cache_valid:
+                self._load_data()
+                self._cache_valid = True
+            
+            # Обновляем таблицу
+            self._update_sessions_table()
+            
+            logger.debug("Перезагрузка SessionView завершена.")
+            
+        finally:
+            # Скрываем индикатор загрузки
+            self.hide_loading_overlay()
+            
+    def _load_data(self):
+        """Загружает данные из ApplicationService в кеш."""
+        logger.debug("Загрузка данных в кеш SessionView...")
+        
         # Загружаем все сессии
         self.sessions = self.app_service.get_all_sessions()
+        self._data_cache['sessions'] = self.sessions
         
-        # Обновляем таблицу
-        self._update_sessions_table()
-        
-        logger.debug("Перезагрузка SessionView завершена.")
+        logger.debug(f"Загружено {len(self.sessions)} сессий")
         
     def _update_sessions_table(self):
         """Обновляет таблицу сессий."""
@@ -224,8 +341,15 @@ class SessionView(QtWidgets.QWidget):
         
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
             try:
+                # Показываем индикатор во время удаления
+                self.show_loading_overlay()
+                self.loading_label.setText("Удаление сессии...")
+                
                 # Удаляем сессию через ApplicationService
                 self.app_service.delete_session(session.session_id)
+                
+                # Сбрасываем кеш
+                self.invalidate_cache()
                 
                 # Перезагружаем данные
                 self.reload()
@@ -243,6 +367,7 @@ class SessionView(QtWidgets.QWidget):
                     main_window.refresh_all_data()
                     
             except Exception as e:
+                self.hide_loading_overlay()
                 QtWidgets.QMessageBox.critical(
                     self,
                     "Ошибка",
