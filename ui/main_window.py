@@ -260,23 +260,30 @@ class MainWindow(QtWidgets.QMainWindow):
         logger.info("Поток импорта завершен.")
         # progress_dialog закроется автоматически если autoClose=True
         
-        # Обновляем статистику синхронно (не в отдельном потоке)
-        try:
-            self.statusBar().showMessage("Обновление статистики...")
-            self.app_service._update_all_statistics(None)
-            
-            # Теперь обновляем UI
-            self._update_toolbar_info()
-            
-            # Инвалидируем кеш и обновляем вкладки
-            self.invalidate_all_caches()
-            self.refresh_all_views()
-            
-            self.statusBar().showMessage(f"Импорт завершен. База данных: {os.path.basename(self.app_service.db_path)}", 3000)
-            
-        except Exception as e:
-            logger.error(f"Ошибка при обновлении после импорта: {e}")
-            self.statusBar().showMessage(f"Ошибка обновления: {e}", 5000)
+        # Запускаем асинхронное обновление статистики
+        self.statusBar().showMessage("Обновление статистики...")
+        
+        # Создаем и запускаем поток обновления статистики после импорта
+        self.post_import_refresh_thread = RefreshThread(self.app_service)
+        self.post_import_refresh_thread.progress_update.connect(self._on_refresh_progress)
+        self.post_import_refresh_thread.progress_percent.connect(self._on_refresh_percent)
+        self.post_import_refresh_thread.finished_update.connect(self._on_post_import_refresh_finished)
+        self.post_import_refresh_thread.error_occurred.connect(self._on_refresh_error)
+        self.post_import_refresh_thread.start()
+
+    @QtCore.pyqtSlot()
+    def _on_post_import_refresh_finished(self):
+        """Вызывается по завершении обновления статистики после импорта."""
+        logger.info("Обновление статистики после импорта завершено")
+        
+        # Обновляем UI компоненты в основном потоке
+        self._update_toolbar_info()
+        
+        # Инвалидируем кеш и обновляем вкладки
+        self.invalidate_all_caches()
+        self.refresh_all_views()
+        
+        self.statusBar().showMessage(f"Импорт завершен. База данных: {os.path.basename(self.app_service.db_path)}", 3000)
 
     def invalidate_all_caches(self):
         """Инвалидирует кеш данных во всех view компонентах."""
@@ -312,6 +319,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Создаем и запускаем поток обновления
         self.refresh_thread = RefreshThread(self.app_service)
         self.refresh_thread.progress_update.connect(self._on_refresh_progress)
+        self.refresh_thread.progress_percent.connect(self._on_refresh_percent)
         self.refresh_thread.finished_update.connect(self._on_refresh_finished)
         self.refresh_thread.error_occurred.connect(self._on_refresh_error)
         self.refresh_thread.start()
@@ -320,6 +328,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_refresh_progress(self, message: str):
         """Обновляет статусбар во время обновления данных."""
         self.statusBar().showMessage(message)
+
+    @QtCore.pyqtSlot(int)
+    def _on_refresh_percent(self, percent: int):
+        """Обновляет прогресс в статусбаре."""
+        if hasattr(self, 'refresh_action'):
+            # Можно добавить прогресс-бар в статусбар или показать процент в тексте
+            message = f"Обновление данных... {percent}%"
+            self.statusBar().showMessage(message)
 
     @QtCore.pyqtSlot()
     def _on_refresh_finished(self):
@@ -424,6 +440,7 @@ class ImportThread(QtCore.QThread):
 class RefreshThread(QtCore.QThread):
     """Поток для обновления данных без блокировки GUI."""
     progress_update = QtCore.pyqtSignal(str)  # Сигнал для обновления статуса
+    progress_percent = QtCore.pyqtSignal(int)  # Сигнал для обновления процентов
     finished_update = QtCore.pyqtSignal()     # Сигнал завершения
     error_occurred = QtCore.pyqtSignal(str)   # Сигнал ошибки
     
@@ -435,14 +452,32 @@ class RefreshThread(QtCore.QThread):
         """Выполняет обновление данных в отдельном потоке."""
         try:
             self.progress_update.emit("Обновление общей статистики...")
-            # Вызываем метод обновления статистики
-            self.app_service._update_all_statistics(None)
+            self.progress_percent.emit(0)
+            
+            # Вызываем метод обновления статистики с callback для прогресса
+            self.app_service._update_all_statistics(None, progress_callback=self._report_progress)
             
             self.progress_update.emit("Данные обновлены")
+            self.progress_percent.emit(100)
             self.finished_update.emit()
         except Exception as e:
             logger.error(f"Ошибка при обновлении данных: {e}")
             self.error_occurred.emit(str(e))
+    
+    def _report_progress(self, step: int, total: int):
+        """Отправляет прогресс в процентах."""
+        if total > 0:
+            percent = int((step / total) * 100)
+            self.progress_percent.emit(percent)
+            # Обновляем текст в зависимости от этапа
+            if step == 1:
+                self.progress_update.emit("Обновление общей статистики...")
+            elif step == 2:
+                self.progress_update.emit("Обновление распределения мест...")
+            elif step == 3:
+                self.progress_update.emit("Подсчет нокаутов...")
+            elif step == 4:
+                self.progress_update.emit("Обновление статистики сессий...")
 
 
 # Предполагаем, что DatabaseManagementDialog.py будет создан отдельно
