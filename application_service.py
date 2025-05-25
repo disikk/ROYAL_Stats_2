@@ -158,7 +158,6 @@ class ApplicationService:
 
         logger.info(f"Создана и выбрана новая база данных: {new_db_path}")
 
-
     def import_files(self, paths: List[str], session_name: str, progress_callback=None, is_canceled_callback=None):
         """
         Импортирует файлы/папки, парсит их и сохраняет данные в БД.
@@ -360,75 +359,13 @@ class ApplicationService:
         if progress_callback:
             progress_callback(current_progress, total_steps, "Сохранение данных в базу...")
 
-        # 1. Сохраняем данные финальных раздач (с ON CONFLICT DO NOTHING)
-        logger.info(f"Начинаем сохранение {len(all_final_table_hands_data)} рук финального стола")
-        total_hands_to_save = len(all_final_table_hands_data)
-        hands_saved = 0
-        
-        for hand_data in all_final_table_hands_data:
-             try:
-                  logger.debug(f"Сохраняем руку: {hand_data}")
-                  hand = FinalTableHand.from_dict(hand_data)
-                  self.ft_hand_repo.add_hand(hand)
-                  hands_saved += 1
-                  logger.debug(f"Рука сохранена успешно: {hand.hand_id}")
-                  
-                  # Обновляем прогресс для сохранения рук
-                  if hands_saved % 10 == 0 or hands_saved == total_hands_to_save:  # Обновляем каждые 10 рук
-                      hands_progress = current_progress + int((hands_saved / max(total_hands_to_save, 1)) * (SAVING_WEIGHT * 0.3))
-                      if progress_callback:
-                          progress_callback(hands_progress, total_steps, f"Сохранено рук: {hands_saved}/{total_hands_to_save}")
-                          
-             except Exception as e:
-                  logger.error(f"Ошибка сохранения финальной раздачи {hand_data.get('hand_id')} турнира {hand_data.get('tournament_id')}: {e}")
-                  import traceback
-                  logger.error(f"Traceback: {traceback.format_exc()}")
-        
-        logger.info(f"Сохранение рук завершено: {hands_saved} из {total_hands_to_save}")
-        
-        # Добавить явный commit после сохранения всех рук
-        if hands_saved > 0:
-            try:
-                conn = self.db.get_connection()
-                conn.commit()
-                logger.info(f"Commit выполнен для {hands_saved} рук")
-            except Exception as e:
-                logger.error(f"Ошибка при commit: {e}")
-
-        # Подсчитываем ko_count для каждого турнира на основе сохраненных рук
-        logger.info("Подсчет ko_count для турниров...")
+        # 1. СНАЧАЛА сохраняем/обновляем данные турниров
         if progress_callback:
-            progress_callback(current_progress + int(SAVING_WEIGHT * 0.3), total_steps, "Подсчет нокаутов...")
-        
-        tournaments_processed = 0
-        total_tournaments = len(parsed_tournaments_data)
-        
-        for tourney_id in parsed_tournaments_data:
-            try:
-                # Получаем все руки финального стола для этого турнира из БД
-                tournament_ft_hands = self.ft_hand_repo.get_hands_by_tournament(tourney_id)
-                # Суммируем KO из всех рук
-                total_ko = sum(hand.hero_ko_this_hand for hand in tournament_ft_hands)
-                # Обновляем ko_count в parsed_tournaments_data
-                parsed_tournaments_data[tourney_id]['ko_count'] = total_ko
-                if total_ko > 0:
-                    logger.debug(f"Турнир {tourney_id}: найдено {total_ko} KO в {len(tournament_ft_hands)} руках")
-                tournaments_processed += 1
-                
-                # Обновляем прогресс
-                if tournaments_processed % 5 == 0 or tournaments_processed == total_tournaments:
-                    ko_progress = current_progress + int(SAVING_WEIGHT * 0.3) + int((tournaments_processed / max(total_tournaments, 1)) * (SAVING_WEIGHT * 0.2))
-                    if progress_callback:
-                        progress_callback(ko_progress, total_steps, f"Обработано турниров: {tournaments_processed}/{total_tournaments}")
-                        
-            except Exception as e:
-                logger.error(f"Ошибка подсчета KO для турнира {tourney_id}: {e}")
-
-        # 2. Сохраняем/обновляем данные турниров
-        if progress_callback:
-            progress_callback(current_progress + int(SAVING_WEIGHT * 0.5), total_steps, "Сохранение турниров...")
+            progress_callback(current_progress, total_steps, "Сохранение турниров...")
         
         tournaments_saved = 0
+        total_tournaments = len(parsed_tournaments_data)
+        
         for tourney_id, data in parsed_tournaments_data.items():
              try:
                  # Запрашиваем текущий турнир для merge
@@ -469,12 +406,77 @@ class ApplicationService:
                  
                  # Обновляем прогресс
                  if tournaments_saved % 5 == 0 or tournaments_saved == total_tournaments:
-                     save_progress = current_progress + int(SAVING_WEIGHT * 0.5) + int((tournaments_saved / max(total_tournaments, 1)) * (SAVING_WEIGHT * 0.5))
+                     save_progress = current_progress + int((tournaments_saved / max(total_tournaments, 1)) * (SAVING_WEIGHT * 0.4))
                      if progress_callback:
                          progress_callback(save_progress, total_steps, f"Сохранено турниров: {tournaments_saved}/{total_tournaments}")
 
              except Exception as e:
                   logger.error(f"Ошибка сохранения/обновления турнира {tourney_id}: {e}")
+
+        logger.info(f"Сохранено/обновлено {tournaments_saved} турниров.")
+
+        # 2. ТЕПЕРЬ сохраняем данные финальных раздач (с ON CONFLICT DO NOTHING)
+        logger.info(f"Начинаем сохранение {len(all_final_table_hands_data)} рук финального стола")
+        total_hands_to_save = len(all_final_table_hands_data)
+        hands_saved = 0
+        
+        for hand_data in all_final_table_hands_data:
+             try:
+                  logger.debug(f"Сохраняем руку: {hand_data}")
+                  hand = FinalTableHand.from_dict(hand_data)
+                  self.ft_hand_repo.add_hand(hand)
+                  hands_saved += 1
+                  logger.debug(f"Рука сохранена успешно: {hand.hand_id}")
+                  
+                  # Обновляем прогресс для сохранения рук
+                  if hands_saved % 10 == 0 or hands_saved == total_hands_to_save:  # Обновляем каждые 10 рук
+                      hands_progress = current_progress + int(SAVING_WEIGHT * 0.4) + int((hands_saved / max(total_hands_to_save, 1)) * (SAVING_WEIGHT * 0.4))
+                      if progress_callback:
+                          progress_callback(hands_progress, total_steps, f"Сохранено рук: {hands_saved}/{total_hands_to_save}")
+                          
+             except Exception as e:
+                  logger.error(f"Ошибка сохранения финальной раздачи {hand_data.get('hand_id')} турнира {hand_data.get('tournament_id')}: {e}")
+                  import traceback
+                  logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        logger.info(f"Сохранение рук завершено: {hands_saved} из {total_hands_to_save}")
+        
+        # Добавить явный commit после сохранения всех рук
+        if hands_saved > 0:
+            try:
+                conn = self.db.get_connection()
+                conn.commit()
+                logger.info(f"Commit выполнен для {hands_saved} рук")
+            except Exception as e:
+                logger.error(f"Ошибка при commit: {e}")
+
+        # 3. Подсчитываем ko_count для каждого турнира на основе сохраненных рук
+        logger.info("Подсчет ko_count для турниров...")
+        if progress_callback:
+            progress_callback(current_progress + int(SAVING_WEIGHT * 0.8), total_steps, "Подсчет нокаутов...")
+        
+        tournaments_processed = 0
+        
+        for tourney_id in parsed_tournaments_data:
+            try:
+                # Получаем все руки финального стола для этого турнира из БД
+                tournament_ft_hands = self.ft_hand_repo.get_hands_by_tournament(tourney_id)
+                # Суммируем KO из всех рук
+                total_ko = sum(hand.hero_ko_this_hand for hand in tournament_ft_hands)
+                # Обновляем ko_count в parsed_tournaments_data
+                parsed_tournaments_data[tourney_id]['ko_count'] = total_ko
+                if total_ko > 0:
+                    logger.debug(f"Турнир {tourney_id}: найдено {total_ko} KO в {len(tournament_ft_hands)} руках")
+                tournaments_processed += 1
+                
+                # Обновляем прогресс
+                if tournaments_processed % 5 == 0 or tournaments_processed == total_tournaments:
+                    ko_progress = current_progress + int(SAVING_WEIGHT * 0.8) + int((tournaments_processed / max(total_tournaments, 1)) * (SAVING_WEIGHT * 0.2))
+                    if progress_callback:
+                        progress_callback(ko_progress, total_steps, f"Обработано турниров: {tournaments_processed}/{total_tournaments}")
+                        
+            except Exception as e:
+                logger.error(f"Ошибка подсчета KO для турнира {tourney_id}: {e}")
 
         current_progress = PARSING_WEIGHT + SAVING_WEIGHT
         logger.info(f"Сохранено/обновлено {tournaments_saved} турниров. Сохранено {len(all_final_table_hands_data)} рук финального стола.")
@@ -510,7 +512,7 @@ class ApplicationService:
              # В реальном приложении здесь может потребоваться более детальная обработка
              return
 
-        # В самом конце метода import_files
+            # В самом конце метода import_files
         logger.info("=== ПРОВЕРКА БД ПОСЛЕ ИМПОРТА ===")
         test_query = "SELECT COUNT(*) FROM hero_final_table_hands"
         result = self.db.execute_query(test_query)
@@ -523,7 +525,6 @@ class ApplicationService:
         # Завершение импорта
         if progress_callback:
             progress_callback(total_steps, total_steps, "Импорт завершен успешно!")
-
 
     def _update_all_statistics(self, session_id: str, progress_callback=None):
         """
