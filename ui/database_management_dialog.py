@@ -23,6 +23,7 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self.app_service = app_service
         self.selected_db_path = None
+        self.sort_mode = "name"  # name or date
         self._init_ui()
         self._load_databases()
         
@@ -48,7 +49,20 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
             }
         """)
         layout.addWidget(header)
-        
+
+        # Сортировка
+        sort_layout = QtWidgets.QHBoxLayout()
+        sort_label = QtWidgets.QLabel("Сортировка:")
+        sort_label.setStyleSheet("QLabel { color: #FAFAFA; }")
+        self.sort_combo = QtWidgets.QComboBox()
+        self.sort_combo.addItem("По имени", userData="name")
+        self.sort_combo.addItem("По дате", userData="date")
+        self.sort_combo.currentIndexChanged.connect(self._on_sort_changed)
+        sort_layout.addWidget(sort_label)
+        sort_layout.addWidget(self.sort_combo)
+        sort_layout.addStretch()
+        layout.addLayout(sort_layout)
+
         # Список баз данных
         self.db_list = QtWidgets.QListWidget()
         self.db_list.setStyleSheet("""
@@ -57,7 +71,7 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
                 border: 1px solid #3F3F46;
                 border-radius: 8px;
                 padding: 8px;
-                font-size: 14px;
+                font-size: 12px;
             }
             QListWidget::item {
                 padding: 8px;
@@ -146,8 +160,17 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
         self.db_list.clear()
         db_files = self.app_service.get_available_databases()
         current_db = self.app_service.db_path
-        
-        for db_path in db_files:
+
+        # Сортируем список в зависимости от выбранного режима
+        other_dbs = [p for p in db_files if p != current_db]
+        if self.sort_mode == "date":
+            other_dbs.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+        else:
+            other_dbs.sort(key=lambda x: os.path.basename(x).lower())
+
+        ordered = [current_db] + other_dbs if current_db in db_files else other_dbs
+
+        for db_path in ordered:
             db_name = os.path.basename(db_path)
             item = QtWidgets.QListWidgetItem(db_name)
             item.setData(QtCore.Qt.ItemDataRole.UserRole, db_path)
@@ -164,6 +187,13 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
         # Если есть БД, выбираем первую
         if self.db_list.count() > 0:
             self.db_list.setCurrentRow(0)
+
+    def _on_sort_changed(self):
+        """Обновляет список при смене сортировки."""
+        mode = self.sort_combo.currentData()
+        if mode:
+            self.sort_mode = mode
+        self._load_databases()
             
     def _on_selection_changed(self):
         """Обработчик изменения выбора в списке."""
