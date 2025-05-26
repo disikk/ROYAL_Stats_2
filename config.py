@@ -18,8 +18,18 @@ os.makedirs(DEFAULT_DB_DIR, exist_ok=True)
 DEFAULT_DB_NAME = "royal_stats.db"
 DB_PATH = os.path.join(DEFAULT_DB_DIR, DEFAULT_DB_NAME)
 
+# Файл для хранения последней выбранной БД
+LAST_DB_FILE = os.path.join(DEFAULT_DB_DIR, "last_db_path.txt")
+
 # Последняя открытая БД
-LAST_DB_PATH = DB_PATH # Значение по умолчанию
+if os.path.exists(LAST_DB_FILE):
+    try:
+        with open(LAST_DB_FILE, "r", encoding="utf-8") as f:
+            LAST_DB_PATH = f.read().strip() or DB_PATH
+    except Exception:
+        LAST_DB_PATH = DB_PATH
+else:
+    LAST_DB_PATH = DB_PATH
 
 # ==== Настройки игры ====
 # Параметры для определения финального стола и "зоны KO" в HH
@@ -44,4 +54,9 @@ def set_db_path(path: str) -> None:
     global DB_PATH, LAST_DB_PATH
     DB_PATH = path
     LAST_DB_PATH = path
+    try:
+        with open(LAST_DB_FILE, "w", encoding="utf-8") as f:
+            f.write(path)
+    except Exception:
+        pass
 
