@@ -270,30 +270,16 @@ class MainWindow(QtWidgets.QMainWindow):
         logger.info("Поток импорта завершен.")
         # progress_dialog закроется автоматически если autoClose=True
         
-        # Запускаем асинхронное обновление статистики
-        self.statusBar().showMessage("Обновление статистики...")
-        
-        # Создаем и запускаем поток обновления статистики после импорта
-        self.post_import_refresh_thread = RefreshThread(self.app_service)
-        self.post_import_refresh_thread.progress_update.connect(self._on_refresh_progress)
-        self.post_import_refresh_thread.progress_percent.connect(self._on_refresh_percent)
-        self.post_import_refresh_thread.finished_update.connect(self._on_post_import_refresh_finished)
-        self.post_import_refresh_thread.error_occurred.connect(self._on_refresh_error)
-        self.post_import_refresh_thread.start()
-
-    @QtCore.pyqtSlot()
-    def _on_post_import_refresh_finished(self):
-        """Вызывается по завершении обновления статистики после импорта."""
-        logger.info("Обновление статистики после импорта завершено")
-        
-        # Обновляем UI компоненты в основном потоке
+        # По завершении импорта сразу обновляем UI
         self._update_toolbar_info()
-        
-        # Инвалидируем кеш и обновляем вкладки
         self.invalidate_all_caches()
-        self.refresh_all_views()
-        
-        self.statusBar().showMessage(f"Импорт завершен. База данных: {os.path.basename(self.app_service.db_path)}", 3000)
+        self.refresh_all_views(show_overlay=False)
+
+        self.statusBar().showMessage(
+            f"Импорт завершен. База данных: {os.path.basename(self.app_service.db_path)}",
+            3000,
+        )
+
 
     def invalidate_all_caches(self):
         """Инвалидирует кеш данных во всех view компонентах."""
@@ -304,14 +290,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if hasattr(self, 'session_view') and self.session_view:
             self.session_view.invalidate_cache()
 
-    def refresh_all_views(self):
+    def refresh_all_views(self, show_overlay: bool = True):
         """Обновляет все view компоненты."""
         if hasattr(self, 'stats_grid') and self.stats_grid:
-            self.stats_grid.reload()
+            self.stats_grid.reload(show_overlay=show_overlay)
         if hasattr(self, 'tournament_view') and self.tournament_view:
-            self.tournament_view.reload()
+            self.tournament_view.reload(show_overlay=show_overlay)
         if hasattr(self, 'session_view') and self.session_view:
-            self.session_view.reload()
+            self.session_view.reload(show_overlay=show_overlay)
 
     def refresh_all_data(self):
         """

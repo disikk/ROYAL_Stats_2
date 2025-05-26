@@ -194,12 +194,14 @@ class TournamentView(QtWidgets.QWidget):
         self._cache_valid = False
         self._data_cache.clear()
         
-    def reload(self):
+    def reload(self, show_overlay: bool = True):
         """Перезагружает данные из ApplicationService."""
         logger.debug("Перезагрузка TournamentView...")
-        
-        # Показываем индикатор загрузки
-        self.show_loading_overlay()
+
+        self._show_overlay = show_overlay
+        # Показываем индикатор загрузки при необходимости
+        if show_overlay:
+            self.show_loading_overlay()
         
         self._reload_thread = TournamentViewReloadThread(self.app_service)
         self._reload_thread.data_loaded.connect(self._on_data_loaded)
@@ -218,7 +220,8 @@ class TournamentView(QtWidgets.QWidget):
 
             logger.debug("Перезагрузка TournamentView завершена.")
         finally:
-            self.hide_loading_overlay()
+            if getattr(self, "_show_overlay", False):
+                self.hide_loading_overlay()
             
     def _load_data(self):
         """Загружает данные из ApplicationService в кеш."""

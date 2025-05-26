@@ -187,6 +187,10 @@ class ApplicationService:
         """
         logger.info(f"=== НАЧАЛО ИМПОРТА ===")
         logger.info(f"is_canceled_callback передан: {is_canceled_callback is not None}")
+
+        # Показываем прогресс на этапе предварительной подготовки
+        if progress_callback:
+            progress_callback(0, 100, "Подготовка файлов...")
         
         all_files_to_process = []
         filtered_files_count = 0
