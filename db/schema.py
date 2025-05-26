@@ -82,6 +82,8 @@ CREATE TABLE IF NOT EXISTS overall_stats (
     big_ko_x10000 INTEGER DEFAULT 0,
     early_ft_ko_count INTEGER DEFAULT 0,
     early_ft_ko_per_tournament REAL DEFAULT 0,
+    early_ft_bust_count INTEGER DEFAULT 0,
+    early_ft_bust_per_tournament REAL DEFAULT 0,
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 """
@@ -189,6 +191,8 @@ UPDATE overall_stats SET
     big_ko_x10000 = ?,
     early_ft_ko_count = ?,
     early_ft_ko_per_tournament = ?,
+    early_ft_bust_count = ?,
+    early_ft_bust_per_tournament = ?,
     last_updated = CURRENT_TIMESTAMP
 WHERE id = 1
 """

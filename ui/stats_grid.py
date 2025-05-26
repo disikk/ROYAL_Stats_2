@@ -27,6 +27,7 @@ from stats import (
     FinalTableReachStat,
     AvgFTInitialStackStat,
     EarlyFTKOStat,
+    EarlyFTBustStat,
     AvgFinishPlaceStat,
     AvgFinishPlaceFTStat,
     AvgFinishPlaceNoFTStat,
@@ -233,6 +234,7 @@ class StatsGrid(QtWidgets.QWidget):
             'ft_reach': StatCard("% Достижения FT", "-"),
             'avg_ft_stack': SpecialStatCard("Средний стек на FT", "-"),
             'early_ft_ko': SpecialStatCard("KO в ранней FT", "-"),
+            'early_ft_bust': SpecialStatCard("Вылеты ранней FT", "-"),
             'avg_place_all': StatCard("Среднее место (все)", "-"),
             'avg_place_ft': StatCard("Среднее место (FT)", "-"),
             'avg_place_no_ft': StatCard("Среднее место (не FT)", "-"),
@@ -243,7 +245,7 @@ class StatsGrid(QtWidgets.QWidget):
         positions = [
             ('tournaments', 0, 0), ('knockouts', 0, 1), ('avg_ko', 0, 2), ('roi', 0, 3),
             ('itm', 1, 0), ('ft_reach', 1, 1), ('avg_ft_stack', 1, 2), ('early_ft_ko', 1, 3),
-            ('avg_place_all', 2, 0), ('avg_place_ft', 2, 1), ('avg_place_no_ft', 2, 2), ('avg_place_empty', 2, 3),
+            ('avg_place_all', 2, 0), ('avg_place_ft', 2, 1), ('avg_place_no_ft', 2, 2), ('early_ft_bust', 2, 3),
         ]
         
         for key, row, col in positions:
@@ -477,6 +479,16 @@ class StatsGrid(QtWidgets.QWidget):
                 f"{early_ko_per:.2f} за турнир с FT"
             )
             logger.debug(f"Обновлена карточка early_ft_ko: {early_ko_count} / {early_ko_per:.2f}")
+
+            bust_result = EarlyFTBustStat().compute(all_tournaments, [], [], overall_stats)
+            logger.debug(f"Early FT Bust result: {bust_result}")
+            bust_count = bust_result.get('early_ft_bust_count', 0)
+            bust_per = bust_result.get('early_ft_bust_per_tournament', 0.0)
+            self.cards['early_ft_bust'].update_value(
+                str(bust_count),
+                f"{bust_per:.2f} за турнир с FT"
+            )
+            logger.debug(f"Обновлена карточка early_ft_bust: {bust_count} / {bust_per:.2f}")
             
             self.bigko_cards['x1.5'].update_value(str(overall_stats.big_ko_x1_5))
             self.bigko_cards['x2'].update_value(str(overall_stats.big_ko_x2))
