@@ -427,12 +427,14 @@ class StatsGrid(QtWidgets.QWidget):
         self._cache_valid = False
         self._data_cache.clear()
         
-    def reload(self):
+    def reload(self, show_overlay: bool = True):
         """Перезагружает все данные из ApplicationService."""
         logger.debug("=== Начало reload StatsGrid ===")
 
-        # Показываем индикатор загрузки
-        self.show_loading_overlay()
+        # Показываем индикатор загрузки, если требуется
+        self._show_overlay = show_overlay
+        if show_overlay:
+            self.show_loading_overlay()
 
         self._reload_thread = StatsGridReloadThread(self.app_service)
         self._reload_thread.data_loaded.connect(self._on_data_loaded)
@@ -534,7 +536,8 @@ class StatsGrid(QtWidgets.QWidget):
         
         finally:
             # Скрываем индикатор загрузки
-            self.hide_loading_overlay()
+            if getattr(self, "_show_overlay", False):
+                self.hide_loading_overlay()
         
     def _update_chart(self, place_dist=None):
         """Обновляет гистограмму распределения мест."""

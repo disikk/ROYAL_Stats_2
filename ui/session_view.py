@@ -195,12 +195,13 @@ class SessionView(QtWidgets.QWidget):
         self._cache_valid = False
         self._data_cache.clear()
         
-    def reload(self):
+    def reload(self, show_overlay: bool = True):
         """Перезагружает данные из ApplicationService."""
         logger.debug("Перезагрузка SessionView...")
-        
-        # Показываем индикатор загрузки
-        self.show_loading_overlay()
+
+        self._show_overlay = show_overlay
+        if show_overlay:
+            self.show_loading_overlay()
         
         self._reload_thread = SessionViewReloadThread(self.app_service)
         self._reload_thread.data_loaded.connect(self._on_data_loaded)
@@ -214,7 +215,8 @@ class SessionView(QtWidgets.QWidget):
             self._update_sessions_table()
             logger.debug("Перезагрузка SessionView завершена.")
         finally:
-            self.hide_loading_overlay()
+            if getattr(self, "_show_overlay", False):
+                self.hide_loading_overlay()
             
     def _load_data(self):
         """Загружает данные из ApplicationService в кеш."""
