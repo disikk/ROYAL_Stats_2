@@ -21,6 +21,7 @@ from ui.app_style import apply_dark_theme, format_money, format_percentage, appl
 from ui.stats_grid import StatsGrid
 from ui.tournament_view import TournamentView
 from ui.session_view import SessionView
+from ui.session_select_dialog import SessionSelectDialog
 from ui.custom_icons import CustomIcons  # Импортируем кастомные иконки
 
 # Импортируем диалог управления БД
@@ -204,9 +205,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _start_import(self, paths: List[str]):
         """Запускает процесс импорта с прогресс-баром."""
-        session_name, ok = QtWidgets.QInputDialog.getText(self, "Имя сессии", "Введите имя для этой игровой сессии:")
-        if not ok or not session_name:
-             session_name = f"Сессия {datetime.now().strftime('%Y-%m-%d %H:%M')}" # Имя по умолчанию, если не введено
+        dialog = SessionSelectDialog(self.app_service, self)
+        if not dialog.exec():
+            return
+        session_id, session_name = dialog.get_result()
+        if session_id is None and not session_name:
+            session_name = f"Сессия {datetime.now().strftime('%Y-%m-%d %H:%M')}"  # Имя по умолчанию, если не введено
 
         # Создаем прогресс-диалог
         self.progress_dialog = QtWidgets.QProgressDialog(
@@ -226,7 +230,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Запускаем импорт в отдельном потоке, чтобы не блокировать UI
         # ApplicationService сам будет вызывать self.import_progress_signal.emit
-        self.import_thread = ImportThread(self.app_service, paths, session_name, self.import_progress_signal)
+        self.import_thread = ImportThread(
+            self.app_service,
+            paths,
+            session_name,
+            self.import_progress_signal,
+            existing_session_id=session_id,
+        )
         self.import_thread.finished.connect(self._import_finished)
         self.import_thread.start()
 
@@ -396,11 +406,19 @@ class ImportThread(QtCore.QThread):
     # Сигнал для отправки прогресса обратно в основной поток (MainWindow)
     progress_update = QtCore.pyqtSignal(int, int, str)
 
-    def __init__(self, app_service: ApplicationService, paths: List[str], session_name: str, progress_signal: QtCore.pyqtSignal):
+    def __init__(
+        self,
+        app_service: ApplicationService,
+        paths: List[str],
+        session_name: str,
+        progress_signal: QtCore.pyqtSignal,
+        existing_session_id: str | None = None,
+    ):
         super().__init__()
         self.app_service = app_service
         self.paths = paths
         self.session_name = session_name
+        self.existing_session_id = existing_session_id
         self.progress_update = progress_signal # Используем сигнал из MainWindow
         self._is_canceled = False # Флаг для отмены
 
@@ -412,8 +430,9 @@ class ImportThread(QtCore.QThread):
             self.app_service.import_files(
                 self.paths,
                 self.session_name,
+                session_id=self.existing_session_id,
                 progress_callback=self._report_progress,
-                is_canceled_callback=self._is_import_canceled
+                is_canceled_callback=self._is_import_canceled,
             )
         except Exception as e:
             logger.critical(f"Критическая ошибка в потоке импорта: {e}")
