@@ -65,6 +65,9 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
 
         # Список баз данных
         self.db_list = QtWidgets.QListWidget()
+        self.db_list.setSelectionMode(
+            QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection
+        )
         self.db_list.setStyleSheet("""
             QListWidget {
                 background-color: #27272A;
@@ -113,7 +116,7 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
         self.new_db_btn.clicked.connect(self._create_new_database)
         button_layout.addWidget(self.new_db_btn)
         
-        self.delete_db_btn = QtWidgets.QPushButton("Удалить БД")
+        self.delete_db_btn = QtWidgets.QPushButton("Удалить выбранные БД")
         self.delete_db_btn.setIcon(QtGui.QIcon.fromTheme("edit-delete"))
         self.delete_db_btn.clicked.connect(self._delete_database)
         self.delete_db_btn.setEnabled(False)  # Активируется при выборе БД
@@ -197,18 +200,19 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
             
     def _on_selection_changed(self):
         """Обработчик изменения выбора в списке."""
-        current_item = self.db_list.currentItem()
-        if current_item:
-            db_path = current_item.data(QtCore.Qt.ItemDataRole.UserRole)
+        selected_items = self.db_list.selectedItems()
+
+        if len(selected_items) == 1:
+            item = selected_items[0]
+            db_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
             self.selected_db_path = db_path
-            
-            # Обновляем информацию о БД
+
             try:
-                file_size = os.path.getsize(db_path) / 1024 / 1024  # В МБ
+                file_size = os.path.getsize(db_path) / 1024 / 1024
                 file_time = os.path.getmtime(db_path)
                 from datetime import datetime
                 mod_date = datetime.fromtimestamp(file_time).strftime("%d.%m.%Y %H:%M")
-                
+
                 self.info_label.setText(
                     f"Путь: {db_path}\n"
                     f"Размер: {file_size:.2f} МБ\n"
@@ -216,12 +220,21 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
                 )
             except Exception as e:
                 self.info_label.setText(f"Ошибка получения информации: {e}")
-            
-            # Активируем кнопки
+
             self.select_btn.setEnabled(True)
-            # Не разрешаем удалять текущую БД
             is_current = db_path == self.app_service.db_path
             self.delete_db_btn.setEnabled(not is_current)
+
+        elif len(selected_items) > 1:
+            self.selected_db_path = None
+            self.info_label.setText(f"Выбрано {len(selected_items)} баз данных")
+            self.select_btn.setEnabled(False)
+            is_current_selected = any(
+                item.data(QtCore.Qt.ItemDataRole.UserRole) == self.app_service.db_path
+                for item in selected_items
+            )
+            self.delete_db_btn.setEnabled(not is_current_selected)
+
         else:
             self.selected_db_path = None
             self.info_label.setText("")
@@ -289,41 +302,53 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
                 )
                 
     def _delete_database(self):
-        """Удаляет выбранную базу данных."""
-        current_item = self.db_list.currentItem()
-        if not current_item:
+        """Удаляет выбранные базы данных."""
+        selected_items = self.db_list.selectedItems()
+        if not selected_items:
             return
-            
-        db_path = current_item.data(QtCore.Qt.ItemDataRole.UserRole)
-        db_name = os.path.basename(db_path)
-        
-        # Подтверждение удаления
+
+        db_paths = [item.data(QtCore.Qt.ItemDataRole.UserRole) for item in selected_items]
+
+        # Нельзя удалять текущую БД
+        if self.app_service.db_path in db_paths:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Ошибка",
+                "Нельзя удалить текущую базу данных."
+            )
+            return
+
+        db_names = [os.path.basename(p) for p in db_paths]
+        names_list = "\n".join(db_names)
+
         reply = QtWidgets.QMessageBox.question(
             self,
             "Подтверждение удаления",
-            f"Вы уверены, что хотите удалить базу данных '{db_name}'?\n\n"
+            f"Вы уверены, что хотите удалить следующие базы данных:\n{names_list}\n\n"
             "Это действие необратимо!",
             QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
             QtWidgets.QMessageBox.StandardButton.No
         )
-        
+
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
-            try:
-                # Удаляем файл
-                os.remove(db_path)
-                
-                # Обновляем список
-                self._load_databases()
-                
+            errors = []
+            for path in db_paths:
+                try:
+                    os.remove(path)
+                except Exception as e:
+                    errors.append(f"{os.path.basename(path)}: {e}")
+
+            self._load_databases()
+
+            if not errors:
                 QtWidgets.QMessageBox.information(
                     self,
                     "Успех",
-                    f"База данных '{db_name}' успешно удалена."
+                    "Выбранные базы данных успешно удалены."
                 )
-                
-            except Exception as e:
-                QtWidgets.QMessageBox.critical(
+            else:
+                QtWidgets.QMessageBox.warning(
                     self,
-                    "Ошибка",
-                    f"Не удалось удалить базу данных:\n{e}"
+                    "Частичная ошибка",
+                    "Не удалось удалить следующие БД:\n" + "\n".join(errors)
                 )
