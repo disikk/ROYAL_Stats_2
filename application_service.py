@@ -785,6 +785,24 @@ class ApplicationService:
         """Возвращает распределение мест на финальном столе (1-9)."""
         return self.place_dist_repo.get_distribution()
 
+    def get_place_distribution_pre_ft(self) -> Dict[int, int]:
+        """Возвращает распределение мест до финального стола (10-18)."""
+        tournaments = self.tournament_repo.get_all_tournaments()
+        distribution = {i: 0 for i in range(10, 19)}
+        for tourney in tournaments:
+            if tourney.finish_place is not None and 10 <= tourney.finish_place <= 18:
+                distribution[tourney.finish_place] += 1
+        return distribution
+
+    def get_place_distribution_overall(self) -> Dict[int, int]:
+        """Возвращает распределение мест по всем турнирам (1-18)."""
+        tournaments = self.tournament_repo.get_all_tournaments()
+        distribution = {i: 0 for i in range(1, 19)}
+        for tourney in tournaments:
+            if tourney.finish_place is not None and 1 <= tourney.finish_place <= 18:
+                distribution[tourney.finish_place] += 1
+        return distribution
+
     def get_distinct_buyins(self) -> List[float]:
         """Возвращает список уникальных бай-инов из сохраненных турниров."""
         return self.tournament_repo.get_distinct_buyins()
