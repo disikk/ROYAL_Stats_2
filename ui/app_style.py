@@ -110,7 +110,7 @@ def apply_dark_theme(app: QtWidgets.QApplication):
         }
 
         /* Подсветка пунктов выпадающих списков */
-        QComboBox QListView::item:hover {
+        QComboBox QAbstractItemView::item:hover {
             background-color: #52525B;
             color: #FFD700;
         }
