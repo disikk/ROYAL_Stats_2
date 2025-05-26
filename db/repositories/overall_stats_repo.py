@@ -60,6 +60,8 @@ class OverallStatsRepository:
                 big_ko_x10000 = ?,
                 early_ft_ko_count = ?,
                 early_ft_ko_per_tournament = ?,
+                early_ft_bust_count = ?,
+                early_ft_bust_per_tournament = ?,
                 last_updated = ?
             WHERE id = 1
         """
@@ -83,6 +85,8 @@ class OverallStatsRepository:
             stats.big_ko_x10000,
             stats.early_ft_ko_count,
             stats.early_ft_ko_per_tournament,
+            stats.early_ft_bust_count,
+            stats.early_ft_bust_per_tournament,
             datetime.now().isoformat(), # Обновляем метку времени
         )
         self.db.execute_update(query, params)

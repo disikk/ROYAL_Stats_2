@@ -36,6 +36,7 @@ from stats import (
     FinalTableReachStat, # Новый
     AvgFTInitialStackStat, # Новый
     EarlyFTKOStat, # Новый
+    EarlyFTBustStat,
     AvgFinishPlaceStat,
     AvgFinishPlaceFTStat,
     AvgFinishPlaceNoFTStat,
@@ -55,6 +56,7 @@ STAT_PLUGINS: List[BaseStat] = [
     FinalTableReachStat(),
     AvgFTInitialStackStat(),
     EarlyFTKOStat(),
+    EarlyFTBustStat(),
     AvgFinishPlaceStat(),
     AvgFinishPlaceFTStat(),
     AvgFinishPlaceNoFTStat(),
@@ -678,6 +680,16 @@ class ApplicationService:
         # Среднее KO в ранней финалке на турнир (считаем только для турниров, достигших финалки)
         stats.early_ft_ko_per_tournament = stats.early_ft_ko_count / stats.total_final_tables if stats.total_final_tables > 0 else 0.0
 
+        # Вылеты Hero на ранней стадии финалки (6-9 место)
+        stats.early_ft_bust_count = sum(
+            1
+            for t in final_table_tournaments
+            if t.finish_place is not None and 6 <= t.finish_place <= 9
+        )
+        stats.early_ft_bust_per_tournament = (
+            stats.early_ft_bust_count / stats.total_final_tables if stats.total_final_tables > 0 else 0.0
+        )
+
         # Логируем статистику по выплатам для отладки
         tournaments_with_payout = sum(1 for t in all_tournaments if t.payout is not None and t.payout > 0)
         tournaments_without_payout = sum(1 for t in all_tournaments if t.payout is None or t.payout == 0)
@@ -718,6 +730,7 @@ class ApplicationService:
         stats.avg_ft_initial_stack_chips = round(stats.avg_ft_initial_stack_chips, 2)
         stats.avg_ft_initial_stack_bb = round(stats.avg_ft_initial_stack_bb, 2)
         stats.early_ft_ko_per_tournament = round(stats.early_ft_ko_per_tournament, 2)
+        stats.early_ft_bust_per_tournament = round(stats.early_ft_bust_per_tournament, 2)
         stats.final_table_reach_percent = round(stats.final_table_reach_percent, 2)
 
         logger.info(f"Итоговая статистика: tournaments={stats.total_tournaments}, knockouts={stats.total_knockouts}, prize={stats.total_prize}, buyin={stats.total_buy_in}")
