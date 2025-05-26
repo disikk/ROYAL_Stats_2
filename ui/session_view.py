@@ -202,24 +202,18 @@ class SessionView(QtWidgets.QWidget):
         # Показываем индикатор загрузки
         self.show_loading_overlay()
         
-        # Используем QTimer для небольшой задержки, чтобы UI успел обновиться
-        QtCore.QTimer.singleShot(10, self._do_reload)
-        
-    def _do_reload(self):
-        """Выполняет фактическую перезагрузку данных."""
+        self._reload_thread = SessionViewReloadThread(self.app_service)
+        self._reload_thread.data_loaded.connect(self._on_data_loaded)
+        self._reload_thread.start()
+
+    def _on_data_loaded(self, sessions):
+        """Применяет загруженные данные к UI."""
         try:
-            # Загружаем данные только если кеш невалиден
-            if not self._cache_valid:
-                self._load_data()
-                self._cache_valid = True
-            
-            # Обновляем таблицу
+            self.sessions = sessions
+            self._cache_valid = True
             self._update_sessions_table()
-            
             logger.debug("Перезагрузка SessionView завершена.")
-            
         finally:
-            # Скрываем индикатор загрузки
             self.hide_loading_overlay()
             
     def _load_data(self):
@@ -340,36 +334,70 @@ class SessionView(QtWidgets.QWidget):
         )
         
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
-            try:
-                # Показываем индикатор во время удаления
-                self.show_loading_overlay()
-                self.loading_label.setText("Удаление сессии...")
-                
-                # Удаляем сессию через ApplicationService
-                self.app_service.delete_session(session.session_id)
-                
-                # Сбрасываем кеш
-                self.invalidate_cache()
-                
-                # Перезагружаем данные
-                self.reload()
-                
-                # Оповещаем пользователя
-                QtWidgets.QMessageBox.information(
-                    self,
-                    "Успех",
-                    f"Сессия '{session.session_name}' и все связанные данные успешно удалены."
-                )
-                
-                # Оповещаем родительское окно о необходимости обновить все данные
-                main_window = self.window()  # Получаем главное окно
-                if hasattr(main_window, 'refresh_all_data'):
-                    main_window.refresh_all_data()
-                    
-            except Exception as e:
-                self.hide_loading_overlay()
-                QtWidgets.QMessageBox.critical(
-                    self,
-                    "Ошибка",
-                    f"Не удалось удалить сессию:\n{e}"
-                )
+            # Показываем индикатор во время удаления
+            self.show_loading_overlay()
+            self.loading_label.setText("Удаление сессии...")
+
+            self._delete_thread = DeleteSessionThread(self.app_service, session.session_id)
+            self._delete_thread.finished_delete.connect(lambda: self._on_delete_finished(session.session_name))
+            self._delete_thread.error_occurred.connect(self._on_delete_error)
+            self._delete_thread.start()
+
+    def _on_delete_finished(self, session_name: str):
+        """Вызывается при успешном удалении сессии."""
+        self.hide_loading_overlay()
+        self.invalidate_cache()
+        self.reload()
+        QtWidgets.QMessageBox.information(
+            self,
+            "Успех",
+            f"Сессия '{session_name}' и все связанные данные успешно удалены."
+        )
+        main_window = self.window()
+        if hasattr(main_window, 'refresh_all_data'):
+            main_window.refresh_all_data()
+
+    def _on_delete_error(self, message: str):
+        """Вызывается при ошибке удаления."""
+        self.hide_loading_overlay()
+        QtWidgets.QMessageBox.critical(
+            self,
+            "Ошибка",
+            f"Не удалось удалить сессию:\n{message}"
+        )
+
+
+class SessionViewReloadThread(QtCore.QThread):
+    """Поток для загрузки данных сессий."""
+
+    data_loaded = QtCore.pyqtSignal(list)
+
+    def __init__(self, app_service: ApplicationService):
+        super().__init__()
+        self.app_service = app_service
+
+    def run(self):
+        sessions = self.app_service.get_all_sessions()
+        self.data_loaded.emit(sessions)
+
+
+class DeleteSessionThread(QtCore.QThread):
+    """Поток удаления сессии с последующим обновлением статистики."""
+
+    finished_delete = QtCore.pyqtSignal()
+    error_occurred = QtCore.pyqtSignal(str)
+
+    def __init__(self, app_service: ApplicationService, session_id: str):
+        super().__init__()
+        self.app_service = app_service
+        self.session_id = session_id
+
+    def run(self):
+        try:
+            self.app_service.delete_session(self.session_id)
+            self.app_service._update_all_statistics(None)
+            self.finished_delete.emit()
+        except Exception as e:
+            logger.error(f"Ошибка удаления сессии: {e}")
+            self.error_occurred.emit(str(e))
+
