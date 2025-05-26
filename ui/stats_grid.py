@@ -266,8 +266,8 @@ class StatsGrid(QtWidgets.QWidget):
         content_layout.addWidget(separator)
         
         # График распределения мест
-        chart_header = QtWidgets.QLabel("Распределение финишных мест на финальном столе")
-        chart_header.setStyleSheet("""
+        self.chart_header = QtWidgets.QLabel("Распределение финишных мест на финальном столе")
+        self.chart_header.setStyleSheet("""
             QLabel {
                 font-size: 15px;
                 font-weight: bold;
@@ -275,7 +275,19 @@ class StatsGrid(QtWidgets.QWidget):
                 margin-bottom: 3px;
             }
         """)
-        content_layout.addWidget(chart_header)
+
+        content_layout.addWidget(self.chart_header)
+
+        # Переключатель типа гистограммы
+        self.chart_selector = QtWidgets.QComboBox()
+        self.chart_selector.addItems([
+            "Финальный стол",
+            "До финального стола",
+            "Все места",
+        ])
+        self.chart_selector.currentIndexChanged.connect(self._on_chart_selector_changed)
+        self.chart_type = 'ft'
+        content_layout.addWidget(self.chart_selector, alignment=QtCore.Qt.AlignmentFlag.AlignLeft)
         
         # Создаем виджет для графика
         self.chart_view = QChartView()
@@ -514,7 +526,10 @@ class StatsGrid(QtWidgets.QWidget):
             avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
             self.cards['avg_place_no_ft'].update_value(f"{avg_no_ft:.2f}")
             
-            self._update_chart(data['place_dist'])
+            self.place_dist_ft = data['place_dist']
+            self.place_dist_pre_ft = data.get('place_dist_pre_ft', {})
+            self.place_dist_all = data.get('place_dist_all', {})
+            self._update_chart(self._get_current_distribution())
             logger.debug("=== Конец reload StatsGrid ===")
         
         finally:
@@ -524,7 +539,7 @@ class StatsGrid(QtWidgets.QWidget):
     def _update_chart(self, place_dist=None):
         """Обновляет гистограмму распределения мест."""
         if place_dist is None:
-            place_dist = self.app_service.get_place_distribution()
+            place_dist = self._get_current_distribution()
         
         # Проверяем, есть ли данные
         if not place_dist or all(count == 0 for count in place_dist.values()):
@@ -545,39 +560,34 @@ class StatsGrid(QtWidgets.QWidget):
         
         # Создаем серию стековых баров
         series = QStackedBarSeries()
-        
-        # Настраиваем цвета для столбцов
+
+        # Настраиваем цвета для столбцов (достаточно для 18 позиций)
         colors = [
-            "#10B981",  # 1 место - ярко-зеленый
-            "#34D399",  # 2 место - зеленый
-            "#6EE7B7",  # 3 место - светло-зеленый
-            "#FCD34D",  # 4 место - желтый
-            "#F59E0B",  # 5 место - оранжевый
-            "#EF4444",  # 6 место - красный
-            "#DC2626",  # 7 место - темно-красный
-            "#B91C1C",  # 8 место - еще темнее
-            "#991B1B",  # 9 место - самый темный красный
+            "#10B981", "#34D399", "#6EE7B7", "#FCD34D", "#F59E0B", "#EF4444",
+            "#DC2626", "#B91C1C", "#991B1B",
+            "#6366F1", "#3B82F6", "#0EA5E9", "#06B6D4", "#0891B2", "#14B8A6",
+            "#0D9488", "#0F766E", "#134E4A",
         ]
         
         # Подсчитываем общее количество финишей для расчета процентов
         total_finishes = sum(place_dist.values())
-        
+
+        categories = sorted(place_dist.keys())
+
         # Создаем отдельный QBarSet для каждого места
-        for i in range(9):
+        for idx, place in enumerate(categories):
             bar_set = QBarSet("")
-            
-            # Для каждой позиции добавляем значение только если это соответствующее место
-            for place in range(1, 10):
-                if place == i + 1:
-                    bar_set.append(place_dist.get(place, 0))
+
+            for cat in categories:
+                if cat == place:
+                    bar_set.append(place_dist.get(cat, 0))
                 else:
                     bar_set.append(0)
-            
-            # Устанавливаем цвет с прозрачностью
-            color = QtGui.QColor(colors[i])
-            color.setAlpha(int(255 * 0.65))  # 35% прозрачности
+
+            color = QtGui.QColor(colors[idx % len(colors)])
+            color.setAlpha(int(255 * 0.65))
             bar_set.setColor(color)
-            
+
             series.append(bar_set)
         
         # Устанавливаем ширину баров
@@ -585,9 +595,9 @@ class StatsGrid(QtWidgets.QWidget):
         
         chart.addSeries(series)
         
-        # Настройка оси X (категории) - места от 1 до 9
+        # Настройка оси X (категории)
         axis_x = QBarCategoryAxis()
-        axis_x.append([str(i) for i in range(1, 10)])
+        axis_x.append([str(c) for c in categories])
         axis_x.setTitleText("Место")
         axis_x.setLabelsColor(QtGui.QColor("#E4E4E7"))
         axis_x.setGridLineVisible(False)
@@ -639,9 +649,11 @@ class StatsGrid(QtWidgets.QWidget):
         
         # Создаем новые метки
         plot_area = chart.plotArea()
-        bar_width = plot_area.width() / 9
-        
-        for place in range(1, 10):
+        categories = sorted(place_dist.keys())
+        num_places = len(categories)
+        bar_width = plot_area.width() / num_places
+
+        for idx, place in enumerate(categories):
             count = place_dist.get(place, 0)
             if count > 0:
                 percentage = (count / total_finishes) * 100
@@ -651,7 +663,7 @@ class StatsGrid(QtWidgets.QWidget):
                 text.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Weight.Bold))
                 
                 # Вычисляем позицию
-                x_pos = plot_area.left() + bar_width * (place - 0.5) - text.boundingRect().width() / 2
+                x_pos = plot_area.left() + bar_width * (idx + 0.5) - text.boundingRect().width() / 2
                 max_y_value = max(place_dist.values()) * 1.1
                 bar_height_ratio = count / max_y_value
                 y_pos = plot_area.bottom() - (plot_area.height() * bar_height_ratio) - text.boundingRect().height() - 5
@@ -663,6 +675,26 @@ class StatsGrid(QtWidgets.QWidget):
     def _update_percentage_labels_position(self, chart, place_dist, total_finishes):
         """Обновляет позиции меток при изменении размера графика."""
         self._add_percentage_labels(chart, place_dist, total_finishes)
+
+    def _get_current_distribution(self):
+        """Возвращает распределение в зависимости от выбранного типа графика."""
+        if self.chart_type == 'pre_ft':
+            return getattr(self, 'place_dist_pre_ft', {})
+        if self.chart_type == 'all':
+            return getattr(self, 'place_dist_all', {})
+        return getattr(self, 'place_dist_ft', {})
+
+    def _on_chart_selector_changed(self, index: int):
+        types = ['ft', 'pre_ft', 'all']
+        self.chart_type = types[index]
+        if self.chart_type == 'ft':
+            self.chart_header.setText("Распределение финишных мест на финальном столе")
+        elif self.chart_type == 'pre_ft':
+            self.chart_header.setText("Распределение мест до финального стола (10-18)")
+        else:
+            self.chart_header.setText("Распределение финишных мест (1-18)")
+
+        self._update_chart(self._get_current_distribution())
 
 
 class StatsGridReloadThread(QtCore.QThread):
@@ -678,6 +710,8 @@ class StatsGridReloadThread(QtCore.QThread):
         overall_stats = self.app_service.get_overall_stats()
         all_tournaments = self.app_service.get_all_tournaments()
         place_dist = self.app_service.get_place_distribution()
+        place_dist_pre_ft = self.app_service.get_place_distribution_pre_ft()
+        place_dist_all = self.app_service.get_place_distribution_overall()
 
         roi_value = ROIStat().compute([], [], [], overall_stats).get('roi', 0.0)
         itm_value = ITMStat().compute(all_tournaments, [], [], overall_stats).get('itm_percent', 0.0)
@@ -700,6 +734,8 @@ class StatsGridReloadThread(QtCore.QThread):
             'overall_stats': overall_stats,
             'all_tournaments': all_tournaments,
             'place_dist': place_dist,
+            'place_dist_pre_ft': place_dist_pre_ft,
+            'place_dist_all': place_dist_all,
             'roi': roi_value,
             'itm': itm_value,
             'ft_reach': ft_reach,
