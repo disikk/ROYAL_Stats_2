@@ -156,7 +156,13 @@ class ApplicationService:
             # Можно вернуть False или пробросить исключение, чтобы UI показал ошибку
             raise FileExistsError(f"База данных '{os.path.basename(new_db_path)}' уже существует.")
 
-        self.db.set_db_path(new_db_path) # Set path will also attempt init
+        self.db.set_db_path(new_db_path)  # Устанавливаем новый путь
+
+        # Принудительно открываем соединение, чтобы физически создать файл БД
+        # и инициализировать схему. Иначе файл появится только при первом
+        # обращении к данным, что мешает отображению новой БД в диалоге.
+        conn = self.db.get_connection()
+        self.db.close_connection()
 
         logger.info(f"Создана и выбрана новая база данных: {new_db_path}")
 
