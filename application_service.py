@@ -188,7 +188,7 @@ class ApplicationService:
         logger.info(f"=== НАЧАЛО ИМПОРТА ===")
         logger.info(f"is_canceled_callback передан: {is_canceled_callback is not None}")
 
-        # Показываем прогресс на этапе предварительной подготовки
+        # Инициализируем единый прогресс-бар
         if progress_callback:
             progress_callback(0, 100, "Подготовка файлов...")
         
@@ -390,8 +390,6 @@ class ApplicationService:
             progress_callback(current_progress, total_steps, "Сохранение данных в базу...")
 
         # 1. СНАЧАЛА сохраняем/обновляем данные турниров
-        if progress_callback:
-            progress_callback(current_progress, total_steps, "Сохранение турниров...")
         
         tournaments_saved = 0
         total_tournaments = len(parsed_tournaments_data)
@@ -528,12 +526,14 @@ class ApplicationService:
         
         try:
              # Передаем callback в _update_all_statistics для отслеживания прогресса
-             self._update_all_statistics(session_id, 
-                                        progress_callback=lambda step, total: progress_callback(
-                                            current_progress + int((step / total) * STATS_WEIGHT), 
-                                            total_steps, 
-                                            f"Обновление статистики... {step}/{total}"
-                                        ))
+             self._update_all_statistics(
+                 session_id,
+                 progress_callback=lambda step, total: progress_callback(
+                     current_progress + int((step / total) * STATS_WEIGHT),
+                     total_steps,
+                     "Обновление статистики..."
+                 ),
+             )
              logger.info("Обновление статистики завершено.")
         except Exception as e:
              logger.error(f"Ошибка при обновлении статистики: {e}")
