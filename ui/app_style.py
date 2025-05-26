@@ -315,8 +315,9 @@ def apply_bigko_x10_color(label: QtWidgets.QLabel, total_tournaments: int, x10_c
         avg_interval = total_tournaments / x10_count
 
         if avg_interval <= 51:
-            # Gold color when very frequent
-            color = "#FFD700"
+            # Bright green color and add fire emoji when very frequent
+            color = "#00FF00"
+            label.setText(f"{label.text()} \U0001F525")
         elif 52 <= avg_interval <= 58:
             color = "#10B981"  # Green
         elif 59 <= avg_interval <= 65:
