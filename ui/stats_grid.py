@@ -15,7 +15,12 @@ from application_service import ApplicationService
 from models import OverallStats
 
 # Импортируем функции стилизации
-from ui.app_style import format_money, format_percentage, apply_cell_color_by_value
+from ui.app_style import (
+    format_money,
+    format_percentage,
+    apply_cell_color_by_value,
+    apply_bigko_x10_color,
+)
 
 # Импортируем плагины для получения их результатов
 from stats import (
@@ -496,6 +501,11 @@ class StatsGrid(QtWidgets.QWidget):
             self.bigko_cards['x100'].update_value(str(overall_stats.big_ko_x100))
             self.bigko_cards['x1000'].update_value(str(overall_stats.big_ko_x1000))
             self.bigko_cards['x10000'].update_value(str(overall_stats.big_ko_x10000))
+            apply_bigko_x10_color(
+                self.bigko_cards['x10'].value_label,
+                overall_stats.total_tournaments,
+                overall_stats.big_ko_x10,
+            )
             logger.debug(f"Обновлены карточки Big KO: x1.5={overall_stats.big_ko_x1_5}, x2={overall_stats.big_ko_x2}, x10={overall_stats.big_ko_x10}, x100={overall_stats.big_ko_x100}, x1000={overall_stats.big_ko_x1000}, x10000={overall_stats.big_ko_x10000}")
             
             # Статы средних мест (fallback расчет, пока не обновлены другие компоненты)
