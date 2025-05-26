@@ -328,6 +328,20 @@ def apply_bigko_x10_color(label: QtWidgets.QLabel, total_tournaments: int, x10_c
     label.setStyleSheet(f"color: {color}; font-weight: bold;")
 
 
+def apply_bigko_high_tier_color(label: QtWidgets.QLabel, count: int):
+    """Applies bright green color and fire emoji for high tier Big KO counts."""
+    if not isinstance(label, QtWidgets.QLabel):
+        return
+
+    if count > 0:
+        color = "#00FF00"  # Bright green
+        label.setText(f"{label.text()} \U0001F525")
+    else:
+        color = "#EF4444"  # Red when there were none
+
+    label.setStyleSheet(f"color: {color}; font-weight: bold;")
+
+
 def create_separator() -> QtWidgets.QFrame:
     """Создает горизонтальный разделитель."""
     separator = QtWidgets.QFrame()

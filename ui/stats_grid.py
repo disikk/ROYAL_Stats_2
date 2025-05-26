@@ -20,6 +20,7 @@ from ui.app_style import (
     format_percentage,
     apply_cell_color_by_value,
     apply_bigko_x10_color,
+    apply_bigko_high_tier_color,
 )
 
 # Импортируем плагины для получения их результатов
@@ -506,6 +507,18 @@ class StatsGrid(QtWidgets.QWidget):
                 self.bigko_cards['x10'].value_label,
                 overall_stats.total_tournaments,
                 overall_stats.big_ko_x10,
+            )
+            apply_bigko_high_tier_color(
+                self.bigko_cards['x100'].value_label,
+                overall_stats.big_ko_x100,
+            )
+            apply_bigko_high_tier_color(
+                self.bigko_cards['x1000'].value_label,
+                overall_stats.big_ko_x1000,
+            )
+            apply_bigko_high_tier_color(
+                self.bigko_cards['x10000'].value_label,
+                overall_stats.big_ko_x10000,
             )
             logger.debug(f"Обновлены карточки Big KO: x1.5={overall_stats.big_ko_x1_5}, x2={overall_stats.big_ko_x2}, x10={overall_stats.big_ko_x10}, x100={overall_stats.big_ko_x100}, x1000={overall_stats.big_ko_x1000}, x10000={overall_stats.big_ko_x10000}")
             
