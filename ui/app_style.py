@@ -343,7 +343,8 @@ def apply_bigko_high_tier_color(label: QtWidgets.QLabel, count: int):
         color = "#00FF00"  # Bright green
         label.setText(f"{label.text()} \U0001F525")
     else:
-        color = "#EF4444"  # Red when there were none
+        # Return default white color for zero values
+        color = "#FAFAFA"
 
     label.setStyleSheet(f"color: {color}; font-weight: bold;")
 
