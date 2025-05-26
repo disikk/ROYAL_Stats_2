@@ -342,8 +342,12 @@ def apply_bigko_high_tier_color(label: QtWidgets.QLabel, count: int):
     if count > 0:
         color = "#00FF00"  # Bright green
         label.setText(f"{label.text()} \U0001F525")
+    elif count == 0:
+        # Default white color for zero counts on x100+ cards
+        color = "#FAFAFA"
     else:
-        color = "#EF4444"  # Red when there were none
+        # Safeguard: red color if somehow count turns negative
+        color = "#EF4444"
 
     label.setStyleSheet(f"color: {color}; font-weight: bold;")
 
