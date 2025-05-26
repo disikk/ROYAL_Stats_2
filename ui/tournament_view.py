@@ -201,27 +201,23 @@ class TournamentView(QtWidgets.QWidget):
         # Показываем индикатор загрузки
         self.show_loading_overlay()
         
-        # Используем QTimer для небольшой задержки, чтобы UI успел обновиться
-        QtCore.QTimer.singleShot(10, self._do_reload)
-        
-    def _do_reload(self):
-        """Выполняет фактическую перезагрузку данных."""
+        self._reload_thread = TournamentViewReloadThread(self.app_service)
+        self._reload_thread.data_loaded.connect(self._on_data_loaded)
+        self._reload_thread.start()
+
+    def _on_data_loaded(self, tournaments, buyins):
+        """Применяет загруженные данные к UI."""
         try:
-            # Загружаем данные только если кеш невалиден
-            if not self._cache_valid:
-                self._load_data()
-                self._cache_valid = True
-            
-            # Обновляем фильтр бай-инов
+            self.tournaments = tournaments
+            self._data_cache['tournaments'] = tournaments
+            self._data_cache['buyins'] = buyins
+            self._cache_valid = True
+
             self._update_buyin_filter()
-            
-            # Применяем фильтры и обновляем таблицу
             self._apply_filters()
-            
+
             logger.debug("Перезагрузка TournamentView завершена.")
-            
         finally:
-            # Скрываем индикатор загрузки
             self.hide_loading_overlay()
             
     def _load_data(self):
@@ -369,3 +365,18 @@ class TournamentView(QtWidgets.QWidget):
             f"ITM: {itm_percent:.1f}% | "
             f"KO: {total_ko}"
         )
+
+
+class TournamentViewReloadThread(QtCore.QThread):
+    """Поток для загрузки турниров и списка бай-инов."""
+
+    data_loaded = QtCore.pyqtSignal(list, list)
+
+    def __init__(self, app_service: ApplicationService):
+        super().__init__()
+        self.app_service = app_service
+
+    def run(self):
+        tournaments = self.app_service.get_all_tournaments()
+        buyins = self.app_service.get_distinct_buyins()
+        self.data_loaded.emit(tournaments, buyins)

@@ -469,15 +469,15 @@ class RefreshThread(QtCore.QThread):
         if total > 0:
             percent = int((step / total) * 100)
             self.progress_percent.emit(percent)
-            
-            # Обновляем текст в зависимости от этапа
-            if step == 1:
+
+            # Меняем текст в зависимости от процента прогресса
+            if percent < 25:
                 self.progress_update.emit("Обновление общей статистики...")
-            elif step == 2:
+            elif percent < 50:
                 self.progress_update.emit("Обновление распределения мест...")
-            elif step == 3:
+            elif percent < 75:
                 self.progress_update.emit("Подсчет нокаутов...")
-            elif step == 4:
+            else:
                 self.progress_update.emit("Обновление статистики сессий...")
 
 

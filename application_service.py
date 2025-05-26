@@ -533,7 +533,16 @@ class ApplicationService:
         """
         logger.debug("Запущен пересчет всей статистики.")
         
-        total_steps = 4  # 4 основных этапа обновления
+        # Предварительно загружаем данные для оценки объема работы
+        all_tournaments = self.tournament_repo.get_all_tournaments()
+        all_final_tournaments = [
+            t for t in all_tournaments
+            if t.reached_final_table and t.finish_place is not None and 1 <= t.finish_place <= 9
+        ]
+        sessions_to_update = self.session_repo.get_all_sessions()
+
+        # Общее количество операций для прогресса
+        total_steps = 1 + len(all_final_tournaments) + len(all_tournaments) + len(sessions_to_update)
         current_step = 0
 
         # --- Обновление Overall Stats ---
@@ -545,28 +554,23 @@ class ApplicationService:
             self.overall_stats_repo.update_overall_stats(overall_stats)
             logger.info("Общая статистика обновлена успешно.")
             current_step += 1
+            if progress_callback:
+                progress_callback(current_step, total_steps)
         except Exception as e:
             logger.error(f"Ошибка при обновлении overall_stats: {e}")
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
-            # Продолжаем обновлять остальные таблицы!
 
         # --- Обновление Place Distribution ---
         try:
-            if progress_callback:
-                progress_callback(current_step, total_steps)
             logger.debug("Обновление распределения мест...")
             self.place_dist_repo.reset_distribution()
-            all_final_tournaments = self.tournament_repo.get_all_tournaments()
-            
-            count = 0
             for tourney in all_final_tournaments:
-                if tourney.reached_final_table and tourney.finish_place is not None and 1 <= tourney.finish_place <= 9:
-                    self.place_dist_repo.increment_place_count(tourney.finish_place)
-                    count += 1
-            
-            logger.info(f"Распределение мест обновлено для {count} турниров.")
-            current_step += 1
+                self.place_dist_repo.increment_place_count(tourney.finish_place)
+                current_step += 1
+                if progress_callback:
+                    progress_callback(current_step, total_steps)
+            logger.info(f"Распределение мест обновлено для {len(all_final_tournaments)} турниров.")
         except Exception as e:
             logger.error(f"Ошибка при обновлении place_distribution: {e}")
             import traceback
@@ -574,22 +578,16 @@ class ApplicationService:
 
         # --- Обновление KO count для турниров ---
         try:
-            if progress_callback:
-                progress_callback(current_step, total_steps)
             logger.debug("Обновление ko_count для турниров...")
-            all_tournaments = self.tournament_repo.get_all_tournaments()
-            updated_count = 0
-            
             for tournament in all_tournaments:
                 tournament_ft_hands = self.ft_hand_repo.get_hands_by_tournament(tournament.tournament_id)
                 total_ko = sum(hand.hero_ko_this_hand for hand in tournament_ft_hands)
                 tournament.ko_count = total_ko
                 self.tournament_repo.add_or_update_tournament(tournament)
-                if total_ko > 0:
-                    updated_count += 1
-            
-            logger.info(f"KO count обновлен для {updated_count} турниров.")
-            current_step += 1
+                current_step += 1
+                if progress_callback:
+                    progress_callback(current_step, total_steps)
+            logger.info(f"KO count обновлен для {len(all_tournaments)} турниров.")
         except Exception as e:
             logger.error(f"Ошибка при обновлении ko_count: {e}")
             import traceback
@@ -597,23 +595,23 @@ class ApplicationService:
 
         # --- Обновление Session Stats ---
         try:
-            if progress_callback:
-                progress_callback(current_step, total_steps)
             logger.debug("Обновление статистики сессий...")
-            sessions_to_update = self.session_repo.get_all_sessions()
-            
             for session in sessions_to_update:
                 try:
                     self._calculate_and_update_session_stats(session.session_id)
                 except Exception as e:
                     logger.error(f"Ошибка при обновлении сессии {session.session_id}: {e}")
-            
+                current_step += 1
+                if progress_callback:
+                    progress_callback(current_step, total_steps)
             logger.info(f"Статистика обновлена для {len(sessions_to_update)} сессий.")
-            current_step += 1
         except Exception as e:
             logger.error(f"Ошибка при обновлении session stats: {e}")
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
+
+        if progress_callback:
+            progress_callback(total_steps, total_steps)
 
         logger.info("Обновление всей статистики завершено (с учетом возможных ошибок).")
 
@@ -804,8 +802,7 @@ class ApplicationService:
         """Удаляет сессию и все связанные данные."""
         # Удаляем сессию (каскадное удаление удалит связанные турниры и руки)
         self.session_repo.delete_session_by_id(session_id)
-        # Обновляем статистику после удаления
-        self._update_all_statistics(None)
+        # Статистика пересчитывается асинхронно во внешнем потоке
 
 
 # Создаем синглтон экземпляр ApplicationService

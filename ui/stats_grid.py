@@ -411,66 +411,55 @@ class StatsGrid(QtWidgets.QWidget):
     def reload(self):
         """Перезагружает все данные из ApplicationService."""
         logger.debug("=== Начало reload StatsGrid ===")
-        
+
         # Показываем индикатор загрузки
         self.show_loading_overlay()
-        
-        # Используем QTimer для небольшой задержки, чтобы UI успел обновиться
-        QtCore.QTimer.singleShot(10, self._do_reload)
-        
-    def _do_reload(self):
-        """Выполняет фактическую перезагрузку данных."""
+
+        self._reload_thread = StatsGridReloadThread(self.app_service)
+        self._reload_thread.data_loaded.connect(self._on_data_loaded)
+        self._reload_thread.start()
+
+    def _on_data_loaded(self, data: dict):
+        """Применяет загруженные данные к UI."""
         try:
-            logger.debug("Обновление UI StatsGrid...")
-            overall_stats = self.app_service.get_overall_stats()
-            logger.debug(f"Overall stats: tournaments={overall_stats.total_tournaments}, ko={overall_stats.total_knockouts}")
-            all_tournaments = self.app_service.get_all_tournaments()
+            overall_stats = data['overall_stats']
+            all_tournaments = data['all_tournaments']
             
             self.cards['tournaments'].update_value(str(overall_stats.total_tournaments))
             logger.debug(f"Обновлена карточка tournaments: {overall_stats.total_tournaments}")
-            
+
             self.cards['knockouts'].update_value(str(overall_stats.total_knockouts))
             logger.debug(f"Обновлена карточка knockouts: {overall_stats.total_knockouts}")
-            
+
             self.cards['avg_ko'].update_value(f"{overall_stats.avg_ko_per_tournament:.2f}")
             logger.debug(f"Обновлена карточка avg_ko: {overall_stats.avg_ko_per_tournament:.2f}")
-            
-            roi_result = ROIStat().compute([], [], [], overall_stats)
-            logger.debug(f"ROI result: {roi_result}")
-            roi_value = roi_result.get('roi', 0.0)
+
+            roi_value = data['roi']
             roi_text = f"{roi_value:+.1f}%"
             self.cards['roi'].update_value(roi_text)
             logger.debug(f"Обновлена карточка roi: {roi_text}")
             # Применяем цвет только к тексту, а не к фону
             apply_cell_color_by_value(self.cards['roi'].value_label, roi_value)
-            
-            itm_result = ITMStat().compute(all_tournaments, [], [], overall_stats)
-            logger.debug(f"ITM result: {itm_result}")
-            itm_value = itm_result.get('itm_percent', 0.0)
+
+            itm_value = data['itm']
             self.cards['itm'].update_value(f"{itm_value:.1f}%")
             logger.debug(f"Обновлена карточка itm: {itm_value:.1f}%")
-            
-            ft_reach_result = FinalTableReachStat().compute(all_tournaments, [], [], overall_stats)
-            logger.debug(f"FT Reach result: {ft_reach_result}")
-            ft_reach_value = ft_reach_result.get('final_table_reach_percent', 0.0)
+
+            ft_reach_value = data['ft_reach']
             self.cards['ft_reach'].update_value(f"{ft_reach_value:.1f}%")
             logger.debug(f"Обновлена карточка ft_reach: {ft_reach_value:.1f}%")
-            
-            avg_ft_stack_result = AvgFTInitialStackStat().compute(all_tournaments, [], [], overall_stats)
-            logger.debug(f"Avg FT Stack result: {avg_ft_stack_result}")
-            avg_chips = avg_ft_stack_result.get('avg_ft_initial_stack_chips', 0.0)
-            avg_bb = avg_ft_stack_result.get('avg_ft_initial_stack_bb', 0.0)
+
+            avg_chips = data['avg_chips']
+            avg_bb = data['avg_bb']
             # Форматируем основное значение и подзаголовок
             self.cards['avg_ft_stack'].update_value(
                 f"{avg_chips:,.0f}",
                 f"{avg_chips:,.0f} фишек / {avg_bb:.1f} BB"
             )
             logger.debug(f"Обновлена карточка avg_ft_stack: {avg_chips:,.0f} / {avg_bb:.1f} BB")
-            
-            early_ft_result = EarlyFTKOStat().compute([], [], [], overall_stats)
-            logger.debug(f"Early FT KO result: {early_ft_result}")
-            early_ko_count = early_ft_result.get('early_ft_ko_count', 0)
-            early_ko_per = early_ft_result.get('early_ft_ko_per_tournament', 0.0)
+
+            early_ko_count = data['early_ko']
+            early_ko_per = data['early_ko_per']
             # Форматируем основное значение и подзаголовок
             self.cards['early_ft_ko'].update_value(
                 str(early_ko_count),
@@ -503,16 +492,17 @@ class StatsGrid(QtWidgets.QWidget):
             avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
             self.cards['avg_place_no_ft'].update_value(f"{avg_no_ft:.2f}")
             
-            self._update_chart()
+            self._update_chart(data['place_dist'])
             logger.debug("=== Конец reload StatsGrid ===")
-            
+        
         finally:
             # Скрываем индикатор загрузки
             self.hide_loading_overlay()
         
-    def _update_chart(self):
+    def _update_chart(self, place_dist=None):
         """Обновляет гистограмму распределения мест."""
-        place_dist = self.app_service.get_place_distribution()
+        if place_dist is None:
+            place_dist = self.app_service.get_place_distribution()
         
         # Проверяем, есть ли данные
         if not place_dist or all(count == 0 for count in place_dist.values()):
@@ -651,3 +641,51 @@ class StatsGrid(QtWidgets.QWidget):
     def _update_percentage_labels_position(self, chart, place_dist, total_finishes):
         """Обновляет позиции меток при изменении размера графика."""
         self._add_percentage_labels(chart, place_dist, total_finishes)
+
+
+class StatsGridReloadThread(QtCore.QThread):
+    """Поток для загрузки данных статистики без блокировки GUI."""
+
+    data_loaded = QtCore.pyqtSignal(dict)
+
+    def __init__(self, app_service: ApplicationService):
+        super().__init__()
+        self.app_service = app_service
+
+    def run(self):
+        overall_stats = self.app_service.get_overall_stats()
+        all_tournaments = self.app_service.get_all_tournaments()
+        place_dist = self.app_service.get_place_distribution()
+
+        roi_value = ROIStat().compute([], [], [], overall_stats).get('roi', 0.0)
+        itm_value = ITMStat().compute(all_tournaments, [], [], overall_stats).get('itm_percent', 0.0)
+        ft_reach = FinalTableReachStat().compute(all_tournaments, [], [], overall_stats).get('final_table_reach_percent', 0.0)
+        avg_stack_res = AvgFTInitialStackStat().compute(all_tournaments, [], [], overall_stats)
+        avg_chips = avg_stack_res.get('avg_ft_initial_stack_chips', 0.0)
+        avg_bb = avg_stack_res.get('avg_ft_initial_stack_bb', 0.0)
+        early_res = EarlyFTKOStat().compute([], [], [], overall_stats)
+        early_ko = early_res.get('early_ft_ko_count', 0)
+        early_ko_per = early_res.get('early_ft_ko_per_tournament', 0.0)
+
+        all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
+        avg_all = sum(all_places) / len(all_places) if all_places else 0.0
+        ft_places = [t.finish_place for t in all_tournaments if t.reached_final_table and t.finish_place is not None and 1 <= t.finish_place <= 9]
+        avg_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
+        no_ft_places = [t.finish_place for t in all_tournaments if not t.reached_final_table and t.finish_place is not None]
+        avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
+
+        self.data_loaded.emit({
+            'overall_stats': overall_stats,
+            'all_tournaments': all_tournaments,
+            'place_dist': place_dist,
+            'roi': roi_value,
+            'itm': itm_value,
+            'ft_reach': ft_reach,
+            'avg_chips': avg_chips,
+            'avg_bb': avg_bb,
+            'early_ko': early_ko,
+            'early_ko_per': early_ko_per,
+            'avg_place_all': avg_all,
+            'avg_place_ft': avg_ft,
+            'avg_place_no_ft': avg_no_ft,
+        })
