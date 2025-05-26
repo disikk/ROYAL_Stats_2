@@ -301,6 +301,37 @@ def apply_cell_color_by_value(widget_or_item, value: Optional[float]):
         widget_or_item.setStyleSheet(f"color: {color};")
 
 
+def apply_bigko_x10_color(label: QtWidgets.QLabel, total_tournaments: int, x10_count: int):
+    """Applies color to the x10 Big KO label based on average frequency."""
+    if not isinstance(label, QtWidgets.QLabel):
+        return
+
+    # Default color is gray if we cannot compute frequency
+    color = "#A1A1AA"
+
+    if x10_count <= 0 or total_tournaments <= 0:
+        label.setText(str(x10_count))
+        color = "#EF4444"  # Red when there were no x10 knockouts
+    else:
+        avg_interval = total_tournaments / x10_count
+
+        if avg_interval <= 51:
+            # Bright green with fire emoji when extremely frequent
+            label.setText(f"{x10_count} \U0001F525")
+            color = "#00FF00"
+        elif 52 <= avg_interval <= 58:
+            label.setText(str(x10_count))
+            color = "#10B981"  # Green
+        elif 59 <= avg_interval <= 65:
+            label.setText(str(x10_count))
+            color = "#F59E0B"  # Orange
+        elif avg_interval > 65:
+            label.setText(str(x10_count))
+            color = "#EF4444"  # Red
+
+    label.setStyleSheet(f"color: {color}; font-weight: bold;")
+
+
 def create_separator() -> QtWidgets.QFrame:
     """Создает горизонтальный разделитель."""
     separator = QtWidgets.QFrame()
