@@ -108,6 +108,12 @@ def apply_dark_theme(app: QtWidgets.QApplication):
             border-top: 5px solid #A1A1AA;
             margin-right: 5px;
         }
+
+        /* Подсветка пунктов выпадающих списков */
+        QComboBox QListView::item:hover {
+            background-color: #52525B;
+            color: #FFD700;
+        }
         
         QTableWidget {
             background-color: #18181B;

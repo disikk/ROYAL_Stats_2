@@ -86,7 +86,8 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
                 color: white;
             }
             QListWidget::item:hover {
-                background-color: #3F3F46;
+                background-color: #52525B;
+                color: #FFD700;
             }
         """)
         self.db_list.itemDoubleClicked.connect(self._on_db_double_clicked)
