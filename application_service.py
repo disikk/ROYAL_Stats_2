@@ -160,14 +160,22 @@ class ApplicationService:
 
         logger.info(f"Создана и выбрана новая база данных: {new_db_path}")
 
-    def import_files(self, paths: List[str], session_name: str, progress_callback=None, is_canceled_callback=None):
+    def import_files(
+        self,
+        paths: List[str],
+        session_name: str | None,
+        session_id: str | None = None,
+        progress_callback=None,
+        is_canceled_callback=None,
+    ):
         """
         Импортирует файлы/папки, парсит их и сохраняет данные в БД.
         Обновляет статистику после импорта.
 
         Args:
             paths: Список путей к файлам или папкам.
-            session_name: Имя новой сессии для этого импорта.
+            session_name: Имя новой сессии (используется, если session_id не задан).
+            session_id: Идентификатор существующей сессии для догрузки.
             progress_callback: Optional function(current, total, text) for UI progress.
             is_canceled_callback: Optional function() that returns True if the import should be cancelled.
         """
@@ -216,18 +224,28 @@ class ApplicationService:
         total_steps = 100  # Работаем с процентами
         current_progress = 0
         
-        logger.info(f"Начат импорт {total_files} файлов в сессию '{session_name}'")
+        logger.info(
+            f"Начат импорт {total_files} файлов в сессию"
+            f" '{session_name if session_id is None else session_id}'"
+        )
 
-        # Создаем новую сессию для этого импорта
-        try:
-            current_session = self.session_repo.create_session(session_name)
-            session_id = current_session.session_id
-            logger.info(f"Создана новая сессия для импорта: {session_id}")
-        except Exception as e:
-            logger.error(f"Не удалось создать сессию для импорта: {e}")
-            if progress_callback:
-                 progress_callback(0, total_steps, f"Ошибка: Не удалось создать сессию: {e}")
-            return
+        if session_id:
+            current_session = self.session_repo.get_session_by_id(session_id)
+            if not current_session:
+                logger.error(f"Сессия {session_id} не найдена")
+                if progress_callback:
+                    progress_callback(0, total_steps, f"Ошибка: Сессия не найдена")
+                return
+        else:
+            try:
+                current_session = self.session_repo.create_session(session_name or "")
+                session_id = current_session.session_id
+                logger.info(f"Создана новая сессия для импорта: {session_id}")
+            except Exception as e:
+                logger.error(f"Не удалось создать сессию для импорта: {e}")
+                if progress_callback:
+                    progress_callback(0, total_steps, f"Ошибка: Не удалось создать сессию: {e}")
+                return
 
 
         # Словарь для временного хранения данных турниров во время парсинга
