@@ -36,7 +36,6 @@ def main():
 
     # Сохраняем конфиг при выходе из приложения
     exit_code = app.exec()
-    config.save_config() # Сохраняем последний путь к БД и другие настройки
     logger.info("Приложение завершило работу.")
     sys.exit(exit_code)
 
