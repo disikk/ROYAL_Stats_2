@@ -34,6 +34,8 @@ class OverallStats:
     big_ko_x10000: int = 0
     early_ft_ko_count: int = 0 # Общее KO в ранней стадии финалки (9-6 игроков)
     early_ft_ko_per_tournament: float = 0.0 # Среднее KO в ранней финалке на турнир (достигший финалки)
+    early_ft_bust_count: int = 0  # Количество вылетов Hero на местах 6-9
+    early_ft_bust_per_tournament: float = 0.0  # Среднее число таких вылетов на турнир с финалкой
     last_updated: Optional[str] = None
     id: Optional[int] = 1 # ID из БД, всегда 1
 
@@ -61,6 +63,8 @@ class OverallStats:
             "big_ko_x10000": self.big_ko_x10000,
             "early_ft_ko_count": self.early_ft_ko_count,
             "early_ft_ko_per_tournament": self.early_ft_ko_per_tournament,
+            "early_ft_bust_count": self.early_ft_bust_count,
+            "early_ft_bust_per_tournament": self.early_ft_bust_per_tournament,
             "last_updated": self.last_updated,
             "id": self.id,
         }
@@ -95,6 +99,8 @@ class OverallStats:
                     big_ko_x10000=data.get("big_ko_x10000", 0),
                     early_ft_ko_count=data.get("early_ft_ko_count", 0),
                     early_ft_ko_per_tournament=data.get("early_ft_ko_per_tournament", 0.0),
+                    early_ft_bust_count=data.get("early_ft_bust_count", 0),
+                    early_ft_bust_per_tournament=data.get("early_ft_bust_per_tournament", 0.0),
                     last_updated=data.get("last_updated"),
                     id=data.get("id", 1)
                 )
@@ -120,6 +126,8 @@ class OverallStats:
                     big_ko_x10000=data["big_ko_x10000"] if "big_ko_x10000" in data.keys() else 0,
                     early_ft_ko_count=data["early_ft_ko_count"] if "early_ft_ko_count" in data.keys() else 0,
                     early_ft_ko_per_tournament=data["early_ft_ko_per_tournament"] if "early_ft_ko_per_tournament" in data.keys() else 0.0,
+                    early_ft_bust_count=data["early_ft_bust_count"] if "early_ft_bust_count" in data.keys() else 0,
+                    early_ft_bust_per_tournament=data["early_ft_bust_per_tournament"] if "early_ft_bust_per_tournament" in data.keys() else 0.0,
                     last_updated=data["last_updated"] if "last_updated" in data.keys() else None,
                     id=data["id"] if "id" in data.keys() else 1
                 )
