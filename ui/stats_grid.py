@@ -577,13 +577,30 @@ class StatsGrid(QtWidgets.QWidget):
         # Создаем серию стековых баров
         series = QStackedBarSeries()
 
-        # Настраиваем цвета для столбцов (достаточно для 18 позиций)
-        colors = [
+        # Цветовые палитры для разных типов гистограмм
+        colors_ft = [
             "#10B981", "#34D399", "#6EE7B7", "#FCD34D", "#F59E0B", "#EF4444",
             "#DC2626", "#B91C1C", "#991B1B",
+        ]
+
+        colors_pre_ft = [
             "#6366F1", "#3B82F6", "#0EA5E9", "#06B6D4", "#0891B2", "#14B8A6",
             "#0D9488", "#0F766E", "#134E4A",
         ]
+
+        # Для общего распределения оттенки идут от красного к зеленому
+        colors_all = [
+            "#10B981", "#34D399", "#6EE7B7", "#14B8A6", "#0D9488", "#0F766E",
+            "#134E4A", "#0891B2", "#06B6D4", "#0EA5E9", "#3B82F6", "#6366F1",
+            "#FCD34D", "#F59E0B", "#EF4444", "#DC2626", "#B91C1C", "#991B1B",
+        ]
+
+        if self.chart_type == 'ft':
+            colors = colors_ft
+        elif self.chart_type == 'pre_ft':
+            colors = colors_pre_ft
+        else:
+            colors = colors_all
         
         # Подсчитываем общее количество финишей для расчета процентов
         total_finishes = sum(place_dist.values())
