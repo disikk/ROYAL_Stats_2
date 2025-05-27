@@ -81,9 +81,16 @@ class TournamentRepository:
             return Tournament.from_dict(dict(result[0]))
         return None
 
-    def get_all_tournaments(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> List[Tournament]:
+    def get_all_tournaments(
+        self,
+        session_id: Optional[str] = None,
+        buyin_filter: Optional[float] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> List[Tournament]:
         """
-        Возвращает список всех турниров Hero, опционально фильтруя по сессии или бай-ину.
+        Возвращает список всех турниров Hero, опционально фильтруя по сессии,
+        бай-ину и диапазону дат.
         """
         query = """
             SELECT
@@ -102,6 +109,14 @@ class TournamentRepository:
         if buyin_filter is not None:
             conditions.append("buyin = ?")
             params.append(buyin_filter)
+
+        if start_date:
+            conditions.append("start_time >= ?")
+            params.append(start_date)
+
+        if end_date:
+            conditions.append("start_time <= ?")
+            params.append(end_date)
 
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
