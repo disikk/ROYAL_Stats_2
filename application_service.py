@@ -764,6 +764,77 @@ class ApplicationService:
         logger.info(f"Итоговая статистика: tournaments={stats.total_tournaments}, knockouts={stats.total_knockouts}, prize={stats.total_prize}, buyin={stats.total_buy_in}")
         return stats
 
+    def calculate_overall_stats_filtered(
+        self,
+        session_id: Optional[str] = None,
+        buyin_filter: Optional[float] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> OverallStats:
+        """Рассчитывает статистику по выбранным фильтрам."""
+        all_tournaments = self.tournament_repo.get_all_tournaments(
+            session_id=session_id,
+            buyin_filter=buyin_filter,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        all_ft_hands = self.ft_hand_repo.get_all_hands_filtered(
+            session_id=session_id,
+            buyin_filter=buyin_filter,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        stats = OverallStats()
+        stats.total_tournaments = len(all_tournaments)
+        final_table_tournaments = [t for t in all_tournaments if t.reached_final_table]
+        stats.total_final_tables = len(final_table_tournaments)
+        stats.total_buy_in = sum(t.buyin for t in all_tournaments if t.buyin is not None)
+        stats.total_prize = sum(t.payout if t.payout is not None else 0 for t in all_tournaments)
+        all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
+        stats.avg_finish_place = sum(all_places) / len(all_places) if all_places else 0.0
+        ft_places = [t.finish_place for t in final_table_tournaments if t.finish_place is not None and 1 <= t.finish_place <= 9]
+        stats.avg_finish_place_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
+        stats.total_knockouts = sum(hand.hero_ko_this_hand for hand in all_ft_hands)
+        stats.avg_ko_per_tournament = stats.total_knockouts / stats.total_tournaments if stats.total_tournaments > 0 else 0.0
+        stats.final_table_reach_percent = (
+            stats.total_final_tables / stats.total_tournaments * 100
+        ) if stats.total_tournaments > 0 else 0.0
+        ft_initial_stacks_chips = [t.final_table_initial_stack_chips for t in final_table_tournaments if t.final_table_initial_stack_chips is not None]
+        stats.avg_ft_initial_stack_chips = sum(ft_initial_stacks_chips) / len(ft_initial_stacks_chips) if ft_initial_stacks_chips else 0.0
+        ft_initial_stacks_bb = [t.final_table_initial_stack_bb for t in final_table_tournaments if t.final_table_initial_stack_bb is not None]
+        stats.avg_ft_initial_stack_bb = sum(ft_initial_stacks_bb) / len(ft_initial_stacks_bb) if ft_initial_stacks_bb else 0.0
+        early_ft_hands = [h for h in all_ft_hands if h.is_early_final]
+        stats.early_ft_ko_count = sum(h.hero_ko_this_hand for h in early_ft_hands)
+        stats.early_ft_ko_per_tournament = (
+            stats.early_ft_ko_count / stats.total_final_tables if stats.total_final_tables > 0 else 0.0
+        )
+        stats.early_ft_bust_count = sum(
+            1 for t in final_table_tournaments if t.finish_place is not None and 6 <= t.finish_place <= 9
+        )
+        stats.early_ft_bust_per_tournament = (
+            stats.early_ft_bust_count / stats.total_final_tables if stats.total_final_tables > 0 else 0.0
+        )
+        big_ko = BigKOStat().compute(all_tournaments, all_ft_hands, [], None)
+        stats.big_ko_x1_5 = big_ko.get("x1.5", 0)
+        stats.big_ko_x2 = big_ko.get("x2", 0)
+        stats.big_ko_x10 = big_ko.get("x10", 0)
+        stats.big_ko_x100 = big_ko.get("x100", 0)
+        stats.big_ko_x1000 = big_ko.get("x1000", 0)
+        stats.big_ko_x10000 = big_ko.get("x10000", 0)
+        no_ft_places = [t.finish_place for t in all_tournaments if not t.reached_final_table and t.finish_place is not None]
+        stats.avg_finish_place_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
+        stats.avg_finish_place = round(stats.avg_finish_place, 2)
+        stats.avg_finish_place_ft = round(stats.avg_finish_place_ft, 2)
+        stats.avg_finish_place_no_ft = round(stats.avg_finish_place_no_ft, 2)
+        stats.avg_ko_per_tournament = round(stats.avg_ko_per_tournament, 2)
+        stats.avg_ft_initial_stack_chips = round(stats.avg_ft_initial_stack_chips, 2)
+        stats.avg_ft_initial_stack_bb = round(stats.avg_ft_initial_stack_bb, 2)
+        stats.early_ft_ko_per_tournament = round(stats.early_ft_ko_per_tournament, 2)
+        stats.early_ft_bust_per_tournament = round(stats.early_ft_bust_per_tournament, 2)
+        stats.final_table_reach_percent = round(stats.final_table_reach_percent, 2)
+        return stats
+
     def _calculate_and_update_session_stats(self, session_id: str):
         """
         Рассчитывает и обновляет статистику для конкретной сессии.
@@ -803,9 +874,20 @@ class ApplicationService:
         """Возвращает объект OverallStats с общей статистикой."""
         return self.overall_stats_repo.get_overall_stats()
 
-    def get_all_tournaments(self, buyin_filter: Optional[float] = None) -> List[Tournament]:
-        """Возвращает список всех турниров Hero, опционально фильтруя по бай-ину."""
-        return self.tournament_repo.get_all_tournaments(buyin_filter=buyin_filter)
+    def get_all_tournaments(
+        self,
+        session_id: Optional[str] = None,
+        buyin_filter: Optional[float] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> List[Tournament]:
+        """Возвращает список турниров с дополнительными фильтрами."""
+        return self.tournament_repo.get_all_tournaments(
+            session_id=session_id,
+            buyin_filter=buyin_filter,
+            start_date=start_date,
+            end_date=end_date,
+        )
 
     def get_all_sessions(self) -> List[Session]:
         """Возвращает список всех сессий Hero."""
@@ -836,6 +918,36 @@ class ApplicationService:
     def get_distinct_buyins(self) -> List[float]:
         """Возвращает список уникальных бай-инов из сохраненных турниров."""
         return self.tournament_repo.get_distinct_buyins()
+
+    def get_final_table_hands(
+        self,
+        session_id: Optional[str] = None,
+        buyin_filter: Optional[float] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> List[FinalTableHand]:
+        """Возвращает руки финального стола с учетом фильтров."""
+        return self.ft_hand_repo.get_all_hands_filtered(
+            session_id=session_id,
+            buyin_filter=buyin_filter,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+    def get_early_final_hands(
+        self,
+        session_id: Optional[str] = None,
+        buyin_filter: Optional[float] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> List[FinalTableHand]:
+        """Возвращает руки ранней стадии финального стола с учетом фильтров."""
+        return self.ft_hand_repo.get_early_final_hands_filtered(
+            session_id=session_id,
+            buyin_filter=buyin_filter,
+            start_date=start_date,
+            end_date=end_date,
+        )
 
     # Методы для получения данных сессии для отображения стат по сессии
     def get_session_stats(self, session_id: str) -> Optional[Session]:

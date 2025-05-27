@@ -96,8 +96,68 @@ class FinalTableHandRepository:
              FROM hero_final_table_hands
              ORDER BY hand_number ASC -- Порядок важен для определения первой руки
          """
-         results = self.db.execute_query(query)
-         return [FinalTableHand.from_dict(dict(row)) for row in results]
+        results = self.db.execute_query(query)
+        return [FinalTableHand.from_dict(dict(row)) for row in results]
+
+    def get_all_hands_filtered(
+        self,
+        session_id: Optional[str] = None,
+        buyin_filter: Optional[float] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> List[FinalTableHand]:
+        """Возвращает руки финального стола с дополнительными фильтрами."""
+        query = """
+            SELECT h.id, h.tournament_id, h.hand_id, h.hand_number, h.table_size, h.bb,
+                   h.hero_stack, h.hero_ko_this_hand, h.session_id, h.is_early_final
+            FROM hero_final_table_hands h
+            JOIN tournaments t ON h.tournament_id = t.tournament_id
+        """
+        conditions = []
+        params = []
+
+        if session_id:
+            conditions.append("h.session_id = ?")
+            params.append(session_id)
+
+        if buyin_filter is not None:
+            conditions.append("t.buyin = ?")
+            params.append(buyin_filter)
+
+        if start_date:
+            conditions.append("t.start_time >= ?")
+            params.append(start_date)
+
+        if end_date:
+            conditions.append("t.start_time <= ?")
+            params.append(end_date)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += " ORDER BY h.hand_number ASC"
+
+        results = self.db.execute_query(query, params)
+        return [FinalTableHand.from_dict(dict(row)) for row in results]
+
+    def get_early_final_hands_filtered(
+        self,
+        session_id: Optional[str] = None,
+        buyin_filter: Optional[float] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> List[FinalTableHand]:
+        """Возвращает только руки ранней стадии финального стола с фильтрами."""
+        return [
+            hand
+            for hand in self.get_all_hands_filtered(
+                session_id=session_id,
+                buyin_filter=buyin_filter,
+                start_date=start_date,
+                end_date=end_date,
+            )
+            if hand.is_early_final
+        ]
 
 
     def get_early_final_hands(self, session_id: Optional[str] = None) -> List[FinalTableHand]:

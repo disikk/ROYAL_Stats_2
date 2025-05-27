@@ -218,15 +218,57 @@ class StatsGrid(QtWidgets.QWidget):
         
         # Заголовок
         header = QtWidgets.QLabel("Общая статистика")
-        header.setStyleSheet("""
+        header.setStyleSheet(
+            """
             QLabel {
                 font-size: 18px;
                 font-weight: bold;
                 color: #FAFAFA;
                 margin-bottom: 4px;
             }
-        """)
+            """
+        )
         content_layout.addWidget(header)
+
+        # Панель фильтров
+        filter_layout = QtWidgets.QHBoxLayout()
+        filter_layout.setSpacing(6)
+
+        filter_layout.addWidget(QtWidgets.QLabel("Бай-ин:"))
+        self.buyin_filter = QtWidgets.QComboBox()
+        self.buyin_filter.setMinimumWidth(100)
+        filter_layout.addWidget(self.buyin_filter)
+
+        filter_layout.addWidget(QtWidgets.QLabel("Сессия:"))
+        self.session_filter = QtWidgets.QComboBox()
+        self.session_filter.setMinimumWidth(120)
+        filter_layout.addWidget(self.session_filter)
+
+        self.date_filter_checkbox = QtWidgets.QCheckBox("Диапазон дат")
+        filter_layout.addWidget(self.date_filter_checkbox)
+
+        self.start_date_edit = QtWidgets.QDateEdit()
+        self.start_date_edit.setCalendarPopup(True)
+        self.start_date_edit.setDisplayFormat("yyyy/MM/dd")
+        self.start_date_edit.setEnabled(False)
+        filter_layout.addWidget(self.start_date_edit)
+
+        self.end_date_edit = QtWidgets.QDateEdit()
+        self.end_date_edit.setCalendarPopup(True)
+        self.end_date_edit.setDisplayFormat("yyyy/MM/dd")
+        self.end_date_edit.setEnabled(False)
+        filter_layout.addWidget(self.end_date_edit)
+
+        filter_layout.addStretch()
+
+        content_layout.addLayout(filter_layout)
+
+        # Сигналы фильтров
+        self.buyin_filter.currentIndexChanged.connect(lambda: self.reload(True))
+        self.session_filter.currentIndexChanged.connect(lambda: self.reload(True))
+        self.start_date_edit.dateChanged.connect(lambda: self.reload(True))
+        self.end_date_edit.dateChanged.connect(lambda: self.reload(True))
+        self.date_filter_checkbox.toggled.connect(self._on_date_filter_toggled)
         
         # Сетка карточек статистики
         stats_grid = QtWidgets.QGridLayout()
@@ -429,6 +471,30 @@ class StatsGrid(QtWidgets.QWidget):
         """Сбрасывает кеш данных."""
         self._cache_valid = False
         self._data_cache.clear()
+
+    def _update_filter_widgets(self, buyins, sessions):
+        current_buyin = self.buyin_filter.currentText()
+        self.buyin_filter.blockSignals(True)
+        self.buyin_filter.clear()
+        self.buyin_filter.addItem("Все")
+        for b in sorted(buyins):
+            self.buyin_filter.addItem(format_money(b, decimals=0))
+        idx = self.buyin_filter.findText(current_buyin)
+        if idx >= 0:
+            self.buyin_filter.setCurrentIndex(idx)
+        self.buyin_filter.blockSignals(False)
+
+        current_session = self.session_filter.currentData()
+        self.session_filter.blockSignals(True)
+        self.session_filter.clear()
+        self.session_filter.addItem("Все", userData=None)
+        for s in sessions:
+            self.session_filter.addItem(s.session_name, userData=s.session_id)
+        for i in range(self.session_filter.count()):
+            if self.session_filter.itemData(i) == current_session:
+                self.session_filter.setCurrentIndex(i)
+                break
+        self.session_filter.blockSignals(False)
         
     def reload(self, show_overlay: bool = True):
         """Перезагружает все данные из ApplicationService."""
@@ -438,18 +504,63 @@ class StatsGrid(QtWidgets.QWidget):
             self.show_loading_overlay()
         
         def load_data():
-            overall_stats = self.app_service.get_overall_stats()
-            all_tournaments = self.app_service.get_all_tournaments()
-            place_dist = self.app_service.get_place_distribution()
-            place_dist_pre_ft = self.app_service.get_place_distribution_pre_ft()
-            place_dist_all = self.app_service.get_place_distribution_overall()
+            buyin_text = self.buyin_filter.currentText()
+            buyin_val = None
+            if buyin_text and buyin_text != "Все":
+                try:
+                    buyin_val = float(buyin_text.replace("$", "").replace(",", ""))
+                except ValueError:
+                    buyin_val = None
+
+            session_id = self.session_filter.currentData()
+
+            start_date = end_date = None
+            if self.date_filter_checkbox.isChecked():
+                start_date = self.start_date_edit.date().toString("yyyy/MM/dd") + " 00:00:00"
+                end_date = self.end_date_edit.date().toString("yyyy/MM/dd") + " 23:59:59"
+
+            buyins = self.app_service.get_distinct_buyins()
+            sessions = self.app_service.get_all_sessions()
+
+            overall_stats = self.app_service.calculate_overall_stats_filtered(
+                session_id=session_id,
+                buyin_filter=buyin_val,
+                start_date=start_date,
+                end_date=end_date,
+            )
+            all_tournaments = self.app_service.get_all_tournaments(
+                session_id=session_id,
+                buyin_filter=buyin_val,
+                start_date=start_date,
+                end_date=end_date,
+            )
+            ft_hands = self.app_service.get_final_table_hands(
+                session_id=session_id,
+                buyin_filter=buyin_val,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+            place_dist = {i: 0 for i in range(1, 10)}
+            for t in all_tournaments:
+                if t.reached_final_table and t.finish_place is not None and 1 <= t.finish_place <= 9:
+                    place_dist[t.finish_place] += 1
+            place_dist_pre_ft = {i: 0 for i in range(10, 19)}
+            for t in all_tournaments:
+                if t.finish_place is not None and 10 <= t.finish_place <= 18:
+                    place_dist_pre_ft[t.finish_place] += 1
+            place_dist_all = {i: 0 for i in range(1, 19)}
+            for t in all_tournaments:
+                if t.finish_place is not None and 1 <= t.finish_place <= 18:
+                    place_dist_all[t.finish_place] += 1
+
             roi_value = ROIStat().compute([], [], [], overall_stats).get('roi', 0.0)
             itm_value = ITMStat().compute(all_tournaments, [], [], overall_stats).get('itm_percent', 0.0)
             ft_reach = FinalTableReachStat().compute(all_tournaments, [], [], overall_stats).get('final_table_reach_percent', 0.0)
             avg_stack_res = AvgFTInitialStackStat().compute(all_tournaments, [], [], overall_stats)
             avg_chips = avg_stack_res.get('avg_ft_initial_stack_chips', 0.0)
             avg_bb = avg_stack_res.get('avg_ft_initial_stack_bb', 0.0)
-            early_res = EarlyFTKOStat().compute([], [], [], overall_stats)
+            early_res = EarlyFTKOStat().compute([], ft_hands, [], overall_stats)
             early_ko = early_res.get('early_ft_ko_count', 0)
             early_ko_per = early_res.get('early_ft_ko_per_tournament', 0.0)
             all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
@@ -474,6 +585,8 @@ class StatsGrid(QtWidgets.QWidget):
                 'avg_place_all': avg_all,
                 'avg_place_ft': avg_ft,
                 'avg_place_no_ft': avg_no_ft,
+                'buyins': buyins,
+                'sessions': sessions,
             }
         thread_manager.run_in_thread(
             widget_id=str(id(self)),
@@ -486,6 +599,8 @@ class StatsGrid(QtWidgets.QWidget):
     def _on_data_loaded(self, data: dict):
         """Применяет загруженные данные к UI."""
         try:
+            self._update_filter_widgets(data.get('buyins', []), data.get('sessions', []))
+
             overall_stats = data['overall_stats']
             all_tournaments = data['all_tournaments']
             
@@ -770,3 +885,8 @@ class StatsGrid(QtWidgets.QWidget):
             self.chart_header.setText("Распределение финишных мест (1-18)")
 
         self._update_chart(self._get_current_distribution())
+
+    def _on_date_filter_toggled(self, checked: bool):
+        self.start_date_edit.setEnabled(checked)
+        self.end_date_edit.setEnabled(checked)
+        self.reload(True)
