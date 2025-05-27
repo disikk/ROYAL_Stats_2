@@ -7,8 +7,9 @@
 
 import sqlite3
 from typing import List, Optional, Dict, Any
-from db.manager import database_manager # Используем синглтон менеджер БД
+from db.manager import database_manager  # Используем синглтон менеджер БД
 from models import Tournament
+
 
 class TournamentRepository:
     """
@@ -17,7 +18,7 @@ class TournamentRepository:
 
     def __init__(self):
         # Репозитории работают с менеджером БД
-        self.db = database_manager # Используем синглтон
+        self.db = database_manager  # Используем синглтон
 
     def add_or_update_tournament(self, tournament: Tournament):
         """
@@ -62,7 +63,6 @@ class TournamentRepository:
 
         self.db.execute_update(query, params)
 
-
     def get_tournament_by_id(self, tournament_id: str) -> Optional[Tournament]:
         """
         Возвращает данные Hero по одному турниру по ID.
@@ -81,7 +81,9 @@ class TournamentRepository:
             return Tournament.from_dict(dict(result[0]))
         return None
 
-    def get_all_tournaments(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> List[Tournament]:
+    def get_all_tournaments(
+        self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None
+    ) -> List[Tournament]:
         """
         Возвращает список всех турниров Hero, опционально фильтруя по сессии или бай-ину.
         """
@@ -112,6 +114,39 @@ class TournamentRepository:
         results = self.db.execute_query(query, params)
         return [Tournament.from_dict(dict(row)) for row in results]
 
+    def get_tournaments_page(
+        self,
+        limit: int,
+        offset: int = 0,
+        buyin_filter: Optional[float] = None,
+    ) -> List[Tournament]:
+        """
+        Возвращает страницу турниров с указанным смещением и лимитом.
+        """
+        query = """
+            SELECT
+                id, tournament_id, tournament_name, start_time, buyin, payout,
+                finish_place, ko_count, session_id, reached_final_table,
+                final_table_initial_stack_chips, final_table_initial_stack_bb
+            FROM tournaments
+        """
+
+        conditions = []
+        params = []
+
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += " ORDER BY start_time ASC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        results = self.db.execute_query(query, params)
+        return [Tournament.from_dict(dict(row)) for row in results]
+
     def count_all(self, buyin_filter: Optional[float] = None) -> int:
         """
         Возвращает общее количество турниров, опционально фильтруя по бай-ину.
@@ -130,30 +165,34 @@ class TournamentRepository:
         result = self.db.execute_query(query, params)
         return result[0][0] if result else 0
 
-    def count_reached_final_table(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> int:
-         """
-         Возвращает количество турниров, в которых Hero достиг финального стола,
-         опционально фильтруя по сессии или бай-ину.
-         """
-         query = "SELECT COUNT(*) FROM tournaments WHERE reached_final_table = 1"
-         conditions = []
-         params = []
+    def count_reached_final_table(
+        self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None
+    ) -> int:
+        """
+        Возвращает количество турниров, в которых Hero достиг финального стола,
+        опционально фильтруя по сессии или бай-ину.
+        """
+        query = "SELECT COUNT(*) FROM tournaments WHERE reached_final_table = 1"
+        conditions = []
+        params = []
 
-         if session_id:
-             conditions.append("session_id = ?")
-             params.append(session_id)
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
 
-         if buyin_filter is not None:
-             conditions.append("buyin = ?")
-             params.append(buyin_filter)
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
 
-         if conditions:
-              query += " AND " + " AND ".join(conditions)
+        if conditions:
+            query += " AND " + " AND ".join(conditions)
 
-         result = self.db.execute_query(query, params)
-         return result[0][0] if result else 0
+        result = self.db.execute_query(query, params)
+        return result[0][0] if result else 0
 
-    def sum_ko_count(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> int:
+    def sum_ko_count(
+        self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None
+    ) -> int:
         """
         Суммирует общее количество KO из таблицы tournaments,
         опционально фильтруя по сессии или бай-ину.
@@ -176,7 +215,9 @@ class TournamentRepository:
         result = self.db.execute_query(query, params)
         return result[0][0] if result and result[0][0] is not None else 0
 
-    def sum_payout(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> float:
+    def sum_payout(
+        self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None
+    ) -> float:
         """
         Суммирует общую выплату из таблицы tournaments,
         опционально фильтруя по сессии или бай-ину.
@@ -199,7 +240,9 @@ class TournamentRepository:
         result = self.db.execute_query(query, params)
         return result[0][0] if result and result[0][0] is not None else 0.0
 
-    def sum_buyin(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> float:
+    def sum_buyin(
+        self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None
+    ) -> float:
         """
         Суммирует общий бай-ин из таблицы tournaments,
         опционально фильтруя по сессии или бай-ину.
@@ -222,14 +265,17 @@ class TournamentRepository:
         result = self.db.execute_query(query, params)
         return result[0][0] if result and result[0][0] is not None else 0.0
 
-
-    def get_avg_finish_place(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> float:
+    def get_avg_finish_place(
+        self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None
+    ) -> float:
         """
         Рассчитывает среднее финишное место по турнирам (включая не финалку),
         опционально фильтруя по сессии или бай-ину.
         Возвращает 0.0 если нет турниров.
         """
-        query = "SELECT AVG(finish_place) FROM tournaments WHERE finish_place IS NOT NULL"
+        query = (
+            "SELECT AVG(finish_place) FROM tournaments WHERE finish_place IS NOT NULL"
+        )
         conditions = []
         params = []
 
@@ -242,13 +288,14 @@ class TournamentRepository:
             params.append(buyin_filter)
 
         if conditions:
-             query += " AND " + " AND ".join(conditions)
+            query += " AND " + " AND ".join(conditions)
 
         result = self.db.execute_query(query, params)
         return result[0][0] if result and result[0][0] is not None else 0.0
 
-
-    def get_avg_finish_place_ft(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> float:
+    def get_avg_finish_place_ft(
+        self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None
+    ) -> float:
         """
         Рассчитывает среднее финишное место только по турнирам на финальном столе (1-9),
         опционально фильтруя по сессии или бай-ину.
@@ -271,13 +318,14 @@ class TournamentRepository:
             params.append(buyin_filter)
 
         if conditions:
-             query += " AND " + " AND ".join(conditions)
+            query += " AND " + " AND ".join(conditions)
 
         result = self.db.execute_query(query, params)
         return result[0][0] if result and result[0][0] is not None else 0.0
 
-
-    def get_avg_ft_initial_stack_chips(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> float:
+    def get_avg_ft_initial_stack_chips(
+        self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None
+    ) -> float:
         """
         Рассчитывает средний стек Hero в фишках на старте финального стола
         (только для турниров, достигших финалки), опционально фильтруя.
@@ -299,13 +347,14 @@ class TournamentRepository:
             params.append(buyin_filter)
 
         if conditions:
-             query += " AND " + " AND ".join(conditions)
+            query += " AND " + " AND ".join(conditions)
 
         result = self.db.execute_query(query, params)
         return result[0][0] if result and result[0][0] is not None else 0.0
 
-
-    def get_avg_ft_initial_stack_bb(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> float:
+    def get_avg_ft_initial_stack_bb(
+        self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None
+    ) -> float:
         """
         Рассчитывает средний стек Hero в BB на старте финального стола
         (только для турниров, достигших финалки), опционально фильтруя.
@@ -327,7 +376,7 @@ class TournamentRepository:
             params.append(buyin_filter)
 
         if conditions:
-             query += " AND " + " AND ".join(conditions)
+            query += " AND " + " AND ".join(conditions)
 
         result = self.db.execute_query(query, params)
         return result[0][0] if result and result[0][0] is not None else 0.0
@@ -340,7 +389,9 @@ class TournamentRepository:
         results = self.db.execute_query(query)
         return [row[0] for row in results if row[0] is not None]
 
-    def get_avg_finish_place_no_ft(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> float:
+    def get_avg_finish_place_no_ft(
+        self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None
+    ) -> float:
         """
         Рассчитывает среднее финишное место только по турнирам, где НЕ достиг финального стола,
         опционально фильтруя по сессии или бай-ину.
@@ -368,14 +419,16 @@ class TournamentRepository:
         result = self.db.execute_query(query, params)
         return result[0][0] if result and result[0][0] is not None else 0.0
 
-    def get_ko_counts_for_tournaments(self, tournament_ids: List[str]) -> Dict[str, int]:
+    def get_ko_counts_for_tournaments(
+        self, tournament_ids: List[str]
+    ) -> Dict[str, int]:
         """
         Эффективно получает количество KO для списка турниров одним запросом.
         Возвращает словарь {tournament_id: ko_count}.
         """
         if not tournament_ids:
             return {}
-            
+
         placeholders = ",".join("?" * len(tournament_ids))
         query = f"""
             SELECT 
@@ -385,19 +438,19 @@ class TournamentRepository:
             WHERE tournament_id IN ({placeholders})
             GROUP BY tournament_id
         """
-        
+
         results = self.db.execute_query(query, tournament_ids)
-        
+
         # Преобразуем в словарь
         ko_counts = {}
         for row in results:
             ko_counts[row[0]] = row[1] if row[1] is not None else 0
-            
+
         # Добавляем нулевые значения для турниров без KO
         for t_id in tournament_ids:
             if t_id not in ko_counts:
                 ko_counts[t_id] = 0
-                
+
         return ko_counts
 
 
