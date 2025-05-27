@@ -119,29 +119,6 @@ CREATE TABLE IF NOT EXISTS module_settings (
 )
 """
 
-# НОВЫЕ ИНДЕКСЫ ДЛЯ ОПТИМИЗАЦИИ ПРОИЗВОДИТЕЛЬНОСТИ
-CREATE_INDEXES_QUERIES = [
-    # Индексы для tournaments
-    "CREATE INDEX IF NOT EXISTS idx_tournaments_session_id ON tournaments(session_id)",
-    "CREATE INDEX IF NOT EXISTS idx_tournaments_buyin ON tournaments(buyin)",
-    "CREATE INDEX IF NOT EXISTS idx_tournaments_finish_place ON tournaments(finish_place)",
-    "CREATE INDEX IF NOT EXISTS idx_tournaments_reached_ft ON tournaments(reached_final_table)",
-    "CREATE INDEX IF NOT EXISTS idx_tournaments_start_time ON tournaments(start_time)",
-    # Составной индекс для частых фильтров
-    "CREATE INDEX IF NOT EXISTS idx_tournaments_session_buyin ON tournaments(session_id, buyin)",
-    
-    # Индексы для hero_final_table_hands
-    "CREATE INDEX IF NOT EXISTS idx_ft_hands_tournament_id ON hero_final_table_hands(tournament_id)",
-    "CREATE INDEX IF NOT EXISTS idx_ft_hands_session_id ON hero_final_table_hands(session_id)",
-    "CREATE INDEX IF NOT EXISTS idx_ft_hands_is_early_final ON hero_final_table_hands(is_early_final)",
-    "CREATE INDEX IF NOT EXISTS idx_ft_hands_table_size ON hero_final_table_hands(table_size)",
-    # Составной индекс для подсчета KO по турниру
-    "CREATE INDEX IF NOT EXISTS idx_ft_hands_tourney_ko ON hero_final_table_hands(tournament_id, hero_ko_this_hand)",
-    
-    # Индексы для sessions
-    "CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at)",
-]
-
 # Список всех SQL-запросов для создания таблиц
 CREATE_TABLES_QUERIES = [
     CREATE_SESSIONS_TABLE,
