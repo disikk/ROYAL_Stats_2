@@ -1,0 +1,79 @@
+# Патч для application_service.py - оптимизация подсчета KO
+
+## Проблема
+В методе _update_all_statistics есть цикл, который для КАЖДОГО турнира делает отдельный запрос к БД для подсчета KO:
+```python
+for tournament in all_tournaments:
+    tournament_ft_hands = self.ft_hand_repo.get_hands_by_tournament(tournament.tournament_id)
+    total_ko = sum(hand.hero_ko_this_hand for hand in tournament_ft_hands)
+```
+
+## Решение
+Заменить множественные запросы на один SQL запрос с GROUP BY:
+
+### В application_service.py найти строки:
+```python
+# --- Обновление KO count для турниров ---
+try:
+    logger.debug("Обновление ko_count для турниров...")
+    for tournament in all_tournaments:
+        tournament_ft_hands = self.ft_hand_repo.get_hands_by_tournament(tournament.tournament_id)
+        total_ko = sum(hand.hero_ko_this_hand for hand in tournament_ft_hands)
+        tournament.ko_count = total_ko
+        self.tournament_repo.add_or_update_tournament(tournament)
+```
+
+### Заменить на:
+```python
+# --- Обновление KO count для турниров ---
+try:
+    logger.debug("Обновление ko_count для турниров...")
+    # Получаем все KO суммы одним запросом
+    ko_counts = self.ft_hand_repo.get_ko_counts_by_tournaments()
+    
+    # Batch update турниров
+    tournaments_to_update = []
+    for tournament in all_tournaments:
+        total_ko = ko_counts.get(tournament.tournament_id, 0)
+        if tournament.ko_count != total_ko:
+            tournament.ko_count = total_ko
+            tournaments_to_update.append(tournament)
+    
+    # Обновляем только измененные турниры
+    if tournaments_to_update:
+        self.tournament_repo.batch_update_ko_counts(tournaments_to_update)
+        logger.info(f"Обновлено KO count для {len(tournaments_to_update)} турниров")
+```
+
+### Добавить в final_table_hand_repo.py:
+```python
+def get_ko_counts_by_tournaments(self) -> Dict[str, int]:
+    """
+    Возвращает словарь {tournament_id: total_ko_count} для всех турниров.
+    Использует GROUP BY для эффективного подсчета.
+    """
+    query = """
+        SELECT tournament_id, SUM(hero_ko_this_hand) as total_ko
+        FROM hero_final_table_hands
+        GROUP BY tournament_id
+        HAVING total_ko > 0
+    """
+    results = self.db.execute_query(query)
+    return {row['tournament_id']: row['total_ko'] for row in results}
+```
+
+### Добавить в tournament_repo.py:
+```python
+def batch_update_ko_counts(self, tournaments: List[Tournament]):
+    """
+    Обновляет ko_count для множества турниров одной транзакцией.
+    """
+    query = "UPDATE tournaments SET ko_count = ? WHERE tournament_id = ?"
+    params = [(t.ko_count, t.tournament_id) for t in tournaments]
+    
+    conn = self.db.get_connection()
+    cursor = conn.cursor()
+    cursor.executemany(query, params)
+    conn.commit()
+    logger.debug(f"Batch update ko_count для {len(tournaments)} турниров")
+```
