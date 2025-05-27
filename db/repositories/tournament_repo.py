@@ -368,6 +368,38 @@ class TournamentRepository:
         result = self.db.execute_query(query, params)
         return result[0][0] if result and result[0][0] is not None else 0.0
 
+    def get_ko_counts_for_tournaments(self, tournament_ids: List[str]) -> Dict[str, int]:
+        """
+        Эффективно получает количество KO для списка турниров одним запросом.
+        Возвращает словарь {tournament_id: ko_count}.
+        """
+        if not tournament_ids:
+            return {}
+            
+        placeholders = ",".join("?" * len(tournament_ids))
+        query = f"""
+            SELECT 
+                tournament_id,
+                SUM(hero_ko_this_hand) as ko_count
+            FROM hero_final_table_hands
+            WHERE tournament_id IN ({placeholders})
+            GROUP BY tournament_id
+        """
+        
+        results = self.db.execute_query(query, tournament_ids)
+        
+        # Преобразуем в словарь
+        ko_counts = {}
+        for row in results:
+            ko_counts[row[0]] = row[1] if row[1] is not None else 0
+            
+        # Добавляем нулевые значения для турниров без KO
+        for t_id in tournament_ids:
+            if t_id not in ko_counts:
+                ko_counts[t_id] = 0
+                
+        return ko_counts
+
 
 # Создаем синглтон экземпляр репозитория
 tournament_repository = TournamentRepository()

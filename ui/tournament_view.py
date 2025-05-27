@@ -11,6 +11,7 @@ from typing import List, Optional
 from ui.app_style import setup_table_widget, format_money, apply_cell_color_by_value, format_percentage
 from application_service import ApplicationService
 from models import Tournament
+from ui.background import thread_manager
 
 logger = logging.getLogger('ROYAL_Stats.TournamentView')
 logger.setLevel(logging.DEBUG)
@@ -197,27 +198,30 @@ class TournamentView(QtWidgets.QWidget):
     def reload(self, show_overlay: bool = True):
         """Перезагружает данные из ApplicationService."""
         logger.debug("Перезагрузка TournamentView...")
-
         self._show_overlay = show_overlay
-        # Показываем индикатор загрузки при необходимости
         if show_overlay:
             self.show_loading_overlay()
-        
-        self._reload_thread = TournamentViewReloadThread(self.app_service)
-        self._reload_thread.data_loaded.connect(self._on_data_loaded)
-        self._reload_thread.start()
-
-    def _on_data_loaded(self, tournaments, buyins):
+        def load_data():
+            tournaments = self.app_service.get_all_tournaments()
+            buyins = self.app_service.get_distinct_buyins()
+            return tournaments, buyins
+        thread_manager.run_in_thread(
+            widget_id=str(id(self)),
+            fn=load_data,
+            callback=self._on_data_loaded,
+            error_callback=lambda e: logger.error(f"Ошибка загрузки данных TournamentView: {e}"),
+            owner=self
+        )
+    def _on_data_loaded(self, data):
         """Применяет загруженные данные к UI."""
+        tournaments, buyins = data
         try:
             self.tournaments = tournaments
             self._data_cache['tournaments'] = tournaments
             self._data_cache['buyins'] = buyins
             self._cache_valid = True
-
             self._update_buyin_filter()
             self._apply_filters()
-
             logger.debug("Перезагрузка TournamentView завершена.")
         finally:
             if getattr(self, "_show_overlay", False):
@@ -368,18 +372,3 @@ class TournamentView(QtWidgets.QWidget):
             f"ITM: {itm_percent:.1f}% | "
             f"KO: {total_ko}"
         )
-
-
-class TournamentViewReloadThread(QtCore.QThread):
-    """Поток для загрузки турниров и списка бай-инов."""
-
-    data_loaded = QtCore.pyqtSignal(list, list)
-
-    def __init__(self, app_service: ApplicationService):
-        super().__init__()
-        self.app_service = app_service
-
-    def run(self):
-        tournaments = self.app_service.get_all_tournaments()
-        buyins = self.app_service.get_distinct_buyins()
-        self.data_loaded.emit(tournaments, buyins)

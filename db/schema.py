@@ -119,6 +119,18 @@ CREATE TABLE IF NOT EXISTS module_settings (
 )
 """
 
+# Индексы для оптимизации производительности
+CREATE_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_tournaments_session ON tournaments(session_id)",
+    "CREATE INDEX IF NOT EXISTS idx_tournaments_buyin ON tournaments(buyin)",
+    "CREATE INDEX IF NOT EXISTS idx_tournaments_reached_ft ON tournaments(reached_final_table)",
+    "CREATE INDEX IF NOT EXISTS idx_tournaments_finish_place ON tournaments(finish_place)",
+    "CREATE INDEX IF NOT EXISTS idx_ft_hands_tournament ON hero_final_table_hands(tournament_id)",
+    "CREATE INDEX IF NOT EXISTS idx_ft_hands_session ON hero_final_table_hands(session_id)",
+    "CREATE INDEX IF NOT EXISTS idx_ft_hands_is_early ON hero_final_table_hands(is_early_final)",
+    "CREATE INDEX IF NOT EXISTS idx_ft_hands_ko ON hero_final_table_hands(hero_ko_this_hand)",
+]
+
 # Список всех SQL-запросов для создания таблиц
 CREATE_TABLES_QUERIES = [
     CREATE_SESSIONS_TABLE,
@@ -128,7 +140,7 @@ CREATE_TABLES_QUERIES = [
     CREATE_PLACES_DISTRIBUTION_TABLE,
     CREATE_STAT_MODULES_TABLE,
     CREATE_MODULE_SETTINGS_TABLE,
-]
+] + CREATE_INDEXES  # Добавляем индексы к списку создания
 
 # Запрос для вставки/игнорирования начальной строки в overall_stats
 INSERT_INITIAL_OVERALL_STATS = """

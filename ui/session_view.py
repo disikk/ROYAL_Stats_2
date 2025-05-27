@@ -11,6 +11,7 @@ from typing import List, Optional
 from ui.app_style import setup_table_widget, format_money, apply_cell_color_by_value
 from application_service import ApplicationService
 from models import Session
+from ui.background import thread_manager
 
 logger = logging.getLogger('ROYAL_Stats.SessionView')
 logger.setLevel(logging.DEBUG)
@@ -198,14 +199,18 @@ class SessionView(QtWidgets.QWidget):
     def reload(self, show_overlay: bool = True):
         """Перезагружает данные из ApplicationService."""
         logger.debug("Перезагрузка SessionView...")
-
         self._show_overlay = show_overlay
         if show_overlay:
             self.show_loading_overlay()
-        
-        self._reload_thread = SessionViewReloadThread(self.app_service)
-        self._reload_thread.data_loaded.connect(self._on_data_loaded)
-        self._reload_thread.start()
+        def load_data():
+            return self.app_service.get_all_sessions()
+        thread_manager.run_in_thread(
+            widget_id=str(id(self)),
+            fn=load_data,
+            callback=self._on_data_loaded,
+            error_callback=lambda e: logger.error(f"Ошибка загрузки данных SessionView: {e}"),
+            owner=self
+        )
 
     def _on_data_loaded(self, sessions):
         """Применяет загруженные данные к UI."""
@@ -319,10 +324,7 @@ class SessionView(QtWidgets.QWidget):
         current_row = self.table.currentRow()
         if current_row < 0:
             return
-            
         session = self.sessions[current_row]
-        
-        # Подтверждение удаления
         reply = QtWidgets.QMessageBox.question(
             self,
             "Подтверждение удаления",
@@ -334,16 +336,20 @@ class SessionView(QtWidgets.QWidget):
             QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
             QtWidgets.QMessageBox.StandardButton.No
         )
-        
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
-            # Показываем индикатор во время удаления
             self.show_loading_overlay()
             self.loading_label.setText("Удаление сессии...")
-
-            self._delete_thread = DeleteSessionThread(self.app_service, session.session_id)
-            self._delete_thread.finished_delete.connect(lambda: self._on_delete_finished(session.session_name))
-            self._delete_thread.error_occurred.connect(self._on_delete_error)
-            self._delete_thread.start()
+            def delete_session():
+                self.app_service.delete_session(session.session_id)
+                self.app_service._update_all_statistics(None)
+                return session.session_name
+            thread_manager.run_in_thread(
+                widget_id=f"{id(self)}_delete",
+                fn=delete_session,
+                callback=self._on_delete_finished,
+                error_callback=self._on_delete_error,
+                owner=self
+            )
 
     def _on_delete_finished(self, session_name: str):
         """Вызывается при успешном удалении сессии."""
@@ -359,47 +365,12 @@ class SessionView(QtWidgets.QWidget):
         if hasattr(main_window, 'refresh_all_data'):
             main_window.refresh_all_data()
 
-    def _on_delete_error(self, message: str):
+    def _on_delete_error(self, error):
         """Вызывается при ошибке удаления."""
         self.hide_loading_overlay()
         QtWidgets.QMessageBox.critical(
             self,
             "Ошибка",
-            f"Не удалось удалить сессию:\n{message}"
+            f"Не удалось удалить сессию:\n{str(error)}"
         )
-
-
-class SessionViewReloadThread(QtCore.QThread):
-    """Поток для загрузки данных сессий."""
-
-    data_loaded = QtCore.pyqtSignal(list)
-
-    def __init__(self, app_service: ApplicationService):
-        super().__init__()
-        self.app_service = app_service
-
-    def run(self):
-        sessions = self.app_service.get_all_sessions()
-        self.data_loaded.emit(sessions)
-
-
-class DeleteSessionThread(QtCore.QThread):
-    """Поток удаления сессии с последующим обновлением статистики."""
-
-    finished_delete = QtCore.pyqtSignal()
-    error_occurred = QtCore.pyqtSignal(str)
-
-    def __init__(self, app_service: ApplicationService, session_id: str):
-        super().__init__()
-        self.app_service = app_service
-        self.session_id = session_id
-
-    def run(self):
-        try:
-            self.app_service.delete_session(self.session_id)
-            self.app_service._update_all_statistics(None)
-            self.finished_delete.emit()
-        except Exception as e:
-            logger.error(f"Ошибка удаления сессии: {e}")
-            self.error_occurred.emit(str(e))
 

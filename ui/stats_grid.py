@@ -39,6 +39,8 @@ from stats import (
     AvgFinishPlaceNoFTStat,
 )
 
+from ui.background import thread_manager
+
 logger = logging.getLogger('ROYAL_Stats.StatsGrid')
 logger.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
 
@@ -431,16 +433,56 @@ class StatsGrid(QtWidgets.QWidget):
     def reload(self, show_overlay: bool = True):
         """Перезагружает все данные из ApplicationService."""
         logger.debug("=== Начало reload StatsGrid ===")
-
-        # Показываем индикатор загрузки, если требуется
         self._show_overlay = show_overlay
         if show_overlay:
             self.show_loading_overlay()
-
-        self._reload_thread = StatsGridReloadThread(self.app_service)
-        self._reload_thread.data_loaded.connect(self._on_data_loaded)
-        self._reload_thread.start()
-
+        
+        def load_data():
+            overall_stats = self.app_service.get_overall_stats()
+            all_tournaments = self.app_service.get_all_tournaments()
+            place_dist = self.app_service.get_place_distribution()
+            place_dist_pre_ft = self.app_service.get_place_distribution_pre_ft()
+            place_dist_all = self.app_service.get_place_distribution_overall()
+            roi_value = ROIStat().compute([], [], [], overall_stats).get('roi', 0.0)
+            itm_value = ITMStat().compute(all_tournaments, [], [], overall_stats).get('itm_percent', 0.0)
+            ft_reach = FinalTableReachStat().compute(all_tournaments, [], [], overall_stats).get('final_table_reach_percent', 0.0)
+            avg_stack_res = AvgFTInitialStackStat().compute(all_tournaments, [], [], overall_stats)
+            avg_chips = avg_stack_res.get('avg_ft_initial_stack_chips', 0.0)
+            avg_bb = avg_stack_res.get('avg_ft_initial_stack_bb', 0.0)
+            early_res = EarlyFTKOStat().compute([], [], [], overall_stats)
+            early_ko = early_res.get('early_ft_ko_count', 0)
+            early_ko_per = early_res.get('early_ft_ko_per_tournament', 0.0)
+            all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
+            avg_all = sum(all_places) / len(all_places) if all_places else 0.0
+            ft_places = [t.finish_place for t in all_tournaments if t.reached_final_table and t.finish_place is not None and 1 <= t.finish_place <= 9]
+            avg_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
+            no_ft_places = [t.finish_place for t in all_tournaments if not t.reached_final_table and t.finish_place is not None]
+            avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
+            return {
+                'overall_stats': overall_stats,
+                'all_tournaments': all_tournaments,
+                'place_dist': place_dist,
+                'place_dist_pre_ft': place_dist_pre_ft,
+                'place_dist_all': place_dist_all,
+                'roi': roi_value,
+                'itm': itm_value,
+                'ft_reach': ft_reach,
+                'avg_chips': avg_chips,
+                'avg_bb': avg_bb,
+                'early_ko': early_ko,
+                'early_ko_per': early_ko_per,
+                'avg_place_all': avg_all,
+                'avg_place_ft': avg_ft,
+                'avg_place_no_ft': avg_no_ft,
+            }
+        thread_manager.run_in_thread(
+            widget_id=str(id(self)),
+            fn=load_data,
+            callback=self._on_data_loaded,
+            error_callback=lambda e: logger.error(f"Ошибка загрузки данных StatsGrid: {e}"),
+            owner=self
+        )
+        
     def _on_data_loaded(self, data: dict):
         """Применяет загруженные данные к UI."""
         try:
@@ -728,55 +770,3 @@ class StatsGrid(QtWidgets.QWidget):
             self.chart_header.setText("Распределение финишных мест (1-18)")
 
         self._update_chart(self._get_current_distribution())
-
-
-class StatsGridReloadThread(QtCore.QThread):
-    """Поток для загрузки данных статистики без блокировки GUI."""
-
-    data_loaded = QtCore.pyqtSignal(dict)
-
-    def __init__(self, app_service: ApplicationService):
-        super().__init__()
-        self.app_service = app_service
-
-    def run(self):
-        overall_stats = self.app_service.get_overall_stats()
-        all_tournaments = self.app_service.get_all_tournaments()
-        place_dist = self.app_service.get_place_distribution()
-        place_dist_pre_ft = self.app_service.get_place_distribution_pre_ft()
-        place_dist_all = self.app_service.get_place_distribution_overall()
-
-        roi_value = ROIStat().compute([], [], [], overall_stats).get('roi', 0.0)
-        itm_value = ITMStat().compute(all_tournaments, [], [], overall_stats).get('itm_percent', 0.0)
-        ft_reach = FinalTableReachStat().compute(all_tournaments, [], [], overall_stats).get('final_table_reach_percent', 0.0)
-        avg_stack_res = AvgFTInitialStackStat().compute(all_tournaments, [], [], overall_stats)
-        avg_chips = avg_stack_res.get('avg_ft_initial_stack_chips', 0.0)
-        avg_bb = avg_stack_res.get('avg_ft_initial_stack_bb', 0.0)
-        early_res = EarlyFTKOStat().compute([], [], [], overall_stats)
-        early_ko = early_res.get('early_ft_ko_count', 0)
-        early_ko_per = early_res.get('early_ft_ko_per_tournament', 0.0)
-
-        all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
-        avg_all = sum(all_places) / len(all_places) if all_places else 0.0
-        ft_places = [t.finish_place for t in all_tournaments if t.reached_final_table and t.finish_place is not None and 1 <= t.finish_place <= 9]
-        avg_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
-        no_ft_places = [t.finish_place for t in all_tournaments if not t.reached_final_table and t.finish_place is not None]
-        avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
-
-        self.data_loaded.emit({
-            'overall_stats': overall_stats,
-            'all_tournaments': all_tournaments,
-            'place_dist': place_dist,
-            'place_dist_pre_ft': place_dist_pre_ft,
-            'place_dist_all': place_dist_all,
-            'roi': roi_value,
-            'itm': itm_value,
-            'ft_reach': ft_reach,
-            'avg_chips': avg_chips,
-            'avg_bb': avg_bb,
-            'early_ko': early_ko,
-            'early_ko_per': early_ko_per,
-            'avg_place_all': avg_all,
-            'avg_place_ft': avg_ft,
-            'avg_place_no_ft': avg_no_ft,
-        })

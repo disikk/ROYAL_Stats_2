@@ -485,6 +485,8 @@ class ApplicationService:
         
         tournaments_processed = 0
         
+        tournaments_processed = 0
+        
         for tourney_id in parsed_tournaments_data:
             try:
                 # Получаем все руки финального стола для этого турнира из БД
@@ -528,10 +530,10 @@ class ApplicationService:
              # Передаем callback в _update_all_statistics для отслеживания прогресса
              self._update_all_statistics(
                  session_id,
-                 progress_callback=lambda step, total: progress_callback(
+                 progress_callback=lambda step, total, text="": progress_callback(
                      current_progress + int((step / total) * STATS_WEIGHT),
                      total_steps,
-                     "Обновление статистики..."
+                     text or "Обновление статистики..."
                  ),
              )
              logger.info("Обновление статистики завершено.")
@@ -578,14 +580,14 @@ class ApplicationService:
         # --- Обновление Overall Stats ---
         try:
             if progress_callback:
-                progress_callback(current_step, total_steps)
+                progress_callback(current_step, total_steps, "Обновление общей статистики...")
             logger.debug("Обновление общей статистики...")
             overall_stats = self._calculate_overall_stats()
             self.overall_stats_repo.update_overall_stats(overall_stats)
             logger.info("Общая статистика обновлена успешно.")
             current_step += 1
             if progress_callback:
-                progress_callback(current_step, total_steps)
+                progress_callback(current_step, total_steps, "Общая статистика обновлена")
         except Exception as e:
             logger.error(f"Ошибка при обновлении overall_stats: {e}")
             import traceback
@@ -599,7 +601,7 @@ class ApplicationService:
                 self.place_dist_repo.increment_place_count(tourney.finish_place)
                 current_step += 1
                 if progress_callback:
-                    progress_callback(current_step, total_steps)
+                    progress_callback(current_step, total_steps, f"Обновлено мест: {current_step-1}/{len(all_final_tournaments)}")
             logger.info(f"Распределение мест обновлено для {len(all_final_tournaments)} турниров.")
         except Exception as e:
             logger.error(f"Ошибка при обновлении place_distribution: {e}")
@@ -616,7 +618,7 @@ class ApplicationService:
                 self.tournament_repo.add_or_update_tournament(tournament)
                 current_step += 1
                 if progress_callback:
-                    progress_callback(current_step, total_steps)
+                    progress_callback(current_step, total_steps, f"Обновлено турниров: {current_step - 1 - len(all_final_tournaments)}/{len(all_tournaments)}")
             logger.info(f"KO count обновлен для {len(all_tournaments)} турниров.")
         except Exception as e:
             logger.error(f"Ошибка при обновлении ko_count: {e}")
@@ -633,7 +635,7 @@ class ApplicationService:
                     logger.error(f"Ошибка при обновлении сессии {session.session_id}: {e}")
                 current_step += 1
                 if progress_callback:
-                    progress_callback(current_step, total_steps)
+                    progress_callback(current_step, total_steps, f"Обновлено сессий: {current_step - 1 - len(all_final_tournaments) - len(all_tournaments)}/{len(sessions_to_update)}")
             logger.info(f"Статистика обновлена для {len(sessions_to_update)} сессий.")
         except Exception as e:
             logger.error(f"Ошибка при обновлении session stats: {e}")
@@ -641,7 +643,7 @@ class ApplicationService:
             logger.error(f"Traceback: {traceback.format_exc()}")
 
         if progress_callback:
-            progress_callback(total_steps, total_steps)
+            progress_callback(total_steps, total_steps, "Статистика обновлена")
 
         logger.info("Обновление всей статистики завершено (с учетом возможных ошибок).")
 

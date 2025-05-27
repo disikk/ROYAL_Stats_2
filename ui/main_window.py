@@ -23,6 +23,7 @@ from ui.tournament_view import TournamentView
 from ui.session_view import SessionView
 from ui.session_select_dialog import SessionSelectDialog
 from ui.custom_icons import CustomIcons  # Импортируем кастомные иконки
+from ui.background import thread_manager
 
 # Импортируем диалог управления БД
 from ui.database_management_dialog import DatabaseManagementDialog # Предполагаем, что такой файл будет создан
@@ -45,6 +46,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # ApplicationService уже проинициализирован как синглтон
         self.app_service = application_service
+        
+        # Флаги для отслеживания загруженности вкладок
+        self._tab_loaded = {'stats': False, 'tournaments': False, 'sessions': False}
+        self._initial_load_done = False
 
         # Инициализируем UI
         self._init_ui()
@@ -179,12 +184,15 @@ class MainWindow(QtWidgets.QMainWindow):
         """Открывает диалог управления базами данных."""
         dialog = DatabaseManagementDialog(self, self.app_service)
         if dialog.exec(): # Модальное исполнение
-            # Диалог уже вызвал app_service.switch_database() если пользователь выбрал другую БД
-            # or app_service.create_new_database() if user created a new one.
+            if dialog.db_to_open_path != self.app_service.db_path:
+                self.app_service.db_path = dialog.db_to_open_path
+                config.set_db_path(self.app_service.db_path)
+                # Диалог уже вызвал app_service.switch_database() если пользователь выбрал другую БД
+                # Сбрасываем флаги загрузки и загружаем текущую вкладку
+                self._tab_loaded = {'stats': False, 'tournaments': False, 'sessions': False}
+                self._load_current_tab()
             self.statusBar().showMessage(f"Подключена база данных: {os.path.basename(self.app_service.db_path)}")
-            self.refresh_all_data() # Обновляем UI после смены БД
-
-        dialog.deleteLater() # Удаляем диалог после закрытия
+        dialog.deleteLater()
 
     def import_files(self):
         """Выбор отдельных файлов для импорта."""
@@ -283,6 +291,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def invalidate_all_caches(self):
         """Инвалидирует кеш данных во всех view компонентах."""
+        self._tab_loaded = {'stats': False, 'tournaments': False, 'sessions': False}
         if hasattr(self, 'stats_grid') and self.stats_grid:
             self.stats_grid.invalidate_cache()
         if hasattr(self, 'tournament_view') and self.tournament_view:
@@ -290,29 +299,43 @@ class MainWindow(QtWidgets.QMainWindow):
         if hasattr(self, 'session_view') and self.session_view:
             self.session_view.invalidate_cache()
 
-    def refresh_all_views(self, show_overlay: bool = True):
-        """Обновляет все view компоненты."""
-        if hasattr(self, 'stats_grid') and self.stats_grid:
-            self.stats_grid.reload(show_overlay=show_overlay)
-        if hasattr(self, 'tournament_view') and self.tournament_view:
-            self.tournament_view.reload(show_overlay=show_overlay)
-        if hasattr(self, 'session_view') and self.session_view:
-            self.session_view.reload(show_overlay=show_overlay)
+    def refresh_all_views(self, show_overlay: bool = True, force_all: bool = False):
+        """
+        Обновляет view компоненты.
+        Args:
+            show_overlay: Показывать ли индикатор загрузки
+            force_all: Если True, обновляет все вкладки. Иначе только текущую.
+        """
+        if force_all:
+            if hasattr(self, 'stats_grid') and self.stats_grid:
+                self.stats_grid.reload(show_overlay=show_overlay)
+                self._tab_loaded['stats'] = True
+            if hasattr(self, 'tournament_view') and self.tournament_view:
+                self.tournament_view.reload(show_overlay=show_overlay)
+                self._tab_loaded['tournaments'] = True
+            if hasattr(self, 'session_view') and self.session_view:
+                self.session_view.reload(show_overlay=show_overlay)
+                self._tab_loaded['sessions'] = True
+        else:
+            self._load_current_tab()
 
     def refresh_all_data(self):
         """
         Обновляет данные во всех представлениях UI асинхронно.
+        Используется для принудительного обновления (например, после импорта).
         """
-        logger.info("Запуск асинхронного обновления данных...")
-        
+        logger.info("Запуск полного обновления данных...")
+        self._tab_loaded = {'stats': False, 'tournaments': False, 'sessions': False}
+        self._refresh_all_data_async(force_all=True)
+
+    def _refresh_all_data_async(self, force_all: bool = False):
+        """
+        Внутренний метод для асинхронного обновления данных.
+        """
         # Блокируем кнопку обновления на время операции
         if hasattr(self, 'refresh_action'):
             self.refresh_action.setEnabled(False)
-        
-        # Показываем индикатор загрузки в статусбаре
         self.statusBar().showMessage("Обновление данных...")
-        
-        # Создаем и запускаем поток обновления
         self.refresh_thread = RefreshThread(self.app_service)
         self.refresh_thread.progress_update.connect(self._on_refresh_progress)
         self.refresh_thread.progress_percent.connect(self._on_refresh_percent)
@@ -335,20 +358,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.pyqtSlot()
     def _on_refresh_finished(self):
-        """Вызывается по завершении обновления данных."""
         logger.info("Асинхронное обновление данных завершено")
-        
-        # Обновляем UI компоненты в основном потоке
         self._update_toolbar_info()
-        
-        # Инвалидируем кеш и обновляем вкладки
         self.invalidate_all_caches()
-        self.refresh_all_views()
-        
-        # Восстанавливаем кнопку обновления
+        self.refresh_all_views(force_all=True)
         if hasattr(self, 'refresh_action'):
             self.refresh_action.setEnabled(True)
-        
         self.statusBar().showMessage(f"Данные обновлены. База данных: {os.path.basename(self.app_service.db_path)}", 3000)
 
     @QtCore.pyqtSlot(str)
@@ -379,11 +394,21 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
     def tab_changed(self, index):
-        """Обрабатывает событие изменения активной вкладки."""
-        tab_name = self.tabs.tabText(index)
-        self.statusBar().showMessage(f"Вкладка: {tab_name}", 2000)
-        # Можно добавить здесь логику для ленивой загрузки данных на вкладке,
-        # но для нашей архитектуры Views запрашивают данные при reload()
+        """Обрабатывает событие изменения активной вкладки с ленивой загрузкой."""
+        self._load_current_tab()
+
+    def _load_current_tab(self):
+        """Загружает данные текущей вкладки, если они еще не загружены."""
+        index = self.tabs.currentIndex()
+        if index == 0 and not self._tab_loaded['stats']:
+            self.stats_grid.reload(show_overlay=True)
+            self._tab_loaded['stats'] = True
+        elif index == 1 and not self._tab_loaded['tournaments']:
+            self.tournament_view.reload(show_overlay=True)
+            self._tab_loaded['tournaments'] = True
+        elif index == 2 and not self._tab_loaded['sessions']:
+            self.session_view.reload(show_overlay=True)
+            self._tab_loaded['sessions'] = True
 
 
 # Отдельный поток для импорта, чтобы не блокировать GUI
@@ -469,21 +494,25 @@ class RefreshThread(QtCore.QThread):
             logger.error(f"Ошибка при обновлении данных: {e}")
             self.error_occurred.emit(str(e))
     
-    def _report_progress(self, step: int, total: int):
+    def _report_progress(self, step: int, total: int, text: str = ""):
         """Отправляет прогресс в процентах через сигналы Qt."""
         if total > 0:
             percent = int((step / total) * 100)
             self.progress_percent.emit(percent)
 
-            # Меняем текст в зависимости от процента прогресса
-            if percent < 25:
-                self.progress_update.emit("Обновление общей статистики...")
-            elif percent < 50:
-                self.progress_update.emit("Обновление распределения мест...")
-            elif percent < 75:
-                self.progress_update.emit("Подсчет нокаутов...")
+            # Используем переданный text или определяем по проценту
+            if text:
+                self.progress_update.emit(text)
             else:
-                self.progress_update.emit("Обновление статистики сессий...")
+                # Меняем текст в зависимости от процента прогресса
+                if percent < 25:
+                    self.progress_update.emit("Обновление общей статистики...")
+                elif percent < 50:
+                    self.progress_update.emit("Обновление распределения мест...")
+                elif percent < 75:
+                    self.progress_update.emit("Подсчет нокаутов...")
+                else:
+                    self.progress_update.emit("Обновление статистики сессий...")
 
 
 # Предполагаем, что DatabaseManagementDialog.py будет создан отдельно
