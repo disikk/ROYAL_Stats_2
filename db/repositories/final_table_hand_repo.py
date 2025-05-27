@@ -86,16 +86,16 @@ class FinalTableHandRepository:
         return [FinalTableHand.from_dict(dict(row)) for row in results]
 
     def get_all_hands(self) -> List[FinalTableHand]:
-         """
-         Возвращает все раздачи финального стола Hero из текущей БД.
-         """
-         query = """
-             SELECT
-                 id, tournament_id, hand_id, hand_number, table_size, bb,
-                 hero_stack, hero_ko_this_hand, session_id, is_early_final
-             FROM hero_final_table_hands
-             ORDER BY hand_number ASC -- Порядок важен для определения первой руки
-         """
+        """
+        Возвращает все раздачи финального стола Hero из текущей БД.
+        """
+        query = """
+            SELECT
+                id, tournament_id, hand_id, hand_number, table_size, bb,
+                hero_stack, hero_ko_this_hand, session_id, is_early_final
+            FROM hero_final_table_hands
+            ORDER BY hand_number ASC -- Порядок важен для определения первой руки
+        """
         results = self.db.execute_query(query)
         return [FinalTableHand.from_dict(dict(row)) for row in results]
 
