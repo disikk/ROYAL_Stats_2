@@ -1,0 +1,129 @@
+# Патч для добавления кеширования и ленивой загрузки вкладок
+
+## 1. Добавить в ui/main_window.py:
+
+### В методе __init__ после создания вкладок:
+```python
+# Добавляем вкладки с иконками
+self.tabs.addTab(self.stats_grid, CustomIcons.chart_icon("#10B981"), "Дашборд")
+self.tabs.addTab(self.tournament_view, CustomIcons.list_icon("#3B82F6"), "Турниры")
+self.tabs.addTab(self.session_view, CustomIcons.calendar_icon("#F59E0B"), "Сессии")
+
+# Подключаем сигнал изменения вкладки
+self.tabs.currentChanged.connect(self.tab_changed)
+
+# ДОБАВИТЬ: Отмечаем, какие вкладки уже загружены
+self._loaded_tabs = {0}  # Дашборд загружается сразу
+```
+
+### Изменить метод tab_changed:
+```python
+def tab_changed(self, index):
+    """Обрабатывает событие изменения активной вкладки."""
+    tab_name = self.tabs.tabText(index)
+    self.statusBar().showMessage(f"Вкладка: {tab_name}", 2000)
+    
+    # Ленивая загрузка данных при первом открытии вкладки
+    if index not in self._loaded_tabs:
+        self._loaded_tabs.add(index)
+        
+        if index == 1 and hasattr(self, 'tournament_view'):
+            self.tournament_view.reload(show_overlay=True)
+        elif index == 2 and hasattr(self, 'session_view'):
+            self.session_view.reload(show_overlay=True)
+```
+
+### Изменить конструктор главного окна:
+```python
+# В конце __init__, вместо self.refresh_all_data():
+# Загружаем только дашборд при старте
+self.stats_grid.reload(show_overlay=False)
+self._update_toolbar_info()
+```
+
+## 2. Добавить простое кеширование в ApplicationService:
+
+### В application_service.py добавить в __init__:
+```python
+def __init__(self):
+    self.db = database_manager
+    self.tournament_repo = TournamentRepository()
+    self.session_repo = SessionRepository()
+    self.overall_stats_repo = OverallStatsRepository()
+    self.place_dist_repo = PlaceDistributionRepository()
+    self.ft_hand_repo = FinalTableHandRepository()
+
+    self.hh_parser = HandHistoryParser()
+    self.ts_parser = TournamentSummaryParser()
+    
+    # ДОБАВИТЬ: Кеш для часто запрашиваемых данных
+    self._cache = {
+        'all_tournaments': None,
+        'all_tournaments_timestamp': None,
+        'cache_ttl': 60  # Время жизни кеша в секундах
+    }
+```
+
+### Изменить метод get_all_tournaments:
+```python
+def get_all_tournaments(self, buyin_filter: Optional[float] = None, force_refresh: bool = False) -> List[Tournament]:
+    """Возвращает список всех турниров Hero с кешированием."""
+    import time
+    
+    # Проверяем кеш (только для запросов без фильтров)
+    if (not force_refresh and 
+        buyin_filter is None and 
+        self._cache['all_tournaments'] is not None and
+        self._cache['all_tournaments_timestamp'] is not None):
+        
+        # Проверяем время жизни кеша
+        if time.time() - self._cache['all_tournaments_timestamp'] < self._cache['cache_ttl']:
+            return self._cache['all_tournaments']
+    
+    # Загружаем из БД
+    tournaments = self.tournament_repo.get_all_tournaments(buyin_filter=buyin_filter)
+    
+    # Кешируем только запросы без фильтров
+    if buyin_filter is None:
+        self._cache['all_tournaments'] = tournaments
+        self._cache['all_tournaments_timestamp'] = time.time()
+    
+    return tournaments
+```
+
+### Добавить метод очистки кеша:
+```python
+def invalidate_cache(self):
+    """Очищает кеш данных."""
+    self._cache['all_tournaments'] = None
+    self._cache['all_tournaments_timestamp'] = None
+```
+
+### Вызывать очистку кеша после импорта и обновления данных:
+В методах import_files и _update_all_statistics добавить в конце:
+```python
+self.invalidate_cache()
+```
+
+## 3. Оптимизация StatsGrid для быстрой загрузки:
+
+### В ui/stats_grid.py изменить reload:
+```python
+def reload(self, show_overlay: bool = True):
+    """Перезагружает все данные из ApplicationService."""
+    logger.debug("=== Начало reload StatsGrid ===")
+    
+    # Используем кеш, если данные не изменились
+    if self._cache_valid and not show_overlay:
+        logger.debug("Используем кешированные данные")
+        return
+
+    # Показываем индикатор загрузки, если требуется
+    self._show_overlay = show_overlay
+    if show_overlay:
+        self.show_loading_overlay()
+
+    self._reload_thread = StatsGridReloadThread(self.app_service)
+    self._reload_thread.data_loaded.connect(self._on_data_loaded)
+    self._reload_thread.start()
+```
