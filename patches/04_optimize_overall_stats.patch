@@ -1,0 +1,124 @@
+# Патч для оптимизации _calculate_overall_stats
+
+## Проблема
+Метод `_calculate_overall_stats` загружает ВСЕ турниры и ВСЕ руки финального стола в память:
+```python
+all_tournaments = self.tournament_repo.get_all_tournaments()  # Может быть 10000+ записей!
+all_ft_hands = self.ft_hand_repo.get_all_hands()  # Может быть 100000+ записей!
+```
+
+Это занимает много памяти и времени, особенно когда нужны только агрегированные значения.
+
+## Решение
+Использовать SQL агрегацию вместо загрузки всех данных в Python.
+
+### 1. Добавить в tournament_repo.py:
+```python
+def get_aggregated_stats(self) -> Dict[str, Any]:
+    """
+    Возвращает агрегированную статистику по всем турнирам одним запросом.
+    """
+    query = """
+        SELECT 
+            COUNT(*) as total_tournaments,
+            COUNT(CASE WHEN reached_final_table = 1 THEN 1 END) as total_final_tables,
+            SUM(COALESCE(buyin, 0)) as total_buy_in,
+            SUM(COALESCE(payout, 0)) as total_prize,
+            AVG(CASE WHEN finish_place IS NOT NULL THEN finish_place END) as avg_finish_place,
+            AVG(CASE WHEN reached_final_table = 1 AND finish_place BETWEEN 1 AND 9 THEN finish_place END) as avg_finish_place_ft,
+            AVG(CASE WHEN reached_final_table = 0 AND finish_place IS NOT NULL THEN finish_place END) as avg_finish_place_no_ft,
+            AVG(CASE WHEN final_table_initial_stack_chips IS NOT NULL THEN final_table_initial_stack_chips END) as avg_ft_initial_stack_chips,
+            AVG(CASE WHEN final_table_initial_stack_bb IS NOT NULL THEN final_table_initial_stack_bb END) as avg_ft_initial_stack_bb
+        FROM tournaments
+    """
+    result = self.db.execute_query(query)
+    if result:
+        row = result[0]
+        return {
+            'total_tournaments': row['total_tournaments'] or 0,
+            'total_final_tables': row['total_final_tables'] or 0,
+            'total_buy_in': row['total_buy_in'] or 0.0,
+            'total_prize': row['total_prize'] or 0.0,
+            'avg_finish_place': row['avg_finish_place'] or 0.0,
+            'avg_finish_place_ft': row['avg_finish_place_ft'] or 0.0,
+            'avg_finish_place_no_ft': row['avg_finish_place_no_ft'] or 0.0,
+            'avg_ft_initial_stack_chips': row['avg_ft_initial_stack_chips'] or 0.0,
+            'avg_ft_initial_stack_bb': row['avg_ft_initial_stack_bb'] or 0.0,
+        }
+    return {}
+```
+
+### 2. Добавить в final_table_hand_repo.py:
+```python
+def get_aggregated_ko_stats(self) -> Dict[str, Any]:
+    """
+    Возвращает агрегированную статистику по KO одним запросом.
+    """
+    query = """
+        SELECT 
+            SUM(hero_ko_this_hand) as total_knockouts,
+            SUM(CASE WHEN is_early_final = 1 THEN hero_ko_this_hand ELSE 0 END) as early_ft_ko_count
+        FROM hero_final_table_hands
+    """
+    result = self.db.execute_query(query)
+    if result:
+        row = result[0]
+        return {
+            'total_knockouts': row['total_knockouts'] or 0,
+            'early_ft_ko_count': row['early_ft_ko_count'] or 0,
+        }
+    return {'total_knockouts': 0, 'early_ft_ko_count': 0}
+```
+
+### 3. Добавить метод для подсчета мест 6-9:
+```python
+def get_early_ft_bust_count(self) -> int:
+    """
+    Возвращает количество вылетов Hero на местах 6-9.
+    """
+    query = """
+        SELECT COUNT(*) as count
+        FROM tournaments
+        WHERE reached_final_table = 1 
+        AND finish_place BETWEEN 6 AND 9
+    """
+    result = self.db.execute_query(query)
+    return result[0]['count'] if result else 0
+```
+
+### 4. Изменить начало _calculate_overall_stats:
+```python
+def _calculate_overall_stats(self) -> OverallStats:
+    """
+    Рассчитывает все показатели для OverallStats на основе данных из БД.
+    """
+    stats = OverallStats()
+    
+    # Получаем базовую статистику одним запросом
+    tourney_stats = self.tournament_repo.get_aggregated_stats()
+    for key, value in tourney_stats.items():
+        if hasattr(stats, key):
+            setattr(stats, key, value)
+    
+    # Получаем статистику по KO одним запросом
+    ko_stats = self.ft_hand_repo.get_aggregated_ko_stats()
+    stats.total_knockouts = ko_stats['total_knockouts']
+    stats.early_ft_ko_count = ko_stats['early_ft_ko_count']
+    
+    # Вычисляемые поля
+    if stats.total_tournaments > 0:
+        stats.avg_ko_per_tournament = stats.total_knockouts / stats.total_tournaments
+    
+    if stats.total_final_tables > 0:
+        stats.early_ft_ko_per_tournament = stats.early_ft_ko_count / stats.total_final_tables
+        
+    # Вылеты на ранней стадии
+    stats.early_ft_bust_count = self.tournament_repo.get_early_ft_bust_count()
+    if stats.total_final_tables > 0:
+        stats.early_ft_bust_per_tournament = stats.early_ft_bust_count / stats.total_final_tables
+    
+    # Для Big KO все еще нужны турниры, но можно загружать только с payouts
+    tournaments_for_bigko = self.tournament_repo.get_tournaments_with_payouts()
+    big_ko_results = BigKOStat().compute(tournaments_for_bigko, [], [], None)
+    # ... остальной код для Big KO ...
+```
