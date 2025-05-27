@@ -1,0 +1,16 @@
+# Патч для db/manager.py - добавление создания индексов
+
+# Найти метод initialize_db и после строки:
+#     for query in db.schema.INITIALIZATION_QUERIES:
+#          cursor.execute(query)
+#          logger.debug(f"Выполнен инициализационный запрос: {query.splitlines()[0]}...")
+#
+# Добавить:
+
+            # Создаем индексы для оптимизации производительности
+            if hasattr(db.schema, 'CREATE_INDEXES_QUERIES'):
+                logger.info("Создание индексов для оптимизации производительности...")
+                for query in db.schema.CREATE_INDEXES_QUERIES:
+                    cursor.execute(query)
+                    logger.debug(f"Создан индекс: {query}")
+                logger.info("Индексы успешно созданы")
