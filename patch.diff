@@ -1,0 +1,863 @@
+diff --git a/application_service.py b/application_service.py
+index 1e922cc..d801f6d 100644
+--- a/application_service.py
++++ b/application_service.py
+@@ -511,132 +511,130 @@ class ApplicationService:
+                   progress_callback(total_steps, total_steps, f"Ошибка при обновлении статистики: {e}")
+              # В реальном приложении здесь может потребоваться более детальная обработка
+              return
+ 
+             # В самом конце метода import_files
+         logger.info("=== ПРОВЕРКА БД ПОСЛЕ ИМПОРТА ===")
+         test_query = "SELECT COUNT(*) FROM hero_final_table_hands"
+         result = self.db.execute_query(test_query)
+         logger.info(f"Количество рук в hero_final_table_hands: {result[0][0] if result else 0}")
+ 
+         test_query2 = "SELECT COUNT(*) FROM tournaments"  
+         result2 = self.db.execute_query(test_query2)
+         logger.info(f"Количество турниров в tournaments: {result2[0][0] if result2 else 0}")
+ 
+         # Завершение импорта
+         if progress_callback:
+             progress_callback(total_steps, total_steps, "Импорт завершен успешно!")
+ 
+     def _update_all_statistics(self, session_id: str, progress_callback=None):
+         """
+         Пересчитывает и обновляет все агрегированные статистики (общие и по сессии).
+         Вызывается после импорта данных.
+         """
+         logger.debug("Запущен пересчет всей статистики.")
+         
+-        total_steps = 4  # 4 основных этапа обновления
++        # Предварительно загружаем данные для оценки объема работы
++        all_tournaments = self.tournament_repo.get_all_tournaments()
++        all_final_tournaments = [
++            t for t in all_tournaments
++            if t.reached_final_table and t.finish_place is not None and 1 <= t.finish_place <= 9
++        ]
++        sessions_to_update = self.session_repo.get_all_sessions()
++
++        # Общее количество операций для прогресса
++        total_steps = 1 + len(all_final_tournaments) + len(all_tournaments) + len(sessions_to_update)
+         current_step = 0
+ 
+         # --- Обновление Overall Stats ---
+         try:
+             if progress_callback:
+                 progress_callback(current_step, total_steps)
+             logger.debug("Обновление общей статистики...")
+             overall_stats = self._calculate_overall_stats()
+             self.overall_stats_repo.update_overall_stats(overall_stats)
+             logger.info("Общая статистика обновлена успешно.")
+             current_step += 1
++            if progress_callback:
++                progress_callback(current_step, total_steps)
+         except Exception as e:
+             logger.error(f"Ошибка при обновлении overall_stats: {e}")
+             import traceback
+             logger.error(f"Traceback: {traceback.format_exc()}")
+-            # Продолжаем обновлять остальные таблицы!
+ 
+         # --- Обновление Place Distribution ---
+         try:
+-            if progress_callback:
+-                progress_callback(current_step, total_steps)
+             logger.debug("Обновление распределения мест...")
+             self.place_dist_repo.reset_distribution()
+-            all_final_tournaments = self.tournament_repo.get_all_tournaments()
+-            
+-            count = 0
+             for tourney in all_final_tournaments:
+-                if tourney.reached_final_table and tourney.finish_place is not None and 1 <= tourney.finish_place <= 9:
+-                    self.place_dist_repo.increment_place_count(tourney.finish_place)
+-                    count += 1
+-            
+-            logger.info(f"Распределение мест обновлено для {count} турниров.")
+-            current_step += 1
++                self.place_dist_repo.increment_place_count(tourney.finish_place)
++                current_step += 1
++                if progress_callback:
++                    progress_callback(current_step, total_steps)
++            logger.info(f"Распределение мест обновлено для {len(all_final_tournaments)} турниров.")
+         except Exception as e:
+             logger.error(f"Ошибка при обновлении place_distribution: {e}")
+             import traceback
+             logger.error(f"Traceback: {traceback.format_exc()}")
+ 
+         # --- Обновление KO count для турниров ---
+         try:
+-            if progress_callback:
+-                progress_callback(current_step, total_steps)
+             logger.debug("Обновление ko_count для турниров...")
+-            all_tournaments = self.tournament_repo.get_all_tournaments()
+-            updated_count = 0
+-            
+             for tournament in all_tournaments:
+                 tournament_ft_hands = self.ft_hand_repo.get_hands_by_tournament(tournament.tournament_id)
+                 total_ko = sum(hand.hero_ko_this_hand for hand in tournament_ft_hands)
+                 tournament.ko_count = total_ko
+                 self.tournament_repo.add_or_update_tournament(tournament)
+-                if total_ko > 0:
+-                    updated_count += 1
+-            
+-            logger.info(f"KO count обновлен для {updated_count} турниров.")
+-            current_step += 1
++                current_step += 1
++                if progress_callback:
++                    progress_callback(current_step, total_steps)
++            logger.info(f"KO count обновлен для {len(all_tournaments)} турниров.")
+         except Exception as e:
+             logger.error(f"Ошибка при обновлении ko_count: {e}")
+             import traceback
+             logger.error(f"Traceback: {traceback.format_exc()}")
+ 
+         # --- Обновление Session Stats ---
+         try:
+-            if progress_callback:
+-                progress_callback(current_step, total_steps)
+             logger.debug("Обновление статистики сессий...")
+-            sessions_to_update = self.session_repo.get_all_sessions()
+-            
+             for session in sessions_to_update:
+                 try:
+                     self._calculate_and_update_session_stats(session.session_id)
+                 except Exception as e:
+                     logger.error(f"Ошибка при обновлении сессии {session.session_id}: {e}")
+-            
++                current_step += 1
++                if progress_callback:
++                    progress_callback(current_step, total_steps)
+             logger.info(f"Статистика обновлена для {len(sessions_to_update)} сессий.")
+-            current_step += 1
+         except Exception as e:
+             logger.error(f"Ошибка при обновлении session stats: {e}")
+             import traceback
+             logger.error(f"Traceback: {traceback.format_exc()}")
+ 
++        if progress_callback:
++            progress_callback(total_steps, total_steps)
++
+         logger.info("Обновление всей статистики завершено (с учетом возможных ошибок).")
+ 
+ 
+     def _calculate_overall_stats(self) -> OverallStats:
+         """
+         Рассчитывает все показатели для OverallStats на основе данных из БД.
+         """
+         all_tournaments = self.tournament_repo.get_all_tournaments()
+         all_ft_hands = self.ft_hand_repo.get_all_hands() # Все руки финалок
+         logger.info(f"_calculate_overall_stats: Загружено {len(all_tournaments)} турниров")
+         logger.info(f"_calculate_overall_stats: Загружено {len(all_ft_hands)} рук финального стола")
+         # Проверяем содержимое первого турнира для отладки
+         if all_tournaments:
+             t = all_tournaments[0]
+             logger.debug(f"Пример турнира: id={t.tournament_id}, buyin={t.buyin}, payout={t.payout}, place={t.finish_place}, ft={t.reached_final_table}, ko={t.ko_count}")
+ 
+         stats = OverallStats() # Создаем объект с дефолтными значениями
+ 
+         stats.total_tournaments = len(all_tournaments)
+ 
+         # Фильтруем турниры, достигшие финального стола
+         final_table_tournaments = [t for t in all_tournaments if t.reached_final_table]
+         stats.total_final_tables = len(final_table_tournaments)
+ 
+         # Расчеты, основанные на турнирах:
+@@ -782,31 +780,30 @@ class ApplicationService:
+     def get_session_stats(self, session_id: str) -> Optional[Session]:
+         """Возвращает объект Session с агрегированной статистикой для указанной сессии."""
+         return self.session_repo.get_session_by_id(session_id)
+ 
+     def get_place_distribution_for_session(self, session_id: str) -> Dict[int, int]:
+          """
+          Рассчитывает и возвращает распределение мест (1-9) только для турниров в указанной сессии.
+          """
+          tournaments_in_session = self.tournament_repo.get_all_tournaments(session_id=session_id)
+          distribution = {i: 0 for i in range(1, 10)}
+          total_final_tables_in_session = 0
+ 
+          for tourney in tournaments_in_session:
+               if tourney.reached_final_table:
+                    total_final_tables_in_session += 1 # Count FTs for this session
+                    if tourney.finish_place is not None and 1 <= tourney.finish_place <= 9:
+                         distribution[tourney.finish_place] += 1
+ 
+          # Возвращаем распределение и общее количество финалок в сессии для нормализации в UI
+          return distribution, total_final_tables_in_session
+ 
+     def delete_session(self, session_id: str):
+         """Удаляет сессию и все связанные данные."""
+         # Удаляем сессию (каскадное удаление удалит связанные турниры и руки)
+         self.session_repo.delete_session_by_id(session_id)
+-        # Обновляем статистику после удаления
+-        self._update_all_statistics(None)
++        # Статистика пересчитывается асинхронно во внешнем потоке
+ 
+ 
+ # Создаем синглтон экземпляр ApplicationService
+ application_service = ApplicationService()
+\ No newline at end of file
+diff --git a/ui/main_window.py b/ui/main_window.py
+index 50581fe..869b34d 100644
+--- a/ui/main_window.py
++++ b/ui/main_window.py
+@@ -447,50 +447,50 @@ class RefreshThread(QtCore.QThread):
+     def __init__(self, app_service: ApplicationService):
+         super().__init__()
+         self.app_service = app_service
+         
+     def run(self):
+         """Выполняет обновление данных в отдельном потоке."""
+         try:
+             self.progress_update.emit("Обновление общей статистики...")
+             self.progress_percent.emit(0)
+             
+             # Вызываем метод обновления статистики с callback для прогресса
+             self.app_service._update_all_statistics(None, progress_callback=self._report_progress)
+             
+             self.progress_update.emit("Данные обновлены")
+             self.progress_percent.emit(100)
+             self.finished_update.emit()
+         except Exception as e:
+             logger.error(f"Ошибка при обновлении данных: {e}")
+             self.error_occurred.emit(str(e))
+     
+     def _report_progress(self, step: int, total: int):
+         """Отправляет прогресс в процентах через сигналы Qt."""
+         if total > 0:
+             percent = int((step / total) * 100)
+             self.progress_percent.emit(percent)
+-            
+-            # Обновляем текст в зависимости от этапа
+-            if step == 1:
++
++            # Меняем текст в зависимости от процента прогресса
++            if percent < 25:
+                 self.progress_update.emit("Обновление общей статистики...")
+-            elif step == 2:
++            elif percent < 50:
+                 self.progress_update.emit("Обновление распределения мест...")
+-            elif step == 3:
++            elif percent < 75:
+                 self.progress_update.emit("Подсчет нокаутов...")
+-            elif step == 4:
++            else:
+                 self.progress_update.emit("Обновление статистики сессий...")
+ 
+ 
+ # Предполагаем, что DatabaseManagementDialog.py будет создан отдельно
+ # Вот пример его базовой структуры для справки:
+ 
+ # class DatabaseManagementDialog(QtWidgets.QDialog):
+ #     def __init__(self, parent=None, app_service: ApplicationService = None):
+ #         super().__init__(parent)
+ #         self.app_service = app_service
+ #         self.setWindowTitle("Управление базами данных")
+ #         # ... UI элементы для выбора/создания БД ...
+ #         # При выборе/создании: self.app_service.switch_database(selected_path)
+ #         # или self.app_service.create_new_database(new_name)
+ #         # Затем self.accept() или self.reject()
+ #         # ...
+\ No newline at end of file
+diff --git a/ui/session_view.py b/ui/session_view.py
+index 1a156d8..e36c701 100644
+--- a/ui/session_view.py
++++ b/ui/session_view.py
+@@ -180,68 +180,62 @@ class SessionView(QtWidgets.QWidget):
+         self.loading_overlay.show()
+         
+     def hide_loading_overlay(self):
+         """Скрывает оверлей загрузки."""
+         self.loading_overlay.hide()
+         
+     def resizeEvent(self, event):
+         """Обрабатывает изменение размера виджета."""
+         super().resizeEvent(event)
+         # Обновляем размер оверлея при изменении размера виджета
+         if hasattr(self, 'loading_overlay'):
+             self.loading_overlay.resize(self.size())
+             
+     def invalidate_cache(self):
+         """Сбрасывает кеш данных."""
+         self._cache_valid = False
+         self._data_cache.clear()
+         
+     def reload(self):
+         """Перезагружает данные из ApplicationService."""
+         logger.debug("Перезагрузка SessionView...")
+         
+         # Показываем индикатор загрузки
+         self.show_loading_overlay()
+         
+-        # Используем QTimer для небольшой задержки, чтобы UI успел обновиться
+-        QtCore.QTimer.singleShot(10, self._do_reload)
+-        
+-    def _do_reload(self):
+-        """Выполняет фактическую перезагрузку данных."""
++        self._reload_thread = SessionViewReloadThread(self.app_service)
++        self._reload_thread.data_loaded.connect(self._on_data_loaded)
++        self._reload_thread.start()
++
++    def _on_data_loaded(self, sessions):
++        """Применяет загруженные данные к UI."""
+         try:
+-            # Загружаем данные только если кеш невалиден
+-            if not self._cache_valid:
+-                self._load_data()
+-                self._cache_valid = True
+-            
+-            # Обновляем таблицу
++            self.sessions = sessions
++            self._cache_valid = True
+             self._update_sessions_table()
+-            
+             logger.debug("Перезагрузка SessionView завершена.")
+-            
+         finally:
+-            # Скрываем индикатор загрузки
+             self.hide_loading_overlay()
+             
+     def _load_data(self):
+         """Загружает данные из ApplicationService в кеш."""
+         logger.debug("Загрузка данных в кеш SessionView...")
+         
+         # Загружаем все сессии
+         self.sessions = self.app_service.get_all_sessions()
+         self._data_cache['sessions'] = self.sessions
+         
+         logger.debug(f"Загружено {len(self.sessions)} сессий")
+         
+     def _update_sessions_table(self):
+         """Обновляет таблицу сессий."""
+         self.table.setRowCount(len(self.sessions))
+         
+         for row, session in enumerate(self.sessions):
+             # Название сессии
+             self.table.setItem(row, 0, QtWidgets.QTableWidgetItem(session.session_name))
+             
+             # Дата создания
+             created_date = session.created_at or "-"
+             if session.created_datetime:
+                 created_date = session.created_datetime.strftime("%d.%m.%Y %H:%M")
+             self.table.setItem(row, 1, QtWidgets.QTableWidgetItem(created_date))
+@@ -318,58 +312,92 @@ class SessionView(QtWidgets.QWidget):
+             f"Для просмотра турниров перейдите на вкладку 'Турниры' и используйте фильтры."
+         )
+         
+     def _delete_session(self):
+         """Удаляет выбранную сессию."""
+         current_row = self.table.currentRow()
+         if current_row < 0:
+             return
+             
+         session = self.sessions[current_row]
+         
+         # Подтверждение удаления
+         reply = QtWidgets.QMessageBox.question(
+             self,
+             "Подтверждение удаления",
+             f"Вы уверены, что хотите удалить сессию '{session.session_name}'?\n\n"
+             f"Будут удалены:\n"
+             f"- {session.tournaments_count} турниров\n"
+             f"- Все связанные руки финального стола\n\n"
+             "Это действие необратимо!",
+             QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+             QtWidgets.QMessageBox.StandardButton.No
+         )
+         
+         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+-            try:
+-                # Показываем индикатор во время удаления
+-                self.show_loading_overlay()
+-                self.loading_label.setText("Удаление сессии...")
+-                
+-                # Удаляем сессию через ApplicationService
+-                self.app_service.delete_session(session.session_id)
+-                
+-                # Сбрасываем кеш
+-                self.invalidate_cache()
+-                
+-                # Перезагружаем данные
+-                self.reload()
+-                
+-                # Оповещаем пользователя
+-                QtWidgets.QMessageBox.information(
+-                    self,
+-                    "Успех",
+-                    f"Сессия '{session.session_name}' и все связанные данные успешно удалены."
+-                )
+-                
+-                # Оповещаем родительское окно о необходимости обновить все данные
+-                main_window = self.window()  # Получаем главное окно
+-                if hasattr(main_window, 'refresh_all_data'):
+-                    main_window.refresh_all_data()
+-                    
+-            except Exception as e:
+-                self.hide_loading_overlay()
+-                QtWidgets.QMessageBox.critical(
+-                    self,
+-                    "Ошибка",
+-                    f"Не удалось удалить сессию:\n{e}"
+-                )
+\ No newline at end of file
++            # Показываем индикатор во время удаления
++            self.show_loading_overlay()
++            self.loading_label.setText("Удаление сессии...")
++
++            self._delete_thread = DeleteSessionThread(self.app_service, session.session_id)
++            self._delete_thread.finished_delete.connect(lambda: self._on_delete_finished(session.session_name))
++            self._delete_thread.error_occurred.connect(self._on_delete_error)
++            self._delete_thread.start()
++
++    def _on_delete_finished(self, session_name: str):
++        """Вызывается при успешном удалении сессии."""
++        self.hide_loading_overlay()
++        self.invalidate_cache()
++        self.reload()
++        QtWidgets.QMessageBox.information(
++            self,
++            "Успех",
++            f"Сессия '{session_name}' и все связанные данные успешно удалены."
++        )
++        main_window = self.window()
++        if hasattr(main_window, 'refresh_all_data'):
++            main_window.refresh_all_data()
++
++    def _on_delete_error(self, message: str):
++        """Вызывается при ошибке удаления."""
++        self.hide_loading_overlay()
++        QtWidgets.QMessageBox.critical(
++            self,
++            "Ошибка",
++            f"Не удалось удалить сессию:\n{message}"
++        )
++
++
++class SessionViewReloadThread(QtCore.QThread):
++    """Поток для загрузки данных сессий."""
++
++    data_loaded = QtCore.pyqtSignal(list)
++
++    def __init__(self, app_service: ApplicationService):
++        super().__init__()
++        self.app_service = app_service
++
++    def run(self):
++        sessions = self.app_service.get_all_sessions()
++        self.data_loaded.emit(sessions)
++
++
++class DeleteSessionThread(QtCore.QThread):
++    """Поток удаления сессии с последующим обновлением статистики."""
++
++    finished_delete = QtCore.pyqtSignal()
++    error_occurred = QtCore.pyqtSignal(str)
++
++    def __init__(self, app_service: ApplicationService, session_id: str):
++        super().__init__()
++        self.app_service = app_service
++        self.session_id = session_id
++
++    def run(self):
++        try:
++            self.app_service.delete_session(self.session_id)
++            self.app_service._update_all_statistics(None)
++            self.finished_delete.emit()
++        except Exception as e:
++            logger.error(f"Ошибка удаления сессии: {e}")
++            self.error_occurred.emit(str(e))
++
+diff --git a/ui/stats_grid.py b/ui/stats_grid.py
+index a7bb557..ba4191f 100644
+--- a/ui/stats_grid.py
++++ b/ui/stats_grid.py
+@@ -389,152 +389,142 @@ class StatsGrid(QtWidgets.QWidget):
+     def show_loading_overlay(self):
+         """Показывает оверлей загрузки."""
+         self.loading_overlay.resize(self.size())
+         self.loading_overlay.raise_()
+         self.loading_overlay.show()
+         
+     def hide_loading_overlay(self):
+         """Скрывает оверлей загрузки."""
+         self.loading_overlay.hide()
+         
+     def resizeEvent(self, event):
+         """Обрабатывает изменение размера виджета."""
+         super().resizeEvent(event)
+         # Обновляем размер оверлея при изменении размера виджета
+         if hasattr(self, 'loading_overlay'):
+             self.loading_overlay.resize(self.size())
+             
+     def invalidate_cache(self):
+         """Сбрасывает кеш данных."""
+         self._cache_valid = False
+         self._data_cache.clear()
+         
+     def reload(self):
+         """Перезагружает все данные из ApplicationService."""
+         logger.debug("=== Начало reload StatsGrid ===")
+-        
++
+         # Показываем индикатор загрузки
+         self.show_loading_overlay()
+-        
+-        # Используем QTimer для небольшой задержки, чтобы UI успел обновиться
+-        QtCore.QTimer.singleShot(10, self._do_reload)
+-        
+-    def _do_reload(self):
+-        """Выполняет фактическую перезагрузку данных."""
++
++        self._reload_thread = StatsGridReloadThread(self.app_service)
++        self._reload_thread.data_loaded.connect(self._on_data_loaded)
++        self._reload_thread.start()
++
++    def _on_data_loaded(self, data: dict):
++        """Применяет загруженные данные к UI."""
+         try:
+-            logger.debug("Обновление UI StatsGrid...")
+-            overall_stats = self.app_service.get_overall_stats()
+-            logger.debug(f"Overall stats: tournaments={overall_stats.total_tournaments}, ko={overall_stats.total_knockouts}")
+-            all_tournaments = self.app_service.get_all_tournaments()
++            overall_stats = data['overall_stats']
++            all_tournaments = data['all_tournaments']
+             
+             self.cards['tournaments'].update_value(str(overall_stats.total_tournaments))
+             logger.debug(f"Обновлена карточка tournaments: {overall_stats.total_tournaments}")
+-            
++
+             self.cards['knockouts'].update_value(str(overall_stats.total_knockouts))
+             logger.debug(f"Обновлена карточка knockouts: {overall_stats.total_knockouts}")
+-            
++
+             self.cards['avg_ko'].update_value(f"{overall_stats.avg_ko_per_tournament:.2f}")
+             logger.debug(f"Обновлена карточка avg_ko: {overall_stats.avg_ko_per_tournament:.2f}")
+-            
+-            roi_result = ROIStat().compute([], [], [], overall_stats)
+-            logger.debug(f"ROI result: {roi_result}")
+-            roi_value = roi_result.get('roi', 0.0)
++
++            roi_value = data['roi']
+             roi_text = f"{roi_value:+.1f}%"
+             self.cards['roi'].update_value(roi_text)
+             logger.debug(f"Обновлена карточка roi: {roi_text}")
+             # Применяем цвет только к тексту, а не к фону
+             apply_cell_color_by_value(self.cards['roi'].value_label, roi_value)
+-            
+-            itm_result = ITMStat().compute(all_tournaments, [], [], overall_stats)
+-            logger.debug(f"ITM result: {itm_result}")
+-            itm_value = itm_result.get('itm_percent', 0.0)
++
++            itm_value = data['itm']
+             self.cards['itm'].update_value(f"{itm_value:.1f}%")
+             logger.debug(f"Обновлена карточка itm: {itm_value:.1f}%")
+-            
+-            ft_reach_result = FinalTableReachStat().compute(all_tournaments, [], [], overall_stats)
+-            logger.debug(f"FT Reach result: {ft_reach_result}")
+-            ft_reach_value = ft_reach_result.get('final_table_reach_percent', 0.0)
++
++            ft_reach_value = data['ft_reach']
+             self.cards['ft_reach'].update_value(f"{ft_reach_value:.1f}%")
+             logger.debug(f"Обновлена карточка ft_reach: {ft_reach_value:.1f}%")
+-            
+-            avg_ft_stack_result = AvgFTInitialStackStat().compute(all_tournaments, [], [], overall_stats)
+-            logger.debug(f"Avg FT Stack result: {avg_ft_stack_result}")
+-            avg_chips = avg_ft_stack_result.get('avg_ft_initial_stack_chips', 0.0)
+-            avg_bb = avg_ft_stack_result.get('avg_ft_initial_stack_bb', 0.0)
++
++            avg_chips = data['avg_chips']
++            avg_bb = data['avg_bb']
+             # Форматируем основное значение и подзаголовок
+             self.cards['avg_ft_stack'].update_value(
+                 f"{avg_chips:,.0f}",
+                 f"{avg_chips:,.0f} фишек / {avg_bb:.1f} BB"
+             )
+             logger.debug(f"Обновлена карточка avg_ft_stack: {avg_chips:,.0f} / {avg_bb:.1f} BB")
+-            
+-            early_ft_result = EarlyFTKOStat().compute([], [], [], overall_stats)
+-            logger.debug(f"Early FT KO result: {early_ft_result}")
+-            early_ko_count = early_ft_result.get('early_ft_ko_count', 0)
+-            early_ko_per = early_ft_result.get('early_ft_ko_per_tournament', 0.0)
++
++            early_ko_count = data['early_ko']
++            early_ko_per = data['early_ko_per']
+             # Форматируем основное значение и подзаголовок
+             self.cards['early_ft_ko'].update_value(
+                 str(early_ko_count),
+                 f"{early_ko_per:.2f} за турнир с FT"
+             )
+             logger.debug(f"Обновлена карточка early_ft_ko: {early_ko_count} / {early_ko_per:.2f}")
+             
+             self.bigko_cards['x1.5'].update_value(str(overall_stats.big_ko_x1_5))
+             self.bigko_cards['x2'].update_value(str(overall_stats.big_ko_x2))
+             self.bigko_cards['x10'].update_value(str(overall_stats.big_ko_x10))
+             self.bigko_cards['x100'].update_value(str(overall_stats.big_ko_x100))
+             self.bigko_cards['x1000'].update_value(str(overall_stats.big_ko_x1000))
+             self.bigko_cards['x10000'].update_value(str(overall_stats.big_ko_x10000))
+             logger.debug(f"Обновлены карточки Big KO: x1.5={overall_stats.big_ko_x1_5}, x2={overall_stats.big_ko_x2}, x10={overall_stats.big_ko_x10}, x100={overall_stats.big_ko_x100}, x1000={overall_stats.big_ko_x1000}, x10000={overall_stats.big_ko_x10000}")
+             
+             # Статы средних мест (fallback расчет, пока не обновлены другие компоненты)
+             # Среднее место по всем турнирам
+             all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
+             avg_all = sum(all_places) / len(all_places) if all_places else 0.0
+             self.cards['avg_place_all'].update_value(f"{avg_all:.2f}")
+             # Среднее место на финалке
+             ft_places = [t.finish_place for t in all_tournaments 
+                          if t.reached_final_table and t.finish_place is not None 
+                          and 1 <= t.finish_place <= 9]
+             avg_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
+             self.cards['avg_place_ft'].update_value(f"{avg_ft:.2f}")
+             # Среднее место без финалки
+             no_ft_places = [t.finish_place for t in all_tournaments 
+                             if not t.reached_final_table and t.finish_place is not None]
+             avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
+             self.cards['avg_place_no_ft'].update_value(f"{avg_no_ft:.2f}")
+             
+-            self._update_chart()
++            self._update_chart(data['place_dist'])
+             logger.debug("=== Конец reload StatsGrid ===")
+-            
++        
+         finally:
+             # Скрываем индикатор загрузки
+             self.hide_loading_overlay()
+         
+-    def _update_chart(self):
++    def _update_chart(self, place_dist=None):
+         """Обновляет гистограмму распределения мест."""
+-        place_dist = self.app_service.get_place_distribution()
++        if place_dist is None:
++            place_dist = self.app_service.get_place_distribution()
+         
+         # Проверяем, есть ли данные
+         if not place_dist or all(count == 0 for count in place_dist.values()):
+             logger.warning("Нет данных для построения гистограммы распределения мест")
+             chart = QChart()
+             chart.setTitle("Нет данных о финишах на финальном столе")
+             chart.setTheme(QChart.ChartTheme.ChartThemeDark)
+             chart.setBackgroundBrush(QtGui.QBrush(QtGui.QColor("#18181B")))
+             self.chart_view.setChart(chart)
+             return
+             
+         chart = QChart()
+         chart.setTitle("")  # Убираем заголовок, так как он уже есть над графиком
+         chart.setAnimationOptions(QChart.AnimationOption.SeriesAnimations)
+         chart.setTheme(QChart.ChartTheme.ChartThemeDark)
+         chart.setBackgroundBrush(QtGui.QBrush(QtGui.QColor("#18181B")))
+         chart.legend().setVisible(False)
+         
+         # Создаем серию стековых баров
+         series = QStackedBarSeries()
+         
+         # Настраиваем цвета для столбцов
+         colors = [
+             "#10B981",  # 1 место - ярко-зеленый
+             "#34D399",  # 2 место - зеленый
+@@ -628,26 +618,74 @@ class StatsGrid(QtWidgets.QWidget):
+         # Создаем новые метки
+         plot_area = chart.plotArea()
+         bar_width = plot_area.width() / 9
+         
+         for place in range(1, 10):
+             count = place_dist.get(place, 0)
+             if count > 0:
+                 percentage = (count / total_finishes) * 100
+                 
+                 text = QtWidgets.QGraphicsTextItem(f"{percentage:.1f}%")
+                 text.setDefaultTextColor(QtGui.QColor("#FAFAFA"))
+                 text.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Weight.Bold))
+                 
+                 # Вычисляем позицию
+                 x_pos = plot_area.left() + bar_width * (place - 0.5) - text.boundingRect().width() / 2
+                 max_y_value = max(place_dist.values()) * 1.1
+                 bar_height_ratio = count / max_y_value
+                 y_pos = plot_area.bottom() - (plot_area.height() * bar_height_ratio) - text.boundingRect().height() - 5
+                 
+                 text.setPos(x_pos, y_pos)
+                 chart.scene().addItem(text)
+                 self.chart_view.chart_labels.append(text)
+     
+     def _update_percentage_labels_position(self, chart, place_dist, total_finishes):
+         """Обновляет позиции меток при изменении размера графика."""
+-        self._add_percentage_labels(chart, place_dist, total_finishes)
+\ No newline at end of file
++        self._add_percentage_labels(chart, place_dist, total_finishes)
++
++
++class StatsGridReloadThread(QtCore.QThread):
++    """Поток для загрузки данных статистики без блокировки GUI."""
++
++    data_loaded = QtCore.pyqtSignal(dict)
++
++    def __init__(self, app_service: ApplicationService):
++        super().__init__()
++        self.app_service = app_service
++
++    def run(self):
++        overall_stats = self.app_service.get_overall_stats()
++        all_tournaments = self.app_service.get_all_tournaments()
++        place_dist = self.app_service.get_place_distribution()
++
++        roi_value = ROIStat().compute([], [], [], overall_stats).get('roi', 0.0)
++        itm_value = ITMStat().compute(all_tournaments, [], [], overall_stats).get('itm_percent', 0.0)
++        ft_reach = FinalTableReachStat().compute(all_tournaments, [], [], overall_stats).get('final_table_reach_percent', 0.0)
++        avg_stack_res = AvgFTInitialStackStat().compute(all_tournaments, [], [], overall_stats)
++        avg_chips = avg_stack_res.get('avg_ft_initial_stack_chips', 0.0)
++        avg_bb = avg_stack_res.get('avg_ft_initial_stack_bb', 0.0)
++        early_res = EarlyFTKOStat().compute([], [], [], overall_stats)
++        early_ko = early_res.get('early_ft_ko_count', 0)
++        early_ko_per = early_res.get('early_ft_ko_per_tournament', 0.0)
++
++        all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
++        avg_all = sum(all_places) / len(all_places) if all_places else 0.0
++        ft_places = [t.finish_place for t in all_tournaments if t.reached_final_table and t.finish_place is not None and 1 <= t.finish_place <= 9]
++        avg_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
++        no_ft_places = [t.finish_place for t in all_tournaments if not t.reached_final_table and t.finish_place is not None]
++        avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
++
++        self.data_loaded.emit({
++            'overall_stats': overall_stats,
++            'all_tournaments': all_tournaments,
++            'place_dist': place_dist,
++            'roi': roi_value,
++            'itm': itm_value,
++            'ft_reach': ft_reach,
++            'avg_chips': avg_chips,
++            'avg_bb': avg_bb,
++            'early_ko': early_ko,
++            'early_ko_per': early_ko_per,
++            'avg_place_all': avg_all,
++            'avg_place_ft': avg_ft,
++            'avg_place_no_ft': avg_no_ft,
++        })
+diff --git a/ui/tournament_view.py b/ui/tournament_view.py
+index 0fbec47..81dceba 100644
+--- a/ui/tournament_view.py
++++ b/ui/tournament_view.py
+@@ -179,71 +179,67 @@ class TournamentView(QtWidgets.QWidget):
+         self.loading_overlay.show()
+         
+     def hide_loading_overlay(self):
+         """Скрывает оверлей загрузки."""
+         self.loading_overlay.hide()
+         
+     def resizeEvent(self, event):
+         """Обрабатывает изменение размера виджета."""
+         super().resizeEvent(event)
+         # Обновляем размер оверлея при изменении размера виджета
+         if hasattr(self, 'loading_overlay'):
+             self.loading_overlay.resize(self.size())
+             
+     def invalidate_cache(self):
+         """Сбрасывает кеш данных."""
+         self._cache_valid = False
+         self._data_cache.clear()
+         
+     def reload(self):
+         """Перезагружает данные из ApplicationService."""
+         logger.debug("Перезагрузка TournamentView...")
+         
+         # Показываем индикатор загрузки
+         self.show_loading_overlay()
+         
+-        # Используем QTimer для небольшой задержки, чтобы UI успел обновиться
+-        QtCore.QTimer.singleShot(10, self._do_reload)
+-        
+-    def _do_reload(self):
+-        """Выполняет фактическую перезагрузку данных."""
++        self._reload_thread = TournamentViewReloadThread(self.app_service)
++        self._reload_thread.data_loaded.connect(self._on_data_loaded)
++        self._reload_thread.start()
++
++    def _on_data_loaded(self, tournaments, buyins):
++        """Применяет загруженные данные к UI."""
+         try:
+-            # Загружаем данные только если кеш невалиден
+-            if not self._cache_valid:
+-                self._load_data()
+-                self._cache_valid = True
+-            
+-            # Обновляем фильтр бай-инов
++            self.tournaments = tournaments
++            self._data_cache['tournaments'] = tournaments
++            self._data_cache['buyins'] = buyins
++            self._cache_valid = True
++
+             self._update_buyin_filter()
+-            
+-            # Применяем фильтры и обновляем таблицу
+             self._apply_filters()
+-            
++
+             logger.debug("Перезагрузка TournamentView завершена.")
+-            
+         finally:
+-            # Скрываем индикатор загрузки
+             self.hide_loading_overlay()
+             
+     def _load_data(self):
+         """Загружает данные из ApplicationService в кеш."""
+         logger.debug("Загрузка данных в кеш TournamentView...")
+         
+         # Загружаем все турниры
+         self.tournaments = self.app_service.get_all_tournaments()
+         self._data_cache['tournaments'] = self.tournaments
+         
+         # Загружаем уникальные бай-ины
+         self._data_cache['buyins'] = self.app_service.get_distinct_buyins()
+         
+         logger.debug(f"Загружено {len(self.tournaments)} турниров")
+         
+     def _update_buyin_filter(self):
+         """Обновляет список доступных бай-инов."""
+         current_text = self.buyin_filter.currentText()
+         self.buyin_filter.clear()
+         
+         # Получаем уникальные бай-ины из кеша
+         buyins = self._data_cache.get('buyins', [])
+         
+         # Добавляем "Все" и отсортированные бай-ины
+         self.buyin_filter.addItem("Все")
+@@ -346,26 +342,41 @@ class TournamentView(QtWidgets.QWidget):
+             
+     def _update_statistics(self, tournaments: List[Tournament]):
+         """Обновляет статистику для отфильтрованных турниров."""
+         if not tournaments:
+             self.stats_label.setText("Нет турниров для отображения")
+             return
+             
+         total = len(tournaments)
+         total_buyin = sum(t.buyin for t in tournaments if t.buyin is not None)
+         total_payout = sum(t.payout if t.payout is not None else 0 for t in tournaments)
+         total_profit = total_payout - total_buyin
+         total_ko = sum(t.ko_count for t in tournaments)
+         itm_count = sum(1 for t in tournaments if t.finish_place and 1 <= t.finish_place <= 3)
+         itm_percent = (itm_count / total * 100) if total > 0 else 0
+         
+         roi = ((total_profit / total_buyin) * 100) if total_buyin > 0 else 0
+         
+         self.stats_label.setText(
+             f"Турниров: {total} | "
+             f"Бай-ин: {format_money(total_buyin)} | "
+             f"Выплаты: {format_money(total_payout)} | "
+             f"Профит: {format_money(total_profit, with_plus=True)} | "
+             f"ROI: {roi:+.1f}% | "
+             f"ITM: {itm_percent:.1f}% | "
+             f"KO: {total_ko}"
+-        )
+\ No newline at end of file
++        )
++
++
++class TournamentViewReloadThread(QtCore.QThread):
++    """Поток для загрузки турниров и списка бай-инов."""
++
++    data_loaded = QtCore.pyqtSignal(list, list)
++
++    def __init__(self, app_service: ApplicationService):
++        super().__init__()
++        self.app_service = app_service
++
++    def run(self):
++        tournaments = self.app_service.get_all_tournaments()
++        buyins = self.app_service.get_distinct_buyins()
++        self.data_loaded.emit(tournaments, buyins)

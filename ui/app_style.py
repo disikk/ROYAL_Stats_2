@@ -92,28 +92,54 @@ def apply_dark_theme(app: QtWidgets.QApplication):
             min-width: 100px;
         }
         
-        QComboBox:hover {
-            border: 1px solid #52525B;
-        }
-        
-        QComboBox::drop-down {
-            border: none;
-            padding-right: 8px;
-        }
-        
-        QComboBox::down-arrow {
-            image: none;
-            border-left: 5px solid transparent;
-            border-right: 5px solid transparent;
-            border-top: 5px solid #A1A1AA;
-            margin-right: 5px;
-        }
+        QComboBox {
+    background-color: #27272A;
+    border: 1px solid #3F3F46;
+    padding: 6px 12px;
+    border-radius: 6px;
+    min-width: 100px;
+}
 
-        /* Подсветка пунктов выпадающих списков */
-        QComboBox QAbstractItemView::item:hover {
-            background-color: #52525B;
-            color: #FFD700;
-        }
+QComboBox:hover {
+    border: 1px solid #52525B;
+}
+
+QComboBox::drop-down {
+    border: none;
+    padding-right: 8px;
+}
+
+QComboBox::down-arrow {
+    image: none;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 5px solid #A1A1AA;
+    margin-right: 5px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #27272A;
+    border: 1px solid #3F3F46;
+    selection-background-color: #71717A;
+    selection-color: #FFD700;
+    outline: none;
+}
+
+QComboBox QAbstractItemView::item {
+    padding: 8px 12px;
+    border: none;
+    color: #E4E4E7;
+}
+
+QComboBox QAbstractItemView::item:hover {
+    background-color: #71717A;
+    color: #FFD700;
+}
+
+QComboBox QAbstractItemView::item:selected {
+    background-color: #71717A;
+    color: #FFD700;
+}
         
         QTableWidget {
             background-color: #18181B;
