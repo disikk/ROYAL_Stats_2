@@ -6,9 +6,19 @@
 """
 
 import sqlite3
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from db.manager import database_manager # Используем синглтон менеджер БД
 from models import Tournament
+from dataclasses import dataclass
+
+@dataclass
+class PaginationResult:
+    """Результат пагинированного запроса."""
+    tournaments: List[Tournament]
+    total_count: int
+    current_page: int
+    page_size: int
+    total_pages: int
 
 class TournamentRepository:
     """
@@ -399,6 +409,188 @@ class TournamentRepository:
                 ko_counts[t_id] = 0
                 
         return ko_counts
+
+    def get_tournaments_paginated(
+        self, 
+        page: int = 1, 
+        page_size: int = 50,
+        session_id: Optional[str] = None,
+        buyin_filter: Optional[float] = None,
+        result_filter: Optional[str] = None,
+        sort_column: str = "start_time",
+        sort_direction: str = "DESC"
+    ) -> PaginationResult:
+        """
+        Возвращает пагинированный список турниров с сортировкой.
+        Args:
+            page: Номер страницы (начиная с 1)
+            page_size: Количество записей на странице
+            session_id: Фильтр по сессии
+            buyin_filter: Фильтр по бай-ину
+            result_filter: Фильтр по результату ("prizes", "final_table", "out_of_prizes")
+            sort_column: Колонка для сортировки
+            sort_direction: Направление сортировки ("ASC" или "DESC")
+        """
+        page = max(1, page)
+        page_size = max(1, min(500, page_size))
+        allowed_sort_columns = {
+            "tournament_id": "tournament_id",
+            "tournament_name": "tournament_name", 
+            "start_time": "start_time",
+            "buyin": "buyin",
+            "finish_place": "finish_place",
+            "payout": "payout",
+            "ko_count": "ko_count",
+            "profit": "(COALESCE(payout, 0) - COALESCE(buyin, 0))"
+        }
+        if sort_column not in allowed_sort_columns:
+            sort_column = "start_time"
+        if sort_direction.upper() not in ["ASC", "DESC"]:
+            sort_direction = "DESC"
+        base_query = """
+            SELECT
+                id, tournament_id, tournament_name, start_time, buyin, payout,
+                finish_place, ko_count, session_id, reached_final_table,
+                final_table_initial_stack_chips, final_table_initial_stack_bb
+            FROM tournaments
+        """
+        count_query = "SELECT COUNT(*) FROM tournaments"
+        conditions = []
+        params = []
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+        if result_filter:
+            if result_filter == "prizes":
+                conditions.append("finish_place IS NOT NULL AND finish_place BETWEEN 1 AND 3")
+            elif result_filter == "final_table":
+                conditions.append("reached_final_table = 1")
+            elif result_filter == "out_of_prizes":
+                conditions.append("finish_place IS NOT NULL AND finish_place > 3")
+        where_clause = ""
+        if conditions:
+            where_clause = " WHERE " + " AND ".join(conditions)
+        full_count_query = count_query + where_clause
+        count_result = self.db.execute_query(full_count_query, params)
+        total_count = count_result[0][0] if count_result else 0
+        total_pages = (total_count + page_size - 1) // page_size
+        if page > total_pages and total_pages > 0:
+            page = total_pages
+        sort_clause = f" ORDER BY {allowed_sort_columns[sort_column]} {sort_direction.upper()}"
+        offset = (page - 1) * page_size
+        pagination_clause = f" LIMIT {page_size} OFFSET {offset}"
+        full_query = base_query + where_clause + sort_clause + pagination_clause
+        results = self.db.execute_query(full_query, params)
+        tournaments = [Tournament.from_dict(dict(row)) for row in results]
+        return PaginationResult(
+            tournaments=tournaments,
+            total_count=total_count,
+            current_page=page,
+            page_size=page_size,
+            total_pages=total_pages
+        )
+
+    def get_tournaments_count_by_filters(
+        self,
+        session_id: Optional[str] = None,
+        buyin_filter: Optional[float] = None,
+        result_filter: Optional[str] = None
+    ) -> int:
+        """
+        Возвращает количество турниров с учетом фильтров.
+        Используется для обновления UI с информацией о фильтрации.
+        """
+        query = "SELECT COUNT(*) FROM tournaments"
+        conditions = []
+        params = []
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+        if result_filter:
+            if result_filter == "prizes":
+                conditions.append("finish_place IS NOT NULL AND finish_place BETWEEN 1 AND 3")
+            elif result_filter == "final_table":
+                conditions.append("reached_final_table = 1")
+            elif result_filter == "out_of_prizes":
+                conditions.append("finish_place IS NOT NULL AND finish_place > 3")
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        result = self.db.execute_query(query, params)
+        return result[0][0] if result else 0
+
+    def get_tournaments_statistics_by_filters(
+        self,
+        session_id: Optional[str] = None,
+        buyin_filter: Optional[float] = None,
+        result_filter: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Возвращает агрегированную статистику по турнирам с учетом фильтров.
+        """
+        base_query = """
+            SELECT 
+                COUNT(*) as total_tournaments,
+                SUM(COALESCE(buyin, 0)) as total_buyin,
+                SUM(COALESCE(payout, 0)) as total_payout,
+                SUM(COALESCE(payout, 0) - COALESCE(buyin, 0)) as total_profit,
+                SUM(ko_count) as total_ko,
+                COUNT(CASE WHEN finish_place IS NOT NULL AND finish_place BETWEEN 1 AND 3 THEN 1 END) as itm_count
+            FROM tournaments
+        """
+        conditions = []
+        params = []
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+        if result_filter:
+            if result_filter == "prizes":
+                conditions.append("finish_place IS NOT NULL AND finish_place BETWEEN 1 AND 3")
+            elif result_filter == "final_table":
+                conditions.append("reached_final_table = 1")
+            elif result_filter == "out_of_prizes":
+                conditions.append("finish_place IS NOT NULL AND finish_place > 3")
+        if conditions:
+            base_query += " WHERE " + " AND ".join(conditions)
+        result = self.db.execute_query(base_query, params)
+        if result and result[0]:
+            row = result[0]
+            total_tournaments = row[0] or 0
+            total_buyin = row[1] or 0.0
+            total_payout = row[2] or 0.0
+            total_profit = row[3] or 0.0
+            total_ko = row[4] or 0
+            itm_count = row[5] or 0
+            itm_percent = (itm_count / total_tournaments * 100) if total_tournaments > 0 else 0.0
+            roi = ((total_profit / total_buyin) * 100) if total_buyin > 0 else 0.0
+            return {
+                "total_tournaments": total_tournaments,
+                "total_buyin": total_buyin,
+                "total_payout": total_payout,
+                "total_profit": total_profit,
+                "total_ko": total_ko,
+                "itm_count": itm_count,
+                "itm_percent": itm_percent,
+                "roi": roi
+            }
+        return {
+            "total_tournaments": 0,
+            "total_buyin": 0.0,
+            "total_payout": 0.0,
+            "total_profit": 0.0,
+            "total_ko": 0,
+            "itm_count": 0,
+            "itm_percent": 0.0,
+            "roi": 0.0
+        }
 
 
 # Создаем синглтон экземпляр репозитория

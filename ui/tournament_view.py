@@ -6,12 +6,13 @@
 
 from PyQt6 import QtWidgets, QtCore, QtGui
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from ui.app_style import setup_table_widget, format_money, apply_cell_color_by_value, format_percentage
 from application_service import ApplicationService
 from models import Tournament
 from ui.background import thread_manager
+from db.repositories.tournament_repo import PaginationResult  # Импортируем новый класс
 
 logger = logging.getLogger('ROYAL_Stats.TournamentView')
 logger.setLevel(logging.DEBUG)
@@ -24,6 +25,16 @@ class TournamentView(QtWidgets.QWidget):
         super().__init__(parent)
         self.app_service = app_service
         self.tournaments: List[Tournament] = []
+        # Параметры пагинации
+        self.current_page = 1
+        self.page_size = 100  # Количество записей на странице
+        self.total_pages = 1
+        self.total_count = 0
+        # Параметры сортировки
+        self.sort_column = "start_time"
+        self.sort_direction = "DESC"
+        # Параметры фильтрации
+        self.current_buyin_filter = None
         self._data_cache = {}  # Кеш для данных
         self._cache_valid = False  # Флаг валидности кеша
         self._init_ui()
@@ -58,7 +69,7 @@ class TournamentView(QtWidgets.QWidget):
         filter_layout.addWidget(QtWidgets.QLabel("Бай-ин:"))
         self.buyin_filter = QtWidgets.QComboBox()
         self.buyin_filter.setMinimumWidth(120)
-        self.buyin_filter.currentTextChanged.connect(self._apply_filters)
+        self.buyin_filter.currentTextChanged.connect(self._on_filter_changed)
         filter_layout.addWidget(self.buyin_filter)
         
         # Фильтр по результату
@@ -66,27 +77,50 @@ class TournamentView(QtWidgets.QWidget):
         self.result_filter = QtWidgets.QComboBox()
         self.result_filter.setMinimumWidth(150)
         self.result_filter.addItems(["Все", "В призах (1-3)", "Финальный стол", "Вне призов"])
-        self.result_filter.currentTextChanged.connect(self._apply_filters)
+        self.result_filter.currentTextChanged.connect(self._on_filter_changed)
         filter_layout.addWidget(self.result_filter)
+        
+        # Размер страницы
+        filter_layout.addWidget(QtWidgets.QLabel("На странице:"))
+        self.page_size_combo = QtWidgets.QComboBox()
+        self.page_size_combo.addItems(["50", "100", "200", "500"])
+        self.page_size_combo.setCurrentText(str(self.page_size))
+        self.page_size_combo.currentTextChanged.connect(self._on_page_size_changed)
+        filter_layout.addWidget(self.page_size_combo)
         
         filter_layout.addStretch()
         
-        # Информация о фильтрации
-        self.filter_info = QtWidgets.QLabel("")
-        self.filter_info.setStyleSheet("color: #A1A1AA; font-size: 13px;")
-        filter_layout.addWidget(self.filter_info)
+        # Информация о пагинации
+        self.pagination_info = QtWidgets.QLabel("")
+        self.pagination_info.setStyleSheet("color: #A1A1AA; font-size: 13px;")
+        filter_layout.addWidget(self.pagination_info)
         
         content_layout.addLayout(filter_layout)
         
         # Таблица турниров
         self.table = QtWidgets.QTableWidget()
         self.table.setColumnCount(8)
-        self.table.setHorizontalHeaderLabels([
-            "ID турнира", "Название", "Дата", "Бай-ин", 
-            "Место", "Выплата", "KO", "Профит"
-        ])
-        
+        # Настраиваем заголовки с сортировкой
+        headers = [
+            ("ID турнира", "tournament_id"),
+            ("Название", "tournament_name"), 
+            ("Дата", "start_time"),
+            ("Бай-ин", "buyin"),
+            ("Место", "finish_place"),
+            ("Выплата", "payout"),
+            ("KO", "ko_count"),
+            ("Профит", "profit")
+        ]
+        header_labels = [h[0] for h in headers]
+        self.column_mappings = {i: h[1] for i, h in enumerate(headers)}
+        self.table.setHorizontalHeaderLabels(header_labels)
+
         setup_table_widget(self.table)
+        # Отключаем встроенную сортировку Qt, чтобы сортировка происходила через БД
+        # и затрагивала весь набор данных, а не только текущую страницу
+        self.table.setSortingEnabled(False)
+
+        self.table.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
         
         # Настройка ширины колонок
         header = self.table.horizontalHeader()
@@ -95,6 +129,38 @@ class TournamentView(QtWidgets.QWidget):
         header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         
         content_layout.addWidget(self.table)
+        
+        # Панель пагинации
+        pagination_layout = QtWidgets.QHBoxLayout()
+        pagination_layout.setSpacing(8)
+        self.first_page_btn = QtWidgets.QPushButton("<<")
+        self.first_page_btn.setMaximumWidth(40)
+        self.first_page_btn.clicked.connect(lambda: self._go_to_page(1))
+        pagination_layout.addWidget(self.first_page_btn)
+        self.prev_page_btn = QtWidgets.QPushButton("<")
+        self.prev_page_btn.setMaximumWidth(40)
+        self.prev_page_btn.clicked.connect(lambda: self._go_to_page(self.current_page - 1))
+        pagination_layout.addWidget(self.prev_page_btn)
+        self.page_info_label = QtWidgets.QLabel("Страница 1 из 1")
+        self.page_info_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.page_info_label.setMinimumWidth(120)
+        pagination_layout.addWidget(self.page_info_label)
+        self.next_page_btn = QtWidgets.QPushButton(">")
+        self.next_page_btn.setMaximumWidth(40)
+        self.next_page_btn.clicked.connect(lambda: self._go_to_page(self.current_page + 1))
+        pagination_layout.addWidget(self.next_page_btn)
+        self.last_page_btn = QtWidgets.QPushButton(">>")
+        self.last_page_btn.setMaximumWidth(40)
+        self.last_page_btn.clicked.connect(lambda: self._go_to_page(self.total_pages))
+        pagination_layout.addWidget(self.last_page_btn)
+        pagination_layout.addStretch()
+        pagination_layout.addWidget(QtWidgets.QLabel("Перейти к:"))
+        self.goto_page_input = QtWidgets.QLineEdit()
+        self.goto_page_input.setMaximumWidth(60)
+        self.goto_page_input.setPlaceholderText("№")
+        self.goto_page_input.returnPressed.connect(self._on_goto_page)
+        pagination_layout.addWidget(self.goto_page_input)
+        content_layout.addLayout(pagination_layout)
         
         # Статистика внизу
         self.stats_label = QtWidgets.QLabel("")
@@ -201,97 +267,91 @@ class TournamentView(QtWidgets.QWidget):
         self._show_overlay = show_overlay
         if show_overlay:
             self.show_loading_overlay()
-        def load_data():
-            tournaments = self.app_service.get_all_tournaments()
-            buyins = self.app_service.get_distinct_buyins()
-            return tournaments, buyins
+        def load_filter_data():
+            return self.app_service.get_distinct_buyins()
         thread_manager.run_in_thread(
-            widget_id=str(id(self)),
-            fn=load_data,
-            callback=self._on_data_loaded,
-            error_callback=lambda e: logger.error(f"Ошибка загрузки данных TournamentView: {e}"),
+            widget_id=f"{id(self)}_filters",
+            fn=load_filter_data,
+            callback=self._on_filter_data_loaded,
+            error_callback=lambda e: logger.error(f"Ошибка загрузки фильтров TournamentView: {e}"),
             owner=self
         )
-    def _on_data_loaded(self, data):
-        """Применяет загруженные данные к UI."""
-        tournaments, buyins = data
-        try:
-            self.tournaments = tournaments
-            self._data_cache['tournaments'] = tournaments
-            self._data_cache['buyins'] = buyins
-            self._cache_valid = True
-            self._update_buyin_filter()
-            self._apply_filters()
-            logger.debug("Перезагрузка TournamentView завершена.")
-        finally:
-            if getattr(self, "_show_overlay", False):
-                self.hide_loading_overlay()
-            
-    def _load_data(self):
-        """Загружает данные из ApplicationService в кеш."""
-        logger.debug("Загрузка данных в кеш TournamentView...")
-        
-        # Загружаем все турниры
-        self.tournaments = self.app_service.get_all_tournaments()
-        self._data_cache['tournaments'] = self.tournaments
-        
-        # Загружаем уникальные бай-ины
-        self._data_cache['buyins'] = self.app_service.get_distinct_buyins()
-        
-        logger.debug(f"Загружено {len(self.tournaments)} турниров")
-        
+    def _on_filter_data_loaded(self, buyins):
+        self._data_cache['buyins'] = buyins
+        self._update_buyin_filter()
+        self._load_tournaments_data()
+    def _load_tournaments_data(self):
+        def load_data():
+            result_filter_map = {
+                "В призах (1-3)": "prizes",
+                "Финальный стол": "final_table",
+                "Вне призов": "out_of_prizes",
+                "Все": None
+            }
+            buyin = self.buyin_filter.currentText()
+            buyin_filter = float(buyin) if buyin and buyin != "Все" else None
+            result_filter = result_filter_map.get(self.result_filter.currentText())
+            return self.app_service.tournament_repo.get_tournaments_paginated(
+                page=self.current_page,
+                page_size=int(self.page_size_combo.currentText()),
+                buyin_filter=buyin_filter,
+                result_filter=result_filter,
+                sort_column=self.sort_column,
+                sort_direction=self.sort_direction
+            )
+        thread_manager.run_in_thread(
+            widget_id=f"{id(self)}_tournaments",
+            fn=load_data,
+            callback=self._on_tournaments_data_loaded,
+            error_callback=lambda e: logger.error(f"Ошибка загрузки турниров TournamentView: {e}"),
+            owner=self
+        )
+    def _on_tournaments_data_loaded(self, pagination_result: PaginationResult):
+        self.tournaments = pagination_result.tournaments
+        self.current_page = pagination_result.current_page
+        self.page_size = pagination_result.page_size
+        self.total_pages = pagination_result.total_pages
+        self.total_count = pagination_result.total_count
+        self._update_tournaments_table(self.tournaments)
+        self._update_pagination_info()
+        self.hide_loading_overlay()
     def _update_buyin_filter(self):
-        """Обновляет список доступных бай-инов."""
-        current_text = self.buyin_filter.currentText()
+        self.buyin_filter.blockSignals(True)
         self.buyin_filter.clear()
-        
-        # Получаем уникальные бай-ины из кеша
-        buyins = self._data_cache.get('buyins', [])
-        
-        # Добавляем "Все" и отсортированные бай-ины
         self.buyin_filter.addItem("Все")
-        for buyin in sorted(buyins):
-            self.buyin_filter.addItem(format_money(buyin, decimals=0))
-            
-        # Восстанавливаем выбор, если возможно
-        index = self.buyin_filter.findText(current_text)
-        if index >= 0:
-            self.buyin_filter.setCurrentIndex(index)
-            
-    def _apply_filters(self):
-        """Применяет выбранные фильтры к списку турниров."""
-        logger.debug("Применение фильтров в TournamentView...")
-        
-        # Фильтрация по бай-ину
-        buyin_text = self.buyin_filter.currentText()
-        if buyin_text and buyin_text != "Все":
-            # Извлекаем числовое значение из "$10" -> 10.0
-            try:
-                buyin_value = float(buyin_text.replace("$", "").replace(",", ""))
-                filtered = [t for t in self.tournaments if t.buyin == buyin_value]
-            except ValueError:
-                filtered = self.tournaments
+        for b in sorted(self._data_cache.get('buyins', [])):
+            self.buyin_filter.addItem(str(b))
+        self.buyin_filter.blockSignals(False)
+    def _on_filter_changed(self):
+        self.current_page = 1
+        self._load_tournaments_data()
+    def _on_page_size_changed(self):
+        self.current_page = 1
+        self._load_tournaments_data()
+    def _on_header_clicked(self, logical_index):
+        col = self.column_mappings.get(logical_index)
+        if not col:
+            return
+        if self.sort_column == col:
+            self.sort_direction = "ASC" if self.sort_direction == "DESC" else "DESC"
         else:
-            filtered = self.tournaments[:]
-            
-        # Фильтрация по результату
-        result_text = self.result_filter.currentText()
-        if result_text == "В призах (1-3)":
-            filtered = [t for t in filtered if t.finish_place and 1 <= t.finish_place <= 3]
-        elif result_text == "Финальный стол":
-            filtered = [t for t in filtered if t.reached_final_table]
-        elif result_text == "Вне призов":
-            filtered = [t for t in filtered if t.finish_place and t.finish_place > 3]
-            
-        # Обновляем таблицу
-        self._update_tournaments_table(filtered)
-        
-        # Обновляем информацию о фильтрации
-        self.filter_info.setText(f"Показано: {len(filtered)} из {len(self.tournaments)}")
-        
-        # Обновляем статистику
-        self._update_statistics(filtered)
-        
+            self.sort_column = col
+            self.sort_direction = "DESC"
+        self.current_page = 1
+        self._load_tournaments_data()
+    def _go_to_page(self, page):
+        if 1 <= page <= self.total_pages:
+            self.current_page = page
+            self._load_tournaments_data()
+    def _on_goto_page(self):
+        try:
+            page = int(self.goto_page_input.text())
+            self._go_to_page(page)
+        except Exception:
+            pass
+    def _update_pagination_info(self):
+        self.page_info_label.setText(f"Страница {self.current_page} из {self.total_pages}")
+        self.pagination_info.setText(f"Всего турниров: {self.total_count}")
     def _update_tournaments_table(self, tournaments: List[Tournament]):
         """Обновляет таблицу турниров."""
         self.table.setRowCount(len(tournaments))

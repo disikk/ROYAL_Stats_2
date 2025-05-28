@@ -18,6 +18,7 @@ import config
 from db.manager import database_manager # Используем синглтон менеджер БД
 from db.repositories import (
     TournamentRepository,
+    PaginationResult,  # Добавляем импорт для пагинации
     SessionRepository,
     OverallStatsRepository,
     PlaceDistributionRepository,
@@ -121,7 +122,7 @@ class ApplicationService:
 
     def __init__(self):
         self.db = database_manager
-        self.tournament_repo = TournamentRepository()
+        self._tournament_repo = TournamentRepository()
         self.session_repo = SessionRepository()
         self.overall_stats_repo = OverallStatsRepository()
         self.place_dist_repo = PlaceDistributionRepository()
@@ -130,6 +131,11 @@ class ApplicationService:
         self.hh_parser = HandHistoryParser()
         self.ts_parser = TournamentSummaryParser()
         
+    @property
+    def tournament_repo(self):
+        """Предоставляет прямой доступ к репозиторию турниров для пагинации."""
+        return self._tournament_repo
+
     @property
     def db_path(self) -> str:
         """Возвращает путь к текущей базе данных."""
