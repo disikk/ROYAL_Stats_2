@@ -114,9 +114,12 @@ class TournamentView(QtWidgets.QWidget):
         header_labels = [h[0] for h in headers]
         self.column_mappings = {i: h[1] for i, h in enumerate(headers)}
         self.table.setHorizontalHeaderLabels(header_labels)
-        
+
         setup_table_widget(self.table)
-        
+        # Отключаем встроенную сортировку Qt, чтобы сортировка происходила через БД
+        # и затрагивала весь набор данных, а не только текущую страницу
+        self.table.setSortingEnabled(False)
+
         self.table.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
         
         # Настройка ширины колонок
