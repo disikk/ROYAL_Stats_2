@@ -448,12 +448,13 @@ class HandHistoryParser(BaseParser):
                 pl = NAME(m_action.group('player_name'))
                 act = m_action.group('action')
                 amt_str = m_action.group(3) if len(m_action.groups()) > 2 else None
-                amt = CHIP(amt_str) if amt_str else 0
-                
+
                 if act in ('posts', 'bets', 'calls', 'all-in'):
+                    amt = CHIP(amt_str) if amt_str else 0
                     contrib[pl] = contrib.get(pl, 0) + amt
                     street_contrib[pl] = street_contrib.get(pl, 0) + amt
                 elif act == 'raises':
+                    amt = CHIP(amt_str) if amt_str else 0
                     # Пример: "d16ad03f: raises 2,846 to 3,146"
                     # В GG Poker это значит: рейз ДО 3,146 (total amount)
                     m_raise_to = RE_RAISE_TO.search(line)
