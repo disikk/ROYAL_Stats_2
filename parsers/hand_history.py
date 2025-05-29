@@ -528,7 +528,10 @@ class HandHistoryParser(BaseParser):
     def _assign_winners(self, pots: List[Pot], collects: Dict[str, int]):
         """Назначает победителей банкам на основе информации о сборах."""
         remaining = collects.copy()
-        for pot in pots:             # main → side1 → side2 …
+        # Обрабатываем поты в обратном порядке: сначала сайд-поты, затем основной.
+        # Это нужно, чтобы корректно определить победителей, когда игроки получают
+        # фишки только из сайд-потов, не претендуя на основной банк.
+        for pot in reversed(pots):  # side2 → side1 → main
             elig = {p for p in pot.eligible if remaining.get(p, 0) > 0}
             if not elig:
                 continue
