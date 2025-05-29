@@ -286,7 +286,11 @@ class HandHistoryParser(BaseParser):
                 
             m_blinds = RE_BLINDS_HEADER.search(line)
             if m_blinds:
-                bb = float(m_blinds.group(2).replace(',', '.'))
+                # Значение BB может содержать разделители тысяч вида "1,000".
+                # Заменяем запятую на пустую строку, чтобы корректно обработать
+                # как значения "0.5", так и "1,000" → 1000.0
+                bb_str = m_blinds.group(2).replace(',', '')
+                bb = float(bb_str)
                 
             m_seat = RE_SEAT.match(line)
             if m_seat:
