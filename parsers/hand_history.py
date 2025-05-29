@@ -141,28 +141,34 @@ class HandHistoryParser(BaseParser):
                 break
         
         # Теперь обрабатываем раздачи в хронологическом порядке (от первой к последней)
+        final_table_started = False
+
         for hand_chunk in reversed(hand_chunks):  # Обрабатываем от последней в файле (первой хронологически)
             hand_number_counter += 1
             try:
                 hand_data = self._parse_hand_chunk(hand_chunk, self._tournament_id, hand_number_counter)
-                
+
                 if hand_data:
                     self._hands.append(hand_data)  # Сохраняем все раздачи
-                    
-                    # Проверяем условия финального стола
-                    if hand_data.table_size == config.FINAL_TABLE_SIZE and hand_data.bb >= config.MIN_KO_BLIND_LEVEL_BB:
-                        # Это раздача финального стола
-                        self._final_table_hands.append(hand_data)
-                        
-                        # Если это первая раздача финального стола, сохраняем ее данные
-                        if first_ft_hand_data is None:
+
+                    actual_players_count = len(hand_data.seats)
+
+                    if not final_table_started:
+                        # Проверяем условия старта финального стола
+                        if hand_data.table_size == config.FINAL_TABLE_SIZE and hand_data.bb >= config.MIN_KO_BLIND_LEVEL_BB:
+                            final_table_started = True
+                            self._final_table_hands.append(hand_data)
                             first_ft_hand_data = hand_data
-                            logger.debug(f"Найдена первая раздача финального стола ({hand_data.table_size}-max, BB={hand_data.bb}) в турнире {self._tournament_id}. Раздача #{hand_data.hand_number}. Стек Hero: {hand_data.hero_stack}")
-                        
-                        # Определяем, является ли раздача "ранней" стадией финалки (9-6 игроков)
-                        actual_players_count = len(hand_data.seats)
-                        if hand_data.table_size == config.FINAL_TABLE_SIZE and 6 <= actual_players_count <= 9:
-                            hand_data.is_early_final = True
+                            logger.debug(
+                                f"Найдена первая раздача финального стола ({hand_data.table_size}-max, BB={hand_data.bb}) в турнире {self._tournament_id}. Раздача #{hand_data.hand_number}. Стек Hero: {hand_data.hero_stack}"
+                            )
+
+                            if 6 <= actual_players_count <= config.FINAL_TABLE_SIZE:
+                                hand_data.is_early_final = True
+                    else:
+                        # Финальный стол уже начался - добавляем все последующие раздачи
+                        hand_data.is_early_final = actual_players_count >= 6
+                        self._final_table_hands.append(hand_data)
                             
             except Exception as e:
                 logger.error(f"Ошибка парсинга раздачи в файле {filename}: {e}")
