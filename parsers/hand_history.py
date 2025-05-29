@@ -553,33 +553,27 @@ class HandHistoryParser(BaseParser):
         for knocked_out_player in hand.eliminated_players:
             if knocked_out_player == config.HERO_NAME:
                 continue
-            
+
             # Находим поты, в которых участвовал выбывший
             relevant_pots = [pot for pot in hand.pots if knocked_out_player in pot.eligible]
-            
+
             if not relevant_pots:
                 logger.warning(f"ERROR: No pots found for eliminated player {knocked_out_player}")
                 continue
-            
-            # Hero должен выиграть хотя бы один пот с фишками выбывшего
-            hero_won_pot = False
-            pots_with_hero = []
-            for pot in relevant_pots:
-                if config.HERO_NAME in pot.winners:
-                    hero_won_pot = True
-                    pots_with_hero.append(pot)
-            
-            if hero_won_pot:
+
+            # Последний пот, где были фишки выбывшего – именно он определяет выбившего
+            last_pot = relevant_pots[-1]
+
+            if config.HERO_NAME in last_pot.winners:
                 ko_count += 1
-                logger.info(f"*** KO! {config.HERO_NAME} knocked out {knocked_out_player} ***")
-                for pot in pots_with_hero:
-                    logger.debug(f"  Won pot size {pot.size} (winners: {pot.winners})")
+                logger.info(
+                    f"*** KO! {config.HERO_NAME} knocked out {knocked_out_player} ***")
+                logger.debug(
+                    f"  Last pot size {last_pot.size} (winners: {last_pot.winners})")
             else:
-                # Логируем кто выбил если не Hero
-                actual_winners = set()
-                for pot in relevant_pots:
-                    actual_winners.update(pot.winners)
-                logger.debug(f"  {knocked_out_player} eliminated but knocked out by: {actual_winners}")
+                # Логируем кто выбил, если не Hero
+                logger.debug(
+                    f"  {knocked_out_player} eliminated but knocked out by: {last_pot.winners}")
         
         logger.debug(f"Total KO in hand: {ko_count}\n")
         return ko_count
