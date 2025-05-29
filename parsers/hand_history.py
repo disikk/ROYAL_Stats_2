@@ -179,25 +179,30 @@ class HandHistoryParser(BaseParser):
         
         for hand_data in self._final_table_hands:
             try:
-                # Теперь _count_ko_in_hand_from_data будет использовать информацию о выбывших игроках
+                # Подсчитываем количество KO для руки
                 ko_this_hand = self._count_ko_in_hand_from_data(hand_data)
                 hand_data.hero_ko_this_hand = ko_this_hand
-                
-                # Подготавливаем данные раздачи для сохранения в БД
-                final_table_data_for_db.append({
-                    'tournament_id': hand_data.tournament_id,
-                    'hand_id': hand_data.hand_id,
-                    'hand_number': hand_data.hand_number,
-                    'table_size': hand_data.table_size,
-                    'bb': hand_data.bb,
-                    'hero_stack': hand_data.hero_stack,
-                    'hero_ko_this_hand': hand_data.hero_ko_this_hand,
-                    'is_early_final': hand_data.is_early_final,
-                    # session_id будет добавлен в ApplicationService
-                })
-                
             except Exception as e:
-                logger.error(f"Ошибка обработки данных финальной раздачи {hand_data.hand_id} в турнире {hand_data.tournament_id}: {e}")
+                logger.error(
+                    f"Ошибка обработки данных финальной раздачи {hand_data.hand_id} "
+                    f"в турнире {hand_data.tournament_id}: {e}"
+                )
+                hand_data.hero_ko_this_hand = 0
+            finally:
+                # Сохраняем руку даже при ошибке подсчета KO
+                final_table_data_for_db.append(
+                    {
+                        'tournament_id': hand_data.tournament_id,
+                        'hand_id': hand_data.hand_id,
+                        'hand_number': hand_data.hand_number,
+                        'table_size': hand_data.table_size,
+                        'bb': hand_data.bb,
+                        'hero_stack': hand_data.hero_stack,
+                        'hero_ko_this_hand': hand_data.hero_ko_this_hand,
+                        'is_early_final': hand_data.is_early_final,
+                        # session_id будет добавлен в ApplicationService
+                    }
+                )
         
         # Собираем итоговый результат для ApplicationService
         result = {
