@@ -1,0 +1,232 @@
+2025-05-29 12:29:31,454 - ROYAL_Stats.App - INFO - Запуск приложения MBR Stats by disikk v0.1.0
+2025-05-29 12:29:31,454 - ROYAL_Stats.App - INFO - Текущая рабочая директория: /Users/cyberjam/Documents/!coding/ROYAL_Stats_2
+2025-05-29 12:29:31,728 - ROYAL_Stats.Database - INFO - Переключение на базу данных: databases/wwrer.db
+2025-05-29 12:29:31,728 - ROYAL_Stats.Database - INFO - Переключение на базу данных: databases/wwrer.db
+2025-05-29 12:29:31,729 - ROYAL_Stats.MainWindow - INFO - Запуск полного обновления данных...
+2025-05-29 12:29:31,783 - ROYAL_Stats.Database - INFO - База данных успешно инициализирована: databases/wwrer.db
+2025-05-29 12:29:31,783 - ROYAL_Stats.Database - INFO - База данных успешно инициализирована: databases/wwrer.db
+2025-05-29 12:29:31,783 - ROYAL_Stats.ApplicationService - INFO - _calculate_overall_stats: Загружено 0 турниров
+2025-05-29 12:29:31,783 - ROYAL_Stats.ApplicationService - INFO - _calculate_overall_stats: Загружено 0 рук финального стола
+2025-05-29 12:29:31,783 - ROYAL_Stats.ApplicationService - INFO - Рассчитано total_knockouts: 0
+2025-05-29 12:29:31,783 - ROYAL_Stats.ApplicationService - INFO - Турниры с выплатами: 0, без выплат: 0
+2025-05-29 12:29:31,783 - ROYAL_Stats.BigKOStat - WARNING - Расчет Big KO выполняется в плагине (fallback).
+2025-05-29 12:29:31,783 - ROYAL_Stats.BigKOStat - INFO - Big KO расчет: обработано 0 турниров, 0 с KO суммой
+2025-05-29 12:29:31,783 - ROYAL_Stats.ApplicationService - INFO - BigKO результаты: {'x10000': 0, 'x1000': 0, 'x100': 0, 'x10': 0, 'x2': 0, 'x1.5': 0}
+2025-05-29 12:29:31,783 - ROYAL_Stats.ApplicationService - INFO - Итоговая статистика: tournaments=0, knockouts=0, prize=0, buyin=0
+2025-05-29 12:29:31,787 - ROYAL_Stats.ApplicationService - INFO - Общая статистика обновлена успешно.
+2025-05-29 12:29:31,787 - ROYAL_Stats.ApplicationService - INFO - Распределение мест обновлено для 0 турниров.
+2025-05-29 12:29:31,787 - ROYAL_Stats.ApplicationService - INFO - KO count обновлен для 0 турниров.
+2025-05-29 12:29:31,787 - ROYAL_Stats.ApplicationService - INFO - Статистика обновлена для 0 сессий.
+2025-05-29 12:29:31,787 - ROYAL_Stats.ApplicationService - INFO - Обновление всей статистики завершено (с учетом возможных ошибок).
+2025-05-29 12:29:31,839 - ROYAL_Stats.MainWindow - INFO - Асинхронное обновление данных завершено
+2025-05-29 12:29:31,844 - ROYAL_Stats.TournamentView - DEBUG - Перезагрузка TournamentView...
+2025-05-29 12:29:31,844 - ROYAL_Stats.SessionView - DEBUG - Перезагрузка SessionView...
+2025-05-29 12:29:31,859 - ROYAL_Stats.StatsGrid - WARNING - Нет данных для построения гистограммы распределения мест
+2025-05-29 12:29:31,861 - ROYAL_Stats.SessionView - DEBUG - Перезагрузка SessionView завершена.
+2025-05-29 12:29:37.026 Python[95306:3838988] The class 'NSOpenPanel' overrides the method identifier.  This method is implemented by class 'NSWindow'
+2025-05-29 12:29:41.557 Python[95306:3838988] TSM AdjustCapsLockLEDForKeyTransitionHandling - _ISSetPhysicalKeyboardCapsLockLED Inhibit
+2025-05-29 12:29:43,265 - ROYAL_Stats.MainWindow - INFO - Поток импорта запущен для 1 путей.
+2025-05-29 12:29:43,265 - ROYAL_Stats.ApplicationService - INFO - === НАЧАЛО ИМПОРТА ===
+2025-05-29 12:29:43,265 - ROYAL_Stats.ApplicationService - INFO - is_canceled_callback передан: True
+2025-05-29 12:29:43,269 - ROYAL_Stats.ApplicationService - INFO - Начат импорт 4 файлов в сессию '3332'
+2025-05-29 12:29:43,274 - ROYAL_Stats.ApplicationService - INFO - Создана новая сессия для импорта: f14ae794-3ff9-4be5-aeb5-ede83eee24aa
+2025-05-29 12:29:43,276 - ROYAL_Stats.HandHistoryParser - ERROR - Ошибка парсинга раздачи в файле GG20250518-1756 - 11 - 0.5 - 1 - 9max.txt: invalid literal for int() with base 10: ''
+2025-05-29 12:29:43,277 - ROYAL_Stats.HandHistoryParser - ERROR - Ошибка парсинга раздачи в файле GG20250518-1756 - 11 - 0.5 - 1 - 9max.txt: invalid literal for int() with base 10: ''
+2025-05-29 12:29:43,281 - ROYAL_Stats.HandHistoryParser - ERROR - Ошибка парсинга раздачи в файле GG20250518-1756 - 11 - 0.5 - 1 - 9max.txt: invalid literal for int() with base 10: ''
+2025-05-29 12:29:43,282 - ROYAL_Stats.HandHistoryParser - INFO - *** KO! Hero knocked out 78bcf98a ***
+2025-05-29 12:29:43,282 - ROYAL_Stats.ApplicationService - INFO - === ОТЛАДКА HH ПАРСЕР ===
+2025-05-29 12:29:43,282 - ROYAL_Stats.ApplicationService - INFO - Tournament ID: 207532907
+2025-05-29 12:29:43,282 - ROYAL_Stats.ApplicationService - INFO - Reached final table: True
+2025-05-29 12:29:43,282 - ROYAL_Stats.ApplicationService - INFO - Final table hands data: 38 рук
+2025-05-29 12:29:43,287 - ROYAL_Stats.HandHistoryParser - ERROR - Ошибка парсинга раздачи в файле GG20250515-2115 - 11 - 0.15 - 0.3 - 9max.txt: invalid literal for int() with base 10: ''
+2025-05-29 12:29:43,287 - ROYAL_Stats.HandHistoryParser - ERROR - Ошибка парсинга раздачи в файле GG20250515-2115 - 11 - 0.15 - 0.3 - 9max.txt: invalid literal for int() with base 10: ''
+2025-05-29 12:29:43,288 - ROYAL_Stats.ApplicationService - INFO - === ОТЛАДКА HH ПАРСЕР ===
+2025-05-29 12:29:43,288 - ROYAL_Stats.ApplicationService - INFO - Tournament ID: 206992470
+2025-05-29 12:29:43,288 - ROYAL_Stats.ApplicationService - INFO - Reached final table: True
+2025-05-29 12:29:43,288 - ROYAL_Stats.ApplicationService - INFO - Final table hands data: 13 рук
+2025-05-29 12:29:43,288 - ROYAL_Stats.ApplicationService - INFO - === ОТЛАДКА ПЕРЕД СОХРАНЕНИЕМ ===
+2025-05-29 12:29:43,288 - ROYAL_Stats.ApplicationService - INFO - Всего рук финального стола для сохранения: 51
+2025-05-29 12:29:43,288 - ROYAL_Stats.ApplicationService - INFO - Пример первой руки: {'tournament_id': '207532907', 'hand_id': 'BR731170530', 'hand_number': 28, 'table_size': 9, 'bb': 100.0, 'hero_stack': 2432, 'hero_ko_this_hand': 0, 'is_early_final': True, 'session_id': 'f14ae794-3ff9-4be5-aeb5-ede83eee24aa'}
+2025-05-29 12:29:43,288 - ROYAL_Stats.ApplicationService - INFO - Сохранение обработанных данных в БД...
+2025-05-29 12:29:43,294 - ROYAL_Stats.ApplicationService - INFO - Сохранено/обновлено 2 турниров.
+2025-05-29 12:29:43,295 - ROYAL_Stats.ApplicationService - INFO - Начинаем сохранение 51 рук финального стола
+2025-05-29 12:29:43,295 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,295 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731170530, table_size=9
+2025-05-29 12:29:43,296 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,296 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,296 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731170591, table_size=9
+2025-05-29 12:29:43,297 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,297 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,297 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731170617, table_size=9
+2025-05-29 12:29:43,297 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,297 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,297 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731170675, table_size=9
+2025-05-29 12:29:43,298 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,298 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,298 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731170728, table_size=9
+2025-05-29 12:29:43,298 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,298 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,298 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731170797, table_size=9
+2025-05-29 12:29:43,300 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,300 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,300 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731170854, table_size=9
+2025-05-29 12:29:43,301 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,301 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,301 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731170960, table_size=9
+2025-05-29 12:29:43,303 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,304 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,304 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731171049, table_size=9
+2025-05-29 12:29:43,304 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,305 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,305 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731171118, table_size=9
+2025-05-29 12:29:43,306 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,306 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,306 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731171153, table_size=9
+2025-05-29 12:29:43,307 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,307 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,307 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731171203, table_size=9
+2025-05-29 12:29:43,308 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,308 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,308 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731171316, table_size=9
+2025-05-29 12:29:43,309 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,309 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,309 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731171385, table_size=9
+2025-05-29 12:29:43,312 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,312 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,312 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731171450, table_size=9
+2025-05-29 12:29:43,313 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,313 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,313 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731171503, table_size=9
+2025-05-29 12:29:43,314 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,314 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,314 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731171591, table_size=9
+2025-05-29 12:29:43,315 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,315 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,315 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731171651, table_size=9
+2025-05-29 12:29:43,315 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,315 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,315 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731171708, table_size=9
+2025-05-29 12:29:43,316 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,316 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,316 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731171728, table_size=9
+2025-05-29 12:29:43,317 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,317 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,317 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731171759, table_size=9
+2025-05-29 12:29:43,319 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,319 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,319 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731171787, table_size=9
+2025-05-29 12:29:43,321 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,321 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,322 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731171806, table_size=9
+2025-05-29 12:29:43,323 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,323 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,323 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731171894, table_size=9
+2025-05-29 12:29:43,324 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,324 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,324 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731171934, table_size=9
+2025-05-29 12:29:43,325 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,325 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,325 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731171977, table_size=9
+2025-05-29 12:29:43,327 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,327 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,327 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731172007, table_size=9
+2025-05-29 12:29:43,327 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,327 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,327 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731172016, table_size=9
+2025-05-29 12:29:43,342 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,342 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,342 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731172027, table_size=9
+2025-05-29 12:29:43,343 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,343 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,343 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731172041, table_size=9
+2025-05-29 12:29:43,344 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,344 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,344 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731172084, table_size=9
+2025-05-29 12:29:43,345 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,345 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,345 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731172109, table_size=9
+2025-05-29 12:29:43,345 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,345 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,345 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731172155, table_size=9
+2025-05-29 12:29:43,346 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,346 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,346 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731172182, table_size=9
+2025-05-29 12:29:43,347 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,347 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,347 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731172219, table_size=9
+2025-05-29 12:29:43,347 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,347 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,347 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731172242, table_size=9
+2025-05-29 12:29:43,348 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,348 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,348 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731172253, table_size=9
+2025-05-29 12:29:43,348 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,348 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,348 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=207532907, hand_id=BR731172269, table_size=9
+2025-05-29 12:29:43,349 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,349 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,349 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=206992470, hand_id=BR728335170, table_size=9
+2025-05-29 12:29:43,350 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,350 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,350 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=206992470, hand_id=BR728335268, table_size=9
+2025-05-29 12:29:43,351 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,351 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,351 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=206992470, hand_id=BR728335321, table_size=9
+2025-05-29 12:29:43,351 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,351 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,351 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=206992470, hand_id=BR728335369, table_size=9
+2025-05-29 12:29:43,352 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,352 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,352 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=206992470, hand_id=BR728335453, table_size=9
+2025-05-29 12:29:43,352 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,352 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,352 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=206992470, hand_id=BR728335551, table_size=9
+2025-05-29 12:29:43,353 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,353 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,353 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=206992470, hand_id=BR728335570, table_size=9
+2025-05-29 12:29:43,354 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,354 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,354 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=206992470, hand_id=BR728335626, table_size=9
+2025-05-29 12:29:43,355 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,355 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,355 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=206992470, hand_id=BR728335683, table_size=9
+2025-05-29 12:29:43,355 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,355 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,355 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=206992470, hand_id=BR728335730, table_size=9
+2025-05-29 12:29:43,356 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,356 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,356 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=206992470, hand_id=BR728335745, table_size=9
+2025-05-29 12:29:43,357 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,357 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,357 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=206992470, hand_id=BR728335770, table_size=9
+2025-05-29 12:29:43,357 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,357 - ROYAL_Stats.FinalTableHandRepository - INFO - === ОТЛАДКА add_hand ===
+2025-05-29 12:29:43,357 - ROYAL_Stats.FinalTableHandRepository - INFO - Попытка сохранить руку: tournament_id=206992470, hand_id=BR728335813, table_size=9
+2025-05-29 12:29:43,359 - ROYAL_Stats.FinalTableHandRepository - INFO - Результат execute_update: 1 строк изменено
+2025-05-29 12:29:43,359 - ROYAL_Stats.ApplicationService - INFO - Сохранение рук завершено: 51 из 51
+2025-05-29 12:29:43,359 - ROYAL_Stats.ApplicationService - INFO - Commit выполнен для 51 рук
+2025-05-29 12:29:43,359 - ROYAL_Stats.ApplicationService - INFO - Подсчет ko_count для турниров...
+2025-05-29 12:29:43,359 - ROYAL_Stats.ApplicationService - INFO - Сохранено/обновлено 2 турниров. Сохранено 51 рук финального стола.
+2025-05-29 12:29:43,359 - ROYAL_Stats.ApplicationService - INFO - Обновление агрегированной статистики...
+2025-05-29 12:29:43,360 - ROYAL_Stats.ApplicationService - INFO - _calculate_overall_stats: Загружено 2 турниров
+2025-05-29 12:29:43,360 - ROYAL_Stats.ApplicationService - INFO - _calculate_overall_stats: Загружено 51 рук финального стола
+2025-05-29 12:29:43,360 - ROYAL_Stats.ApplicationService - INFO - Рассчитано total_knockouts: 1
+2025-05-29 12:29:43,360 - ROYAL_Stats.ApplicationService - INFO - Турниры с выплатами: 2, без выплат: 0
+2025-05-29 12:29:43,360 - ROYAL_Stats.ApplicationService - INFO - Найдено 1 турниров с выплатой >= 10x buyin:
+2025-05-29 12:29:43,360 - ROYAL_Stats.ApplicationService - INFO -   - Турнир 207532907: место 1, buyin=$10.0, payout=$140.0 (ratio: 14.0x)
+2025-05-29 12:29:43,360 - ROYAL_Stats.BigKOStat - WARNING - Расчет Big KO выполняется в плагине (fallback).
+2025-05-29 12:29:43,360 - ROYAL_Stats.BigKOStat - INFO - Турнир 207532907: 1 x x10 KO (ko_sum=100.0, buyin=10.0)
+2025-05-29 12:29:43,360 - ROYAL_Stats.BigKOStat - INFO - Big KO расчет: обработано 2 турниров, 1 с KO суммой
+2025-05-29 12:29:43,360 - ROYAL_Stats.ApplicationService - INFO - BigKO результаты: {'x10000': 0, 'x1000': 0, 'x100': 0, 'x10': 1, 'x2': 0, 'x1.5': 0}
+2025-05-29 12:29:43,360 - ROYAL_Stats.ApplicationService - INFO - Итоговая статистика: tournaments=2, knockouts=1, prize=160.0, buyin=20.0
+2025-05-29 12:29:43,361 - ROYAL_Stats.ApplicationService - INFO - Общая статистика обновлена успешно.
+2025-05-29 12:29:43,362 - ROYAL_Stats.ApplicationService - INFO - Распределение мест обновлено для 2 турниров.
+2025-05-29 12:29:43,364 - ROYAL_Stats.ApplicationService - INFO - KO count обновлен для 2 турниров.
+2025-05-29 12:29:43,365 - ROYAL_Stats.ApplicationService - INFO - Статистика обновлена для 1 сессий.
+2025-05-29 12:29:43,365 - ROYAL_Stats.ApplicationService - INFO - Обновление всей статистики завершено (с учетом возможных ошибок).
+2025-05-29 12:29:43,365 - ROYAL_Stats.ApplicationService - INFO - Обновление статистики завершено.
+2025-05-29 12:29:43,365 - ROYAL_Stats.ApplicationService - INFO - === ПРОВЕРКА БД ПОСЛЕ ИМПОРТА ===
+2025-05-29 12:29:43,365 - ROYAL_Stats.ApplicationService - INFO - Количество рук в hero_final_table_hands: 51
+2025-05-29 12:29:43,365 - ROYAL_Stats.ApplicationService - INFO - Количество турниров в tournaments: 2
+2025-05-29 12:29:43,365 - ROYAL_Stats.MainWindow - INFO - Поток импорта завершает работу.
+2025-05-29 12:29:44,969 - ROYAL_Stats.MainWindow - INFO - Поток импорта завершен.
