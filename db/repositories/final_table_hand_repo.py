@@ -9,7 +9,7 @@ import logging
 from typing import List, Optional
 from db.manager import database_manager # Используем синглтон менеджер БД
 from models import FinalTableHand
-import config # Для определения MIN_KO_BLIND_LEVEL_BB
+import config
 
 logger = logging.getLogger('ROYAL_Stats.FinalTableHandRepository')
 logger.setLevel(logging.DEBUG)

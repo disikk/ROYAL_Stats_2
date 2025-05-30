@@ -5,7 +5,7 @@
 
 Основные принципы:
 - Извлекает данные турнира (ID, дату, общее KO).
-- Извлекает данные по каждой раздаче финального стола (9-max, >=50/100 BB) для Hero.
+- Извлекает данные по каждой раздаче финального стола (9-max, независимо от уровня блайндов) для Hero.
 - Определяет первую раздачу финального стола и стек Hero в ней.
 - Корректно считает KO Hero в каждой раздаче финалки.
 """
@@ -79,7 +79,7 @@ class HandHistoryParser(BaseParser):
         self._tournament_id: Optional[str] = None
         self._start_time: Optional[str] = None
         self._hands: List[HandData] = [] # Все раздачи из файла
-        self._final_table_hands: List[HandData] = [] # Только раздачи финального стола (9-max, >=50/100 BB)
+        self._final_table_hands: List[HandData] = [] # Только раздачи финального стола (9-max, без учёта блайндов)
 
 
     def parse(self, file_content: str, filename: str = "") -> Dict[str, Any]:
@@ -155,7 +155,7 @@ class HandHistoryParser(BaseParser):
 
                     if not final_table_started:
                         # Проверяем условия старта финального стола
-                        if hand_data.table_size == config.FINAL_TABLE_SIZE and hand_data.bb >= config.MIN_KO_BLIND_LEVEL_BB:
+                        if hand_data.table_size == config.FINAL_TABLE_SIZE:
                             final_table_started = True
                             self._final_table_hands.append(hand_data)
                             first_ft_hand_data = hand_data
