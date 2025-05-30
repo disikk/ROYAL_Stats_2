@@ -191,7 +191,10 @@ class HandHistoryParser(BaseParser):
             try:
                 # Подсчитываем количество KO для руки
                 ko_this_hand = self._count_ko_in_hand_from_data(hand_data)
-                hand_data.hero_ko_this_hand = ko_this_hand
+                # Не перезаписываем hero_ko_this_hand, так как для первой руки
+                # финального стола он может уже содержать дробное значение,
+                # начисленное за KO в предыдущей 5-max раздаче.
+                hand_data.hero_ko_this_hand += ko_this_hand
             except Exception as e:
                 logger.error(
                     f"Ошибка обработки данных финальной раздачи {hand_data.hand_id} "
