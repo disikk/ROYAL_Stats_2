@@ -183,15 +183,17 @@ class MainWindow(QtWidgets.QMainWindow):
     def manage_databases(self):
         """Открывает диалог управления базами данных."""
         dialog = DatabaseManagementDialog(self, self.app_service)
-        if dialog.exec(): # Модальное исполнение
-            if dialog.db_to_open_path != self.app_service.db_path:
-                self.app_service.db_path = dialog.db_to_open_path
-                config.set_db_path(self.app_service.db_path)
-                # Диалог уже вызвал app_service.switch_database() если пользователь выбрал другую БД
-                # Сбрасываем флаги загрузки и загружаем текущую вкладку
+        current_path = self.app_service.db_path
+        if dialog.exec():  # Модальное исполнение
+            new_path = self.app_service.db_path
+            if new_path != current_path:
+                config.set_db_path(new_path)
+                # Сбрасываем флаги загрузки и перезагружаем текущую вкладку
                 self._tab_loaded = {'stats': False, 'tournaments': False, 'sessions': False}
                 self._load_current_tab(show_overlay=True)
-            self.statusBar().showMessage(f"Подключена база данных: {os.path.basename(self.app_service.db_path)}")
+            self.statusBar().showMessage(
+                f"Подключена база данных: {os.path.basename(self.app_service.db_path)}"
+            )
         dialog.deleteLater()
 
     def import_files(self):
