@@ -20,7 +20,7 @@ class Tournament:
     buyin: float = 0.0
     payout: float = 0.0
     finish_place: Optional[int] = None # None, если не закончил турнир в этой сессии
-    ko_count: int = 0 # Общее количество KO Hero в турнире
+    ko_count: float = 0.0 # Общее количество KO Hero в турнире
     session_id: Optional[str] = None # ID сессии импорта
     reached_final_table: bool = False # Достиг ли Hero финального стола 9-max
     final_table_initial_stack_chips: Optional[float] = None # Стек на старте финалки в фишках
@@ -62,7 +62,7 @@ class Tournament:
                     buyin=data.get("buyin", 0.0),
                     payout=data.get("payout", 0.0),
                     finish_place=data.get("finish_place"),
-                    ko_count=data.get("ko_count", 0),
+                    ko_count=data.get("ko_count", 0.0),
                     session_id=data.get("session_id"),
                     reached_final_table=bool(data.get("reached_final_table", 0)), # SQLite хранит BOOLEAN как 0/1
                     final_table_initial_stack_chips=data.get("final_table_initial_stack_chips"),
@@ -78,7 +78,7 @@ class Tournament:
                     buyin=data["buyin"] if "buyin" in data.keys() else 0.0,
                     payout=data["payout"] if "payout" in data.keys() else 0.0,
                     finish_place=data["finish_place"] if "finish_place" in data.keys() else None,
-                    ko_count=data["ko_count"] if "ko_count" in data.keys() else 0,
+                    ko_count=data["ko_count"] if "ko_count" in data.keys() else 0.0,
                     session_id=data["session_id"] if "session_id" in data.keys() else None,
                     reached_final_table=bool(data["reached_final_table"]) if "reached_final_table" in data.keys() else False, # SQLite хранит BOOLEAN как 0/1
                     final_table_initial_stack_chips=data["final_table_initial_stack_chips"] if "final_table_initial_stack_chips" in data.keys() else None,

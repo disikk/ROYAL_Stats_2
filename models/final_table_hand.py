@@ -20,7 +20,8 @@ class FinalTableHand:
     table_size: int
     bb: float
     hero_stack: float
-    hero_ko_this_hand: int = 0
+    players_count: int = 0
+    hero_ko_this_hand: float = 0.0
     session_id: Optional[str] = None
     is_early_final: bool = False # Стадия 9-6 игроков
     id: Optional[int] = None # ID из БД, опционально
@@ -36,6 +37,7 @@ class FinalTableHand:
             "table_size": self.table_size,
             "bb": self.bb,
             "hero_stack": self.hero_stack,
+            "players_count": self.players_count,
             "hero_ko_this_hand": self.hero_ko_this_hand,
             "session_id": self.session_id,
             "is_early_final": self.is_early_final,
@@ -57,7 +59,8 @@ class FinalTableHand:
                     table_size=data.get("table_size", 0),
                     bb=data.get("bb", 0.0),
                     hero_stack=data.get("hero_stack", 0.0),
-                    hero_ko_this_hand=data.get("hero_ko_this_hand", 0),
+                    players_count=data.get("players_count", 0),
+                    hero_ko_this_hand=data.get("hero_ko_this_hand", 0.0),
                     session_id=data.get("session_id"),
                     is_early_final=bool(data.get("is_early_final", 0)), # SQLite хранит BOOLEAN как 0/1
                     id=data.get("id")
@@ -71,7 +74,8 @@ class FinalTableHand:
                     table_size=data["table_size"] if "table_size" in data.keys() else 0,
                     bb=data["bb"] if "bb" in data.keys() else 0.0,
                     hero_stack=data["hero_stack"] if "hero_stack" in data.keys() else 0.0,
-                    hero_ko_this_hand=data["hero_ko_this_hand"] if "hero_ko_this_hand" in data.keys() else 0,
+                    players_count=data["players_count"] if "players_count" in data.keys() else 0,
+                    hero_ko_this_hand=data["hero_ko_this_hand"] if "hero_ko_this_hand" in data.keys() else 0.0,
                     session_id=data["session_id"] if "session_id" in data.keys() else None,
                     is_early_final=bool(data["is_early_final"]) if "is_early_final" in data.keys() else False, # SQLite хранит BOOLEAN как 0/1
                     id=data["id"] if "id" in data.keys() else None
@@ -79,4 +83,4 @@ class FinalTableHand:
         except Exception as e:
             # В случае ошибки возвращаем базовый объект
             print(f"Error in FinalTableHand.from_dict: {e}")
-            return FinalTableHand(tournament_id="error", hand_id="error", hand_number=0, table_size=0, bb=0.0, hero_stack=0.0)
+            return FinalTableHand(tournament_id="error", hand_id="error", hand_number=0, table_size=0, bb=0.0, hero_stack=0.0, players_count=0)

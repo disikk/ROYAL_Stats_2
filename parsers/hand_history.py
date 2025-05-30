@@ -5,7 +5,7 @@
 
 Основные принципы:
 - Извлекает данные турнира (ID, дату, общее KO).
-- Извлекает данные по каждой раздаче финального стола (9-max, >=50/100 BB) для Hero.
+- Извлекает данные по каждой раздаче финального стола (9-max, независимо от уровня блайндов) для Hero.
 - Определяет первую раздачу финального стола и стек Hero в ней.
 - Корректно считает KO Hero в каждой раздаче финалки.
 """
@@ -51,7 +51,7 @@ class HandData:
     __slots__ = ('hand_id', 'hand_number', 'tournament_id', 'table_size',
                  'bb', 'seats', 'contrib', 'collects', 'pots',
                  'final_stacks', 'all_in_players',
-                 'hero_stack', 'hero_ko_this_hand',
+                 'hero_stack', 'players_count', 'hero_ko_this_hand',
                  'is_early_final', 'timestamp', 'players', 'eliminated_players')
 
     def __init__(self, hand_id: str, hand_number: int, tournament_id: str, table_size: int, bb: float, seats: Dict[str, int], timestamp: str = None):
@@ -67,6 +67,7 @@ class HandData:
         self.final_stacks: Dict[str, int] = {}  # final_stack для каждого игрока
         self.all_in_players: Set[str] = set()  # игроки, которые пошли all-in
         self.hero_stack = seats.get(config.HERO_NAME) # Стек Hero в начале раздачи
+        self.players_count = len(seats)
         self.hero_ko_this_hand = 0 # KO Hero в этой раздаче
         self.is_early_final = False # Флаг ранней стадии финалки
         self.timestamp = timestamp  # Время начала раздачи
@@ -79,7 +80,7 @@ class HandHistoryParser(BaseParser):
         self._tournament_id: Optional[str] = None
         self._start_time: Optional[str] = None
         self._hands: List[HandData] = [] # Все раздачи из файла
-        self._final_table_hands: List[HandData] = [] # Только раздачи финального стола (9-max, >=50/100 BB)
+        self._final_table_hands: List[HandData] = [] # Только раздачи финального стола (9-max, без учёта блайндов)
 
 
     def parse(self, file_content: str, filename: str = "") -> Dict[str, Any]:
@@ -141,28 +142,43 @@ class HandHistoryParser(BaseParser):
                 break
         
         # Теперь обрабатываем раздачи в хронологическом порядке (от первой к последней)
+        final_table_started = False
+        prev_hand_data: Optional[HandData] = None
+
         for hand_chunk in reversed(hand_chunks):  # Обрабатываем от последней в файле (первой хронологически)
             hand_number_counter += 1
             try:
                 hand_data = self._parse_hand_chunk(hand_chunk, self._tournament_id, hand_number_counter)
-                
+
                 if hand_data:
                     self._hands.append(hand_data)  # Сохраняем все раздачи
-                    
-                    # Проверяем условия финального стола
-                    if hand_data.table_size == config.FINAL_TABLE_SIZE and hand_data.bb >= config.MIN_KO_BLIND_LEVEL_BB:
-                        # Это раздача финального стола
-                        self._final_table_hands.append(hand_data)
-                        
-                        # Если это первая раздача финального стола, сохраняем ее данные
-                        if first_ft_hand_data is None:
+
+                    actual_players_count = len(hand_data.seats)
+
+                    if not final_table_started:
+                        # Проверяем условия старта финального стола
+                        if hand_data.table_size == config.FINAL_TABLE_SIZE:
+                            final_table_started = True
+                            # Если финальный стол начинается неполным составом, учитываем KO из предыдущей раздачи
+                            if prev_hand_data and actual_players_count < config.FINAL_TABLE_SIZE:
+                                prev_ko = self._count_ko_in_hand_from_data(prev_hand_data)
+                                coeff = config.KO_COEFF.get(actual_players_count, 0)
+                                hand_data.hero_ko_this_hand += prev_ko * coeff
+
+                            self._final_table_hands.append(hand_data)
                             first_ft_hand_data = hand_data
-                            logger.debug(f"Найдена первая раздача финального стола ({hand_data.table_size}-max, BB={hand_data.bb}) в турнире {self._tournament_id}. Раздача #{hand_data.hand_number}. Стек Hero: {hand_data.hero_stack}")
-                        
-                        # Определяем, является ли раздача "ранней" стадией финалки (9-6 игроков)
-                        actual_players_count = len(hand_data.seats)
-                        if hand_data.table_size == config.FINAL_TABLE_SIZE and 6 <= actual_players_count <= 9:
-                            hand_data.is_early_final = True
+                            logger.debug(
+                                f"Найдена первая раздача финального стола ({hand_data.table_size}-max, BB={hand_data.bb}) в турнире {self._tournament_id}. Раздача #{hand_data.hand_number}. Стек Hero: {hand_data.hero_stack}"
+                            )
+
+                            if 6 <= actual_players_count <= config.FINAL_TABLE_SIZE:
+                                hand_data.is_early_final = True
+                    else:
+                        # Финальный стол уже начался - добавляем все последующие раздачи
+                        hand_data.is_early_final = actual_players_count >= 6
+                        self._final_table_hands.append(hand_data)
+
+                    prev_hand_data = hand_data
                             
             except Exception as e:
                 logger.error(f"Ошибка парсинга раздачи в файле {filename}: {e}")
@@ -173,25 +189,34 @@ class HandHistoryParser(BaseParser):
         
         for hand_data in self._final_table_hands:
             try:
-                # Теперь _count_ko_in_hand_from_data будет использовать информацию о выбывших игроках
+                # Подсчитываем количество KO для руки
                 ko_this_hand = self._count_ko_in_hand_from_data(hand_data)
-                hand_data.hero_ko_this_hand = ko_this_hand
-                
-                # Подготавливаем данные раздачи для сохранения в БД
-                final_table_data_for_db.append({
-                    'tournament_id': hand_data.tournament_id,
-                    'hand_id': hand_data.hand_id,
-                    'hand_number': hand_data.hand_number,
-                    'table_size': hand_data.table_size,
-                    'bb': hand_data.bb,
-                    'hero_stack': hand_data.hero_stack,
-                    'hero_ko_this_hand': hand_data.hero_ko_this_hand,
-                    'is_early_final': hand_data.is_early_final,
-                    # session_id будет добавлен в ApplicationService
-                })
-                
+                # Не перезаписываем hero_ko_this_hand, так как для первой руки
+                # финального стола он может уже содержать дробное значение,
+                # начисленное за KO в предыдущей 5-max раздаче.
+                hand_data.hero_ko_this_hand += ko_this_hand
             except Exception as e:
-                logger.error(f"Ошибка обработки данных финальной раздачи {hand_data.hand_id} в турнире {hand_data.tournament_id}: {e}")
+                logger.error(
+                    f"Ошибка обработки данных финальной раздачи {hand_data.hand_id} "
+                    f"в турнире {hand_data.tournament_id}: {e}"
+                )
+                hand_data.hero_ko_this_hand = 0
+            finally:
+                # Сохраняем руку даже при ошибке подсчета KO
+                final_table_data_for_db.append(
+                    {
+                        'tournament_id': hand_data.tournament_id,
+                        'hand_id': hand_data.hand_id,
+                        'hand_number': hand_data.hand_number,
+                        'table_size': hand_data.table_size,
+                        'bb': hand_data.bb,
+                        'hero_stack': hand_data.hero_stack,
+                        'players_count': hand_data.players_count,
+                        'hero_ko_this_hand': hand_data.hero_ko_this_hand,
+                        'is_early_final': hand_data.is_early_final,
+                        # session_id будет добавлен в ApplicationService
+                    }
+                )
         
         # Собираем итоговый результат для ApplicationService
         result = {
@@ -275,7 +300,11 @@ class HandHistoryParser(BaseParser):
                 
             m_blinds = RE_BLINDS_HEADER.search(line)
             if m_blinds:
-                bb = float(m_blinds.group(2).replace(',', '.'))
+                # Значение BB может содержать разделители тысяч вида "1,000".
+                # Заменяем запятую на пустую строку, чтобы корректно обработать
+                # как значения "0.5", так и "1,000" → 1000.0
+                bb_str = m_blinds.group(2).replace(',', '')
+                bb = float(bb_str)
                 
             m_seat = RE_SEAT.match(line)
             if m_seat:
@@ -433,12 +462,13 @@ class HandHistoryParser(BaseParser):
                 pl = NAME(m_action.group('player_name'))
                 act = m_action.group('action')
                 amt_str = m_action.group(3) if len(m_action.groups()) > 2 else None
-                amt = CHIP(amt_str) if amt_str else 0
-                
+
                 if act in ('posts', 'bets', 'calls', 'all-in'):
+                    amt = CHIP(amt_str) if amt_str else 0
                     contrib[pl] = contrib.get(pl, 0) + amt
                     street_contrib[pl] = street_contrib.get(pl, 0) + amt
                 elif act == 'raises':
+                    amt = CHIP(amt_str) if amt_str else 0
                     # Пример: "d16ad03f: raises 2,846 to 3,146"
                     # В GG Poker это значит: рейз ДО 3,146 (total amount)
                     m_raise_to = RE_RAISE_TO.search(line)
@@ -512,7 +542,10 @@ class HandHistoryParser(BaseParser):
     def _assign_winners(self, pots: List[Pot], collects: Dict[str, int]):
         """Назначает победителей банкам на основе информации о сборах."""
         remaining = collects.copy()
-        for pot in pots:             # main → side1 → side2 …
+        # Обрабатываем поты в обратном порядке: сначала сайд-поты, затем основной.
+        # Это нужно, чтобы корректно определить победителей, когда игроки получают
+        # фишки только из сайд-потов, не претендуя на основной банк.
+        for pot in reversed(pots):  # side2 → side1 → main
             elig = {p for p in pot.eligible if remaining.get(p, 0) > 0}
             if not elig:
                 continue
@@ -553,33 +586,27 @@ class HandHistoryParser(BaseParser):
         for knocked_out_player in hand.eliminated_players:
             if knocked_out_player == config.HERO_NAME:
                 continue
-            
+
             # Находим поты, в которых участвовал выбывший
             relevant_pots = [pot for pot in hand.pots if knocked_out_player in pot.eligible]
-            
+
             if not relevant_pots:
                 logger.warning(f"ERROR: No pots found for eliminated player {knocked_out_player}")
                 continue
-            
-            # Hero должен выиграть хотя бы один пот с фишками выбывшего
-            hero_won_pot = False
-            pots_with_hero = []
-            for pot in relevant_pots:
-                if config.HERO_NAME in pot.winners:
-                    hero_won_pot = True
-                    pots_with_hero.append(pot)
-            
-            if hero_won_pot:
+
+            # Последний пот, где были фишки выбывшего – именно он определяет выбившего
+            last_pot = relevant_pots[-1]
+
+            if config.HERO_NAME in last_pot.winners:
                 ko_count += 1
-                logger.info(f"*** KO! {config.HERO_NAME} knocked out {knocked_out_player} ***")
-                for pot in pots_with_hero:
-                    logger.debug(f"  Won pot size {pot.size} (winners: {pot.winners})")
+                logger.info(
+                    f"*** KO! {config.HERO_NAME} knocked out {knocked_out_player} ***")
+                logger.debug(
+                    f"  Last pot size {last_pot.size} (winners: {last_pot.winners})")
             else:
-                # Логируем кто выбил если не Hero
-                actual_winners = set()
-                for pot in relevant_pots:
-                    actual_winners.update(pot.winners)
-                logger.debug(f"  {knocked_out_player} eliminated but knocked out by: {actual_winners}")
+                # Логируем кто выбил, если не Hero
+                logger.debug(
+                    f"  {knocked_out_player} eliminated but knocked out by: {last_pot.winners}")
         
         logger.debug(f"Total KO in hand: {ko_count}\n")
         return ko_count

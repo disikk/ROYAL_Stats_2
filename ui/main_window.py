@@ -190,7 +190,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 # Диалог уже вызвал app_service.switch_database() если пользователь выбрал другую БД
                 # Сбрасываем флаги загрузки и загружаем текущую вкладку
                 self._tab_loaded = {'stats': False, 'tournaments': False, 'sessions': False}
-                self._load_current_tab()
+                self._load_current_tab(show_overlay=True)
             self.statusBar().showMessage(f"Подключена база данных: {os.path.basename(self.app_service.db_path)}")
         dialog.deleteLater()
 
@@ -317,7 +317,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.session_view.reload(show_overlay=show_overlay)
                 self._tab_loaded['sessions'] = True
         else:
-            self._load_current_tab()
+            self._load_current_tab(show_overlay)
 
     def refresh_all_data(self):
         """
@@ -395,19 +395,19 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def tab_changed(self, index):
         """Обрабатывает событие изменения активной вкладки с ленивой загрузкой."""
-        self._load_current_tab()
+        self._load_current_tab(show_overlay=True)
 
-    def _load_current_tab(self):
+    def _load_current_tab(self, show_overlay: bool = True):
         """Загружает данные текущей вкладки, если они еще не загружены."""
         index = self.tabs.currentIndex()
         if index == 0 and not self._tab_loaded['stats']:
-            self.stats_grid.reload(show_overlay=True)
+            self.stats_grid.reload(show_overlay=show_overlay)
             self._tab_loaded['stats'] = True
         elif index == 1 and not self._tab_loaded['tournaments']:
-            self.tournament_view.reload(show_overlay=True)
+            self.tournament_view.reload(show_overlay=show_overlay)
             self._tab_loaded['tournaments'] = True
         elif index == 2 and not self._tab_loaded['sessions']:
-            self.session_view.reload(show_overlay=True)
+            self.session_view.reload(show_overlay=show_overlay)
             self._tab_loaded['sessions'] = True
 
 
