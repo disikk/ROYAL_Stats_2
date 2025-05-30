@@ -37,6 +37,7 @@ from stats import (
     AvgFinishPlaceStat,
     AvgFinishPlaceFTStat,
     AvgFinishPlaceNoFTStat,
+    PreFTKOStat,
 )
 
 from ui.background import thread_manager
@@ -246,7 +247,7 @@ class StatsGrid(QtWidgets.QWidget):
             'avg_place_all': StatCard("Среднее место (все)", "-"),
             'avg_place_ft': StatCard("Среднее место (FT)", "-"),
             'avg_place_no_ft': StatCard("Среднее место (не FT)", "-"),
-            'avg_place_empty': QtWidgets.QWidget(),
+            'pre_ft_ko': StatCard("KO до FT", "-"),
         }
         
         # Размещаем карточки в сетке (4 колонки)
@@ -254,6 +255,7 @@ class StatsGrid(QtWidgets.QWidget):
             ('tournaments', 0, 0), ('knockouts', 0, 1), ('avg_ko', 0, 2), ('roi', 0, 3),
             ('itm', 1, 0), ('ft_reach', 1, 1), ('avg_ft_stack', 1, 2), ('early_ft_ko', 1, 3),
             ('avg_place_all', 2, 0), ('avg_place_ft', 2, 1), ('avg_place_no_ft', 2, 2), ('early_ft_bust', 2, 3),
+            ('pre_ft_ko', 3, 0),
         ]
         
         for key, row, col in positions:
@@ -452,6 +454,8 @@ class StatsGrid(QtWidgets.QWidget):
             early_res = EarlyFTKOStat().compute([], [], [], overall_stats)
             early_ko = early_res.get('early_ft_ko_count', 0)
             early_ko_per = early_res.get('early_ft_ko_per_tournament', 0.0)
+            pre_ft_ko_res = PreFTKOStat().compute([], [], [], overall_stats)
+            pre_ft_ko_count = pre_ft_ko_res.get('pre_ft_ko_count', 0.0)
             all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
             avg_all = sum(all_places) / len(all_places) if all_places else 0.0
             ft_places = [t.finish_place for t in all_tournaments if t.reached_final_table and t.finish_place is not None and 1 <= t.finish_place <= 9]
@@ -471,6 +475,7 @@ class StatsGrid(QtWidgets.QWidget):
                 'avg_bb': avg_bb,
                 'early_ko': early_ko,
                 'early_ko_per': early_ko_per,
+                'pre_ft_ko_count': pre_ft_ko_count,
                 'avg_place_all': avg_all,
                 'avg_place_ft': avg_ft,
                 'avg_place_no_ft': avg_no_ft,
@@ -582,6 +587,11 @@ class StatsGrid(QtWidgets.QWidget):
                             if not t.reached_final_table and t.finish_place is not None]
             avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
             self.cards['avg_place_no_ft'].update_value(f"{avg_no_ft:.2f}")
+            
+            # Pre-FT KO count
+            pre_ft_ko_count = data.get('pre_ft_ko_count', 0.0)
+            self.cards['pre_ft_ko'].update_value(f"{pre_ft_ko_count:.2f}")
+            logger.debug(f"Обновлена карточка pre_ft_ko: {pre_ft_ko_count:.2f}")
             
             self.place_dist_ft = data['place_dist']
             self.place_dist_pre_ft = data.get('place_dist_pre_ft', {})
