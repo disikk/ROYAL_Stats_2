@@ -500,8 +500,8 @@ class StatsGrid(QtWidgets.QWidget):
             self.cards['knockouts'].update_value(str(overall_stats.total_knockouts))
             logger.debug(f"Обновлена карточка knockouts: {overall_stats.total_knockouts}")
 
-            self.cards['avg_ko'].update_value(f"{overall_stats.avg_ko_per_tournament:.2f}")
-            logger.debug(f"Обновлена карточка avg_ko: {overall_stats.avg_ko_per_tournament:.2f}")
+            self.cards['avg_ko'].update_value(f"{overall_stats.avg_ko_per_tournament:.1f}")
+            logger.debug(f"Обновлена карточка avg_ko: {overall_stats.avg_ko_per_tournament:.1f}")
 
             roi_value = data['roi']
             roi_text = f"{roi_value:+.1f}%"
@@ -532,9 +532,9 @@ class StatsGrid(QtWidgets.QWidget):
             # Форматируем основное значение и подзаголовок
             self.cards['early_ft_ko'].update_value(
                 str(early_ko_count),
-                f"{early_ko_per:.2f} за турнир с FT"
+                f"{early_ko_per:.1f} за турнир с FT"
             )
-            logger.debug(f"Обновлена карточка early_ft_ko: {early_ko_count} / {early_ko_per:.2f}")
+            logger.debug(f"Обновлена карточка early_ft_ko: {early_ko_count} / {early_ko_per:.1f}")
 
             bust_result = EarlyFTBustStat().compute(all_tournaments, [], [], overall_stats)
             logger.debug(f"Early FT Bust result: {bust_result}")
@@ -590,8 +590,8 @@ class StatsGrid(QtWidgets.QWidget):
             
             # Pre-FT KO count
             pre_ft_ko_count = data.get('pre_ft_ko_count', 0.0)
-            self.cards['pre_ft_ko'].update_value(f"{pre_ft_ko_count:.2f}")
-            logger.debug(f"Обновлена карточка pre_ft_ko: {pre_ft_ko_count:.2f}")
+            self.cards['pre_ft_ko'].update_value(f"{pre_ft_ko_count:.1f}")
+            logger.debug(f"Обновлена карточка pre_ft_ko: {pre_ft_ko_count:.1f}")
             
             self.place_dist_ft = data['place_dist']
             self.place_dist_pre_ft = data.get('place_dist_pre_ft', {})
