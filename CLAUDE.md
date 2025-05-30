@@ -76,7 +76,7 @@ The SQLite database includes the following tables:
 ## Specific Requirements and Definitions
 
 - **Hero**: The player whose statistics are being tracked
-- **Final Table Definition**: 9-max table with blinds ≥ 50/100
+- **Final Table Definition**: 9-max table regardless of blind level
 - **Early Final Table Stage**: Defined as the 9-6 player stage of the final table
 - **Knockout Detection Logic**:
   - Player is considered knocked out by Hero if:
