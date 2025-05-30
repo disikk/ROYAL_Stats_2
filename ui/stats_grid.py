@@ -497,8 +497,8 @@ class StatsGrid(QtWidgets.QWidget):
             self.cards['tournaments'].update_value(str(overall_stats.total_tournaments))
             logger.debug(f"Обновлена карточка tournaments: {overall_stats.total_tournaments}")
 
-            self.cards['knockouts'].update_value(str(overall_stats.total_knockouts))
-            logger.debug(f"Обновлена карточка knockouts: {overall_stats.total_knockouts}")
+            self.cards['knockouts'].update_value(f"{overall_stats.total_knockouts:.1f}")
+            logger.debug(f"Обновлена карточка knockouts: {overall_stats.total_knockouts:.1f}")
 
             self.cards['avg_ko'].update_value(f"{overall_stats.avg_ko_per_tournament:.1f}")
             logger.debug(f"Обновлена карточка avg_ko: {overall_stats.avg_ko_per_tournament:.1f}")
@@ -531,7 +531,7 @@ class StatsGrid(QtWidgets.QWidget):
             early_ko_per = data['early_ko_per']
             # Форматируем основное значение и подзаголовок
             self.cards['early_ft_ko'].update_value(
-                str(early_ko_count),
+                f"{early_ko_count:.1f}",
                 f"{early_ko_per:.1f} за турнир с FT"
             )
             logger.debug(f"Обновлена карточка early_ft_ko: {early_ko_count} / {early_ko_per:.1f}")
