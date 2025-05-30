@@ -51,7 +51,7 @@ class HandData:
     __slots__ = ('hand_id', 'hand_number', 'tournament_id', 'table_size',
                  'bb', 'seats', 'contrib', 'collects', 'pots',
                  'final_stacks', 'all_in_players',
-                 'hero_stack', 'hero_ko_this_hand',
+                 'hero_stack', 'players_count', 'hero_ko_this_hand',
                  'is_early_final', 'timestamp', 'players', 'eliminated_players')
 
     def __init__(self, hand_id: str, hand_number: int, tournament_id: str, table_size: int, bb: float, seats: Dict[str, int], timestamp: str = None):
@@ -67,6 +67,7 @@ class HandData:
         self.final_stacks: Dict[str, int] = {}  # final_stack для каждого игрока
         self.all_in_players: Set[str] = set()  # игроки, которые пошли all-in
         self.hero_stack = seats.get(config.HERO_NAME) # Стек Hero в начале раздачи
+        self.players_count = len(seats)
         self.hero_ko_this_hand = 0 # KO Hero в этой раздаче
         self.is_early_final = False # Флаг ранней стадии финалки
         self.timestamp = timestamp  # Время начала раздачи
@@ -142,6 +143,7 @@ class HandHistoryParser(BaseParser):
         
         # Теперь обрабатываем раздачи в хронологическом порядке (от первой к последней)
         final_table_started = False
+        prev_hand_data: Optional[HandData] = None
 
         for hand_chunk in reversed(hand_chunks):  # Обрабатываем от последней в файле (первой хронологически)
             hand_number_counter += 1
@@ -157,6 +159,12 @@ class HandHistoryParser(BaseParser):
                         # Проверяем условия старта финального стола
                         if hand_data.table_size == config.FINAL_TABLE_SIZE:
                             final_table_started = True
+                            # Если финальный стол начинается неполным составом, учитываем KO из предыдущей раздачи
+                            if prev_hand_data and actual_players_count < config.FINAL_TABLE_SIZE:
+                                prev_ko = self._count_ko_in_hand_from_data(prev_hand_data)
+                                coeff = config.KO_COEFF.get(actual_players_count, 0)
+                                hand_data.hero_ko_this_hand += prev_ko * coeff
+
                             self._final_table_hands.append(hand_data)
                             first_ft_hand_data = hand_data
                             logger.debug(
@@ -169,6 +177,8 @@ class HandHistoryParser(BaseParser):
                         # Финальный стол уже начался - добавляем все последующие раздачи
                         hand_data.is_early_final = actual_players_count >= 6
                         self._final_table_hands.append(hand_data)
+
+                    prev_hand_data = hand_data
                             
             except Exception as e:
                 logger.error(f"Ошибка парсинга раздачи в файле {filename}: {e}")
@@ -198,6 +208,7 @@ class HandHistoryParser(BaseParser):
                         'table_size': hand_data.table_size,
                         'bb': hand_data.bb,
                         'hero_stack': hand_data.hero_stack,
+                        'players_count': hand_data.players_count,
                         'hero_ko_this_hand': hand_data.hero_ko_this_hand,
                         'is_early_final': hand_data.is_early_final,
                         # session_id будет добавлен в ApplicationService
