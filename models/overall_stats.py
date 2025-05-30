@@ -17,7 +17,7 @@ class OverallStats:
     """
     total_tournaments: int = 0
     total_final_tables: int = 0
-    total_knockouts: int = 0
+    total_knockouts: float = 0.0
     avg_finish_place: float = 0.0 # Среднее место по всем турнирам
     avg_finish_place_ft: float = 0.0 # Среднее место только на финалке (1-9)
     avg_finish_place_no_ft: float = 0.0  # Среднее место когда не дошел до финалки
@@ -32,7 +32,7 @@ class OverallStats:
     big_ko_x100: int = 0
     big_ko_x1000: int = 0
     big_ko_x10000: int = 0
-    early_ft_ko_count: int = 0 # Общее KO в ранней стадии финалки (9-6 игроков)
+    early_ft_ko_count: float = 0.0 # Общее KO в ранней стадии финалки (9-6 игроков)
     early_ft_ko_per_tournament: float = 0.0 # Среднее KO в ранней финалке на турнир (достигший финалки)
     early_ft_bust_count: int = 0  # Количество вылетов Hero на местах 6-9
     early_ft_bust_per_tournament: float = 0.0  # Среднее число таких вылетов на турнир с финалкой
@@ -82,7 +82,7 @@ class OverallStats:
                 return OverallStats(
                     total_tournaments=data.get("total_tournaments", 0),
                     total_final_tables=data.get("total_final_tables", 0),
-                    total_knockouts=data.get("total_knockouts", 0),
+                    total_knockouts=data.get("total_knockouts", 0.0),
                     avg_finish_place=data.get("avg_finish_place", 0.0),
                     avg_finish_place_ft=data.get("avg_finish_place_ft", 0.0),
                     avg_finish_place_no_ft=data.get("avg_finish_place_no_ft", 0.0),
@@ -97,7 +97,7 @@ class OverallStats:
                     big_ko_x100=data.get("big_ko_x100", 0),
                     big_ko_x1000=data.get("big_ko_x1000", 0),
                     big_ko_x10000=data.get("big_ko_x10000", 0),
-                    early_ft_ko_count=data.get("early_ft_ko_count", 0),
+                    early_ft_ko_count=data.get("early_ft_ko_count", 0.0),
                     early_ft_ko_per_tournament=data.get("early_ft_ko_per_tournament", 0.0),
                     early_ft_bust_count=data.get("early_ft_bust_count", 0),
                     early_ft_bust_per_tournament=data.get("early_ft_bust_per_tournament", 0.0),
@@ -109,7 +109,7 @@ class OverallStats:
                 return OverallStats(
                     total_tournaments=data["total_tournaments"] if "total_tournaments" in data.keys() else 0,
                     total_final_tables=data["total_final_tables"] if "total_final_tables" in data.keys() else 0,
-                    total_knockouts=data["total_knockouts"] if "total_knockouts" in data.keys() else 0,
+                    total_knockouts=data["total_knockouts"] if "total_knockouts" in data.keys() else 0.0,
                     avg_finish_place=data["avg_finish_place"] if "avg_finish_place" in data.keys() else 0.0,
                     avg_finish_place_ft=data["avg_finish_place_ft"] if "avg_finish_place_ft" in data.keys() else 0.0,
                     avg_finish_place_no_ft=data["avg_finish_place_no_ft"] if "avg_finish_place_no_ft" in data.keys() else 0.0,
@@ -124,7 +124,7 @@ class OverallStats:
                     big_ko_x100=data["big_ko_x100"] if "big_ko_x100" in data.keys() else 0,
                     big_ko_x1000=data["big_ko_x1000"] if "big_ko_x1000" in data.keys() else 0,
                     big_ko_x10000=data["big_ko_x10000"] if "big_ko_x10000" in data.keys() else 0,
-                    early_ft_ko_count=data["early_ft_ko_count"] if "early_ft_ko_count" in data.keys() else 0,
+                    early_ft_ko_count=data["early_ft_ko_count"] if "early_ft_ko_count" in data.keys() else 0.0,
                     early_ft_ko_per_tournament=data["early_ft_ko_per_tournament"] if "early_ft_ko_per_tournament" in data.keys() else 0.0,
                     early_ft_bust_count=data["early_ft_bust_count"] if "early_ft_bust_count" in data.keys() else 0,
                     early_ft_bust_per_tournament=data["early_ft_bust_per_tournament"] if "early_ft_bust_per_tournament" in data.keys() else 0.0,

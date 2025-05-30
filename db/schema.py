@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS tournaments (
     buyin REAL,
     payout REAL,
     finish_place INTEGER,
-    ko_count INTEGER DEFAULT 0,
+    ko_count REAL DEFAULT 0,
     session_id TEXT,
     reached_final_table BOOLEAN DEFAULT 0,
     final_table_initial_stack_chips REAL,
@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS hero_final_table_hands (
     table_size INTEGER, -- Размер стола в этой раздаче
     bb REAL, -- Размер большого блайнда в этой раздаче
     hero_stack REAL, -- Стек Hero в начале этой раздачи
-    hero_ko_this_hand INTEGER DEFAULT 0, -- KO, сделанные Hero в этой раздаче
+    players_count INTEGER, -- Фактическое число игроков за столом
+    hero_ko_this_hand REAL DEFAULT 0, -- KO, сделанные Hero в этой раздаче
     session_id TEXT,
     is_early_final BOOLEAN DEFAULT 0, -- Флаг для стадии 9-6 игроков
     UNIQUE (tournament_id, hand_id), -- Раздача уникальна в рамках турнира
@@ -65,7 +66,7 @@ CREATE TABLE IF NOT EXISTS overall_stats (
     id INTEGER PRIMARY KEY CHECK (id = 1), -- Гарантируем, что всегда одна строка с id=1
     total_tournaments INTEGER DEFAULT 0,
     total_final_tables INTEGER DEFAULT 0,
-    total_knockouts INTEGER DEFAULT 0,
+    total_knockouts REAL DEFAULT 0,
     avg_finish_place REAL DEFAULT 0, -- Среднее место по всем турнирам (включая не финалку)
     avg_finish_place_ft REAL DEFAULT 0, -- Среднее место только на финалке (1-9)
     avg_finish_place_no_ft REAL DEFAULT 0,
@@ -80,7 +81,7 @@ CREATE TABLE IF NOT EXISTS overall_stats (
     big_ko_x100 INTEGER DEFAULT 0,
     big_ko_x1000 INTEGER DEFAULT 0,
     big_ko_x10000 INTEGER DEFAULT 0,
-    early_ft_ko_count INTEGER DEFAULT 0,
+    early_ft_ko_count REAL DEFAULT 0,
     early_ft_ko_per_tournament REAL DEFAULT 0,
     early_ft_bust_count INTEGER DEFAULT 0,
     early_ft_bust_per_tournament REAL DEFAULT 0,
