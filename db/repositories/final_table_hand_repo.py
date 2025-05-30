@@ -34,8 +34,9 @@ class FinalTableHandRepository:
         query = """
             INSERT INTO hero_final_table_hands (
                 tournament_id, hand_id, hand_number, table_size, bb,
-                hero_stack, players_count, hero_ko_this_hand, session_id, is_early_final
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                hero_stack, players_count, hero_ko_this_hand, pre_ft_ko,
+                session_id, is_early_final
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(tournament_id, hand_id) DO NOTHING
         """
         params = (
@@ -47,6 +48,7 @@ class FinalTableHandRepository:
             hand.hero_stack,
             hand.players_count,
             hand.hero_ko_this_hand,
+            hand.pre_ft_ko,
             hand.session_id,
             hand.is_early_final,
         )
@@ -63,7 +65,8 @@ class FinalTableHandRepository:
         query = """
             SELECT
                 id, tournament_id, hand_id, hand_number, table_size, bb,
-                hero_stack, players_count, hero_ko_this_hand, session_id, is_early_final
+                hero_stack, players_count, hero_ko_this_hand, pre_ft_ko,
+                session_id, is_early_final
             FROM hero_final_table_hands
             WHERE tournament_id = ?
             ORDER BY hand_number ASC
@@ -78,7 +81,8 @@ class FinalTableHandRepository:
         query = """
             SELECT
                 id, tournament_id, hand_id, hand_number, table_size, bb,
-                hero_stack, players_count, hero_ko_this_hand, session_id, is_early_final
+                hero_stack, players_count, hero_ko_this_hand, pre_ft_ko,
+                session_id, is_early_final
             FROM hero_final_table_hands
             WHERE session_id = ?
             ORDER BY hand_number ASC
@@ -91,11 +95,12 @@ class FinalTableHandRepository:
          Возвращает все раздачи финального стола Hero из текущей БД.
          """
          query = """
-             SELECT
-                 id, tournament_id, hand_id, hand_number, table_size, bb,
-                hero_stack, players_count, hero_ko_this_hand, session_id, is_early_final
-             FROM hero_final_table_hands
-             ORDER BY hand_number ASC -- Порядок важен для определения первой руки
+            SELECT
+                id, tournament_id, hand_id, hand_number, table_size, bb,
+                hero_stack, players_count, hero_ko_this_hand, pre_ft_ko,
+                session_id, is_early_final
+            FROM hero_final_table_hands
+            ORDER BY hand_number ASC -- Порядок важен для определения первой руки
          """
          results = self.db.execute_query(query)
          return [FinalTableHand.from_dict(dict(row)) for row in results]
@@ -109,7 +114,8 @@ class FinalTableHandRepository:
         query = """
             SELECT
                 id, tournament_id, hand_id, hand_number, table_size, bb,
-                hero_stack, players_count, hero_ko_this_hand, session_id, is_early_final
+                hero_stack, players_count, hero_ko_this_hand, pre_ft_ko,
+                session_id, is_early_final
             FROM hero_final_table_hands
             WHERE is_early_final = 1
         """
@@ -131,10 +137,11 @@ class FinalTableHandRepository:
          # Ищем раздачу с минимальным номером, которая является 9-max
          # (полагаемся на то, что 9-max стол появляется один раз и с него начинается финалка)
          query = """
-             SELECT
-                 id, tournament_id, hand_id, hand_number, table_size, bb,
-                hero_stack, players_count, hero_ko_this_hand, session_id, is_early_final
-             FROM hero_final_table_hands
+            SELECT
+                id, tournament_id, hand_id, hand_number, table_size, bb,
+                hero_stack, players_count, hero_ko_this_hand, pre_ft_ko,
+                session_id, is_early_final
+            FROM hero_final_table_hands
              WHERE tournament_id = ? AND table_size = ? -- Ищем именно 9-max стол
              ORDER BY hand_number ASC
              LIMIT 1
