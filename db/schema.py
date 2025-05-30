@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS hero_final_table_hands (
     hero_stack REAL, -- Стек Hero в начале этой раздачи
     players_count INTEGER, -- Фактическое число игроков за столом
     hero_ko_this_hand REAL DEFAULT 0, -- KO, сделанные Hero в этой раздаче
+    pre_ft_ko REAL DEFAULT 0, -- KO, сделанные в последней 5-max раздаче
     session_id TEXT,
     is_early_final BOOLEAN DEFAULT 0, -- Флаг для стадии 9-6 игроков
     UNIQUE (tournament_id, hand_id), -- Раздача уникальна в рамках турнира
@@ -85,6 +86,7 @@ CREATE TABLE IF NOT EXISTS overall_stats (
     early_ft_ko_per_tournament REAL DEFAULT 0,
     early_ft_bust_count INTEGER DEFAULT 0,
     early_ft_bust_per_tournament REAL DEFAULT 0,
+    pre_ft_ko_count REAL DEFAULT 0,
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 """
