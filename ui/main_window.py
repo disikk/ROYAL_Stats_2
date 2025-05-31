@@ -43,7 +43,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(config.APP_TITLE)
-        self.setMinimumSize(1200, 945)
+        self.setMinimumSize(1200, 952)
 
         # ApplicationService уже проинициализирован как синглтон
         self.app_service = application_service
