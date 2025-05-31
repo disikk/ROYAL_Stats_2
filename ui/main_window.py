@@ -392,7 +392,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.total_tournaments_label.setText(f"Турниров: {stats.total_tournaments}")
         self.total_profit_label.setText(f"Прибыль: {format_money(stats.total_prize - stats.total_buy_in, with_plus=True)}")
         apply_cell_color_by_value(self.total_profit_label, stats.total_prize - stats.total_buy_in) # Применяем цвет
-        self.total_ko_label.setText(f"KO: {stats.total_knockouts}")
+        self.total_ko_label.setText(f"KO: {stats.total_knockouts:.1f}")
 
 
     def tab_changed(self, index):
