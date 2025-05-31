@@ -204,6 +204,14 @@ class MainWindow(QtWidgets.QMainWindow):
             if new_path != current_path:
                 # Отменяем все фоновые операции перед сменой БД
                 thread_manager.cancel_all()
+                # Прячем возможные оверлеи загрузки, которые могли остаться
+                if hasattr(self, 'stats_grid') and self.stats_grid:
+                    self.stats_grid.hide_loading_overlay()
+                if hasattr(self, 'tournament_view') and self.tournament_view:
+                    self.tournament_view.hide_loading_overlay()
+                if hasattr(self, 'session_view') and self.session_view:
+                    self.session_view.hide_loading_overlay()
+
                 config.set_db_path(new_path)
                 # Сбрасываем кеши и запускаем асинхронную загрузку данных
                 self.invalidate_all_caches()
