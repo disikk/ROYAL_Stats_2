@@ -1171,18 +1171,36 @@ class StatsGrid(QtWidgets.QWidget):
             count = place_dist.get(place, 0)
             if count > 0:
                 percentage = (count / total_finishes) * 100
-                
+
                 text = QtWidgets.QGraphicsTextItem(f"{percentage:.1f}%")
                 text.setDefaultTextColor(QtGui.QColor("#FAFAFA"))
                 text.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Weight.Bold))
-                
+
                 # Вычисляем позицию
-                x_pos = plot_area.left() + bar_width * (idx + 0.5) - text.boundingRect().width() / 2
+                x_pos = (
+                    plot_area.left()
+                    + bar_width * (idx + 0.5)
+                    - text.boundingRect().width() / 2
+                )
+
                 max_y_value = max(place_dist.values()) * 1.1
                 bar_height_ratio = count / max_y_value
-                # Немного поднимаем процентные метки, чтобы они не перекрывались с барами
-                y_pos = plot_area.bottom() - (plot_area.height() * bar_height_ratio) - text.boundingRect().height() - 8
-                
+                bar_top = plot_area.bottom() - (plot_area.height() * bar_height_ratio)
+                label_height = text.boundingRect().height()
+
+                default_offset = 8
+                if bar_top - label_height - default_offset < plot_area.top():
+                    # Не хватает места сверху, располагаем метку внутри бара
+                    y_pos = bar_top + 2
+                    shadow = QtWidgets.QGraphicsDropShadowEffect()
+                    shadow.setBlurRadius(5)
+                    shadow.setOffset(0, 0)
+                    shadow.setColor(QtGui.QColor("#000000"))
+                    text.setGraphicsEffect(shadow)
+                else:
+                    # Размещаем метку над баром
+                    y_pos = bar_top - label_height - default_offset
+
                 text.setPos(x_pos, y_pos)
                 chart.scene().addItem(text)
                 self.chart_view.chart_labels.append(text)
