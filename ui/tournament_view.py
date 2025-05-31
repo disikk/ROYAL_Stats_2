@@ -412,7 +412,8 @@ class TournamentView(QtWidgets.QWidget):
             # Стартовый стек на финалке
             stack_text = "—"
             if t.final_table_initial_stack_chips is not None:
-                stack_text = f"{int(t.final_table_initial_stack_chips):,}"
+                # format stack with space as thousands separator
+                stack_text = f"{int(t.final_table_initial_stack_chips):,}".replace(",", " ")
             stack_item = QtWidgets.QTableWidgetItem(stack_text)
             stack_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(row, 6, stack_item)
