@@ -350,7 +350,7 @@ class SessionView(QtWidgets.QWidget):
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
             self.show_loading_overlay()
             self.loading_label.setText("Удаление сессии...")
-            def delete_session():
+            def delete_session(is_cancelled_callback=None):
                 self.app_service.delete_session(session.session_id)
                 self.app_service._update_all_statistics(None)
                 return session.session_name
