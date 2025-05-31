@@ -294,30 +294,42 @@ class ApplicationService:
         logger.info(f"=== НАЧАЛО ИМПОРТА ===")
         logger.info(f"is_canceled_callback передан: {is_canceled_callback is not None}")
 
-        # Инициализируем единый прогресс-бар
+        # Инициализируем прогресс-бар и оцениваем количество файлов
         if progress_callback:
-            progress_callback(0, 100, "Подготовка файлов...")
-        
+            progress_callback(0, 0, "Подготовка файлов...")
+
+        total_candidates = 0
+        for path in paths:
+            if os.path.isdir(path):
+                for _, _, filenames in os.walk(path):
+                    total_candidates += len([f for f in filenames if f.lower().endswith(".txt")])
+            elif os.path.isfile(path) and path.lower().endswith(".txt"):
+                total_candidates += 1
+
         all_files_to_process = []
         filtered_files_count = 0
+        processed_candidates = 0
         for path in paths:
             if os.path.isdir(path):
                 for root, _, filenames in os.walk(path):
                     for fname in filenames:
-                        if fname.lower().endswith((".txt")):
+                        if fname.lower().endswith(".txt"):
                             full_path = os.path.join(root, fname)
                             if is_poker_file(full_path):
                                 all_files_to_process.append(full_path)
                             else:
                                 filtered_files_count += 1
-                                logger.debug(f"Файл отфильтрован (нет покерных шаблонов): {fname}")
-            elif os.path.isfile(path):
-                if path.lower().endswith((".txt")):
-                    if is_poker_file(path):
-                        all_files_to_process.append(path)
-                    else:
-                        filtered_files_count += 1
-                        logger.debug(f"Файл отфильтрован (нет покерных шаблонов): {os.path.basename(path)}")
+                            processed_candidates += 1
+                            if progress_callback and total_candidates:
+                                progress_callback(processed_candidates, total_candidates, "Подготовка файлов...")
+            elif os.path.isfile(path) and path.lower().endswith(".txt"):
+                if is_poker_file(path):
+                    all_files_to_process.append(path)
+                else:
+                    filtered_files_count += 1
+                processed_candidates += 1
+                if progress_callback and total_candidates:
+                    progress_callback(processed_candidates, total_candidates, "Подготовка файлов...")
         if filtered_files_count > 0:
             logger.info(f"Отфильтровано {filtered_files_count} файлов без покерных шаблонов")
 
