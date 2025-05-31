@@ -54,16 +54,24 @@ class MainWindow(QtWidgets.QMainWindow):
         # Инициализируем UI
         self._init_ui()
 
-        # Подключаемся к последней использованной БД при старте
+        # Загружаем данные после отображения окна, чтобы не блокировать GUI
+        QtCore.QTimer.singleShot(0, self._load_initial_data)
+
+    def _load_initial_data(self):
+        """Подключает последнюю БД и запускает обновление статистики."""
         try:
-            self.app_service.switch_database(config.LAST_DB_PATH)
-            self.statusBar().showMessage(f"Подключена база данных: {os.path.basename(self.app_service.db_path)}")
-            self.refresh_all_data() # Обновляем данные после подключения
+            self.app_service.switch_database(config.LAST_DB_PATH, load_stats=False)
+            self.statusBar().showMessage(
+                f"Подключена база данных: {os.path.basename(self.app_service.db_path)}"
+            )
         except Exception as e:
             logger.error(f"Ошибка при подключении к последней БД {config.LAST_DB_PATH}: {e}")
             self.statusBar().showMessage(f"Ошибка подключения к БД: {e}", 5000)
-            # Можно предложить пользователю выбрать или создать БД
             self.manage_databases()
+            return
+
+        # Статистика будет подсчитана асинхронно
+        self.refresh_all_data()
 
 
     def _init_ui(self):
@@ -500,7 +508,9 @@ class RefreshThread(QtCore.QThread):
             self.progress_percent.emit(0)
 
             # Пересчитываем статистику только при первом открытии базы данных
-            self.app_service.ensure_overall_stats_cached()
+            self.app_service.ensure_overall_stats_cached(
+                progress_callback=self._report_progress
+            )
 
             self.progress_update.emit("Данные обновлены")
             self.progress_percent.emit(100)

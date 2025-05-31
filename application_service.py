@@ -134,6 +134,8 @@ class ApplicationService:
 
         # Кеш статистики по БД. Ключ - путь к БД, значение - OverallStats
         self._overall_stats_cache: Dict[str, OverallStats] = {}
+        # Кеш гистограммы распределения финишных позиций
+        self._place_distribution_cache: Dict[str, Dict[int, int]] = {}
 
         # Файл для сохранения кеша между перезапусками
         self._cache_file = config.STATS_CACHE_FILE
@@ -156,13 +158,13 @@ class ApplicationService:
         """Возвращает список доступных файлов баз данных."""
         return self.db.get_available_databases()
 
-    def switch_database(self, db_path: str):
+    def switch_database(self, db_path: str, load_stats: bool = True):
         """Переключает активную базу данных."""
         self.db.set_db_path(db_path)
-        # После смены БД, репозитории автоматически будут работать с новой БД
-        # Подгружаем статистику для новой БД или пересчитываем её при первом
-        # подключении к этой базе
-        self.ensure_overall_stats_cached()
+        # После смены БД репозитории автоматически работают с новой БД
+        if load_stats:
+            # Подгружаем статистику или пересчитываем её при первом подключении
+            self.ensure_overall_stats_cached()
 
     def _compute_db_checksum(self, path: str) -> str:
         """Возвращает MD5-хеш файла БД."""
@@ -184,9 +186,11 @@ class ApplicationService:
                 result = {}
                 for db_path, entry in data.items():
                     stats = OverallStats.from_dict(entry.get("overall_stats", {}))
+                    distribution = {int(k): int(v) for k, v in entry.get("place_distribution", {}).items()}
                     result[db_path] = {
                         "checksum": entry.get("checksum", ""),
                         "overall_stats": stats,
+                        "place_distribution": distribution,
                     }
                 return result
             except Exception as e:
@@ -200,6 +204,7 @@ class ApplicationService:
             data[db_path] = {
                 "checksum": entry.get("checksum", ""),
                 "overall_stats": entry.get("overall_stats", OverallStats()).as_dict(),
+                "place_distribution": entry.get("place_distribution", {i: 0 for i in range(1, 10)}),
             }
         try:
             with open(self._cache_file, "w", encoding="utf-8") as f:
@@ -207,17 +212,20 @@ class ApplicationService:
         except Exception as e:
             logger.warning(f"Не удалось сохранить кеш статистики: {e}")
 
-    def ensure_overall_stats_cached(self) -> None:
+    def ensure_overall_stats_cached(self, progress_callback=None) -> None:
         """Гарантирует наличие кешированных статистик для текущей БД."""
         db_path = self.db.db_path
-        if db_path in self._overall_stats_cache:
+        if db_path in self._overall_stats_cache and db_path in self._place_distribution_cache:
             return
 
         checksum = self._compute_db_checksum(db_path)
         cached = self._persistent_cache.get(db_path)
         if cached and cached.get("checksum") == checksum:
-            self._overall_stats_cache[db_path] = cached["overall_stats"]
+            self._overall_stats_cache[db_path] = cached.get("overall_stats", OverallStats())
+            self._place_distribution_cache[db_path] = cached.get("place_distribution", {i: 0 for i in range(1, 10)})
+            logger.info("Используется сохранённый кэш статистики")
             return
+        logger.info("Кэш не найден или устарел, пересчёт статистики")
 
         # Проверяем, есть ли данные в таблице турниров
         count = self.db.execute_query("SELECT COUNT(*) AS c FROM tournaments")
@@ -225,15 +233,21 @@ class ApplicationService:
 
         if tournaments_num > 0:
             # Если база не пуста и статистика ещё не рассчитана, пересчитываем
-            self._update_all_statistics("", progress_callback=None)
+            self._update_all_statistics("", progress_callback=progress_callback)
         else:
             # Пустая база — статистика нулевая
             self.overall_stats_repo.update_overall_stats(OverallStats())
 
         # Загружаем статистику из БД и кладём в кеш и файл
         stats = self.overall_stats_repo.get_overall_stats()
+        distribution = self.place_dist_repo.get_distribution()
         self._overall_stats_cache[db_path] = stats
-        self._persistent_cache[db_path] = {"checksum": checksum, "overall_stats": stats}
+        self._place_distribution_cache[db_path] = distribution
+        self._persistent_cache[db_path] = {
+            "checksum": checksum,
+            "overall_stats": stats,
+            "place_distribution": distribution,
+        }
         self._save_persistent_cache()
 
     def create_new_database(self, db_name: str):
@@ -750,9 +764,12 @@ class ApplicationService:
         # Сохраняем обновленную статистику в файл кеша
         checksum = self._compute_db_checksum(self.db.db_path)
         current_stats = self._overall_stats_cache.get(self.db.db_path, OverallStats())
+        current_dist = self.place_dist_repo.get_distribution()
+        self._place_distribution_cache[self.db.db_path] = current_dist
         self._persistent_cache[self.db.db_path] = {
             "checksum": checksum,
             "overall_stats": current_stats,
+            "place_distribution": current_dist,
         }
         self._save_persistent_cache()
 
@@ -945,7 +962,11 @@ class ApplicationService:
 
     def get_place_distribution(self) -> Dict[int, int]:
         """Возвращает распределение мест на финальном столе (1-9)."""
-        return self.place_dist_repo.get_distribution()
+        self.ensure_overall_stats_cached()
+        return self._place_distribution_cache.get(
+            self.db.db_path,
+            self.place_dist_repo.get_distribution(),
+        )
 
     def get_place_distribution_pre_ft(self) -> Dict[int, int]:
         """Возвращает распределение мест до финального стола (10-18)."""
