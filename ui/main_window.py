@@ -297,9 +297,16 @@ class MainWindow(QtWidgets.QMainWindow):
                 pass
             # Закрываем диалог, чтобы он не показывался снова
             if self.progress_dialog:
-                self.progress_dialog.close()
-                self.progress_dialog.deleteLater()
+                # Сначала сохраняем ссылку и обнуляем атрибут,
+                # чтобы повторный сигнал canceled не привёл к ошибке
+                dialog = self.progress_dialog
                 self.progress_dialog = None
+                try:
+                    dialog.canceled.disconnect(self._cancel_import)
+                except TypeError:
+                    pass
+                dialog.close()
+                dialog.deleteLater()
             self.statusBar().showMessage("Импорт отменен пользователем", 3000)
 
     @QtCore.pyqtSlot()
@@ -311,9 +318,14 @@ class MainWindow(QtWidgets.QMainWindow):
         # импорта и блокировал главный цикл событий. Поэтому дополнительно
         # закрываем диалог принудительно.
         if hasattr(self, "progress_dialog") and self.progress_dialog:
-            self.progress_dialog.close()
-            self.progress_dialog.deleteLater()
+            dialog = self.progress_dialog
             self.progress_dialog = None
+            try:
+                dialog.canceled.disconnect(self._cancel_import)
+            except TypeError:
+                pass
+            dialog.close()
+            dialog.deleteLater()
 
         # Дожидаемся завершения потока и очищаем ссылки
         if hasattr(self, "import_thread") and self.import_thread:
