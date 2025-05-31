@@ -36,6 +36,9 @@ class OverallStats:
     early_ft_ko_per_tournament: float = 0.0 # Среднее KO в ранней финалке на турнир (достигший финалки)
     early_ft_bust_count: int = 0  # Количество вылетов Hero на местах 6-9
     early_ft_bust_per_tournament: float = 0.0  # Среднее число таких вылетов на турнир с финалкой
+    pre_ft_ko_count: float = 0.0  # KO в последней 5-max раздаче перед финалкой
+    incomplete_ft_count: int = 0  # Сколько финалок стартовало с <9 игроков
+    incomplete_ft_percent: int = 0  # Процент таких финалок от общего числа
     last_updated: Optional[str] = None
     id: Optional[int] = 1 # ID из БД, всегда 1
 
@@ -65,6 +68,9 @@ class OverallStats:
             "early_ft_ko_per_tournament": self.early_ft_ko_per_tournament,
             "early_ft_bust_count": self.early_ft_bust_count,
             "early_ft_bust_per_tournament": self.early_ft_bust_per_tournament,
+            "pre_ft_ko_count": self.pre_ft_ko_count,
+            "incomplete_ft_count": self.incomplete_ft_count,
+            "incomplete_ft_percent": self.incomplete_ft_percent,
             "last_updated": self.last_updated,
             "id": self.id,
         }
@@ -101,6 +107,9 @@ class OverallStats:
                     early_ft_ko_per_tournament=data.get("early_ft_ko_per_tournament", 0.0),
                     early_ft_bust_count=data.get("early_ft_bust_count", 0),
                     early_ft_bust_per_tournament=data.get("early_ft_bust_per_tournament", 0.0),
+                    pre_ft_ko_count=data.get("pre_ft_ko_count", 0.0),
+                    incomplete_ft_count=data.get("incomplete_ft_count", 0),
+                    incomplete_ft_percent=data.get("incomplete_ft_percent", 0),
                     last_updated=data.get("last_updated"),
                     id=data.get("id", 1)
                 )
@@ -128,6 +137,9 @@ class OverallStats:
                     early_ft_ko_per_tournament=data["early_ft_ko_per_tournament"] if "early_ft_ko_per_tournament" in data.keys() else 0.0,
                     early_ft_bust_count=data["early_ft_bust_count"] if "early_ft_bust_count" in data.keys() else 0,
                     early_ft_bust_per_tournament=data["early_ft_bust_per_tournament"] if "early_ft_bust_per_tournament" in data.keys() else 0.0,
+                    pre_ft_ko_count=data["pre_ft_ko_count"] if "pre_ft_ko_count" in data.keys() else 0.0,
+                    incomplete_ft_count=data["incomplete_ft_count"] if "incomplete_ft_count" in data.keys() else 0,
+                    incomplete_ft_percent=data["incomplete_ft_percent"] if "incomplete_ft_percent" in data.keys() else 0,
                     last_updated=data["last_updated"] if "last_updated" in data.keys() else None,
                     id=data["id"] if "id" in data.keys() else 1
                 )

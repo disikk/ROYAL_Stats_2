@@ -38,6 +38,7 @@ from stats import (
     AvgFTInitialStackStat, # Новый
     EarlyFTKOStat, # Новый
     EarlyFTBustStat,
+    PreFTKOStat,
     AvgFinishPlaceStat,
     AvgFinishPlaceFTStat,
     AvgFinishPlaceNoFTStat,
@@ -58,6 +59,7 @@ STAT_PLUGINS: List[BaseStat] = [
     AvgFTInitialStackStat(),
     EarlyFTKOStat(),
     EarlyFTBustStat(),
+    PreFTKOStat(),
     AvgFinishPlaceStat(),
     AvgFinishPlaceFTStat(),
     AvgFinishPlaceNoFTStat(),
@@ -724,6 +726,26 @@ class ApplicationService:
             stats.early_ft_bust_count / stats.total_final_tables if stats.total_final_tables > 0 else 0.0
         )
 
+        # Финальные столы, начавшиеся неполным составом
+        first_ft_hands: dict[str, FinalTableHand] = {}
+        for hand in all_ft_hands:
+            if hand.table_size == config.FINAL_TABLE_SIZE:
+                saved = first_ft_hands.get(hand.tournament_id)
+                if saved is None or hand.hand_number < saved.hand_number:
+                    first_ft_hands[hand.tournament_id] = hand
+
+        stats.incomplete_ft_count = sum(
+            1 for h in first_ft_hands.values() if h.players_count < config.FINAL_TABLE_SIZE
+        )
+        stats.incomplete_ft_percent = (
+            int(round(stats.incomplete_ft_count / stats.total_final_tables * 100))
+            if stats.total_final_tables > 0
+            else 0
+        )
+
+        # KO в последней 5-max раздаче перед финальным столом
+        stats.pre_ft_ko_count = sum(hand.pre_ft_ko for hand in all_ft_hands)
+
         # Логируем статистику по выплатам для отладки
         tournaments_with_payout = sum(1 for t in all_tournaments if t.payout is not None and t.payout > 0)
         tournaments_without_payout = sum(1 for t in all_tournaments if t.payout is None or t.payout == 0)
@@ -766,6 +788,8 @@ class ApplicationService:
         stats.early_ft_ko_per_tournament = round(stats.early_ft_ko_per_tournament, 2)
         stats.early_ft_bust_per_tournament = round(stats.early_ft_bust_per_tournament, 2)
         stats.final_table_reach_percent = round(stats.final_table_reach_percent, 2)
+        stats.pre_ft_ko_count = round(stats.pre_ft_ko_count, 2)
+        stats.incomplete_ft_percent = int(stats.incomplete_ft_percent)
 
         logger.info(f"Итоговая статистика: tournaments={stats.total_tournaments}, knockouts={stats.total_knockouts}, prize={stats.total_prize}, buyin={stats.total_buy_in}")
         return stats

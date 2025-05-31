@@ -37,6 +37,9 @@ from stats import (
     AvgFinishPlaceStat,
     AvgFinishPlaceFTStat,
     AvgFinishPlaceNoFTStat,
+    PreFTKOStat,
+    IncompleteFTPercentStat,
+    KOLuckStat,
 )
 
 from ui.background import thread_manager
@@ -246,7 +249,8 @@ class StatsGrid(QtWidgets.QWidget):
             'avg_place_all': StatCard("Среднее место (все)", "-"),
             'avg_place_ft': StatCard("Среднее место (FT)", "-"),
             'avg_place_no_ft': StatCard("Среднее место (не FT)", "-"),
-            'avg_place_empty': QtWidgets.QWidget(),
+            'pre_ft_ko': StatCard("KO до FT", "-"),
+            'incomplete_ft': StatCard("Неполные финалки", "-"),
         }
         
         # Размещаем карточки в сетке (4 колонки)
@@ -254,6 +258,7 @@ class StatsGrid(QtWidgets.QWidget):
             ('tournaments', 0, 0), ('knockouts', 0, 1), ('avg_ko', 0, 2), ('roi', 0, 3),
             ('itm', 1, 0), ('ft_reach', 1, 1), ('avg_ft_stack', 1, 2), ('early_ft_ko', 1, 3),
             ('avg_place_all', 2, 0), ('avg_place_ft', 2, 1), ('avg_place_no_ft', 2, 2), ('early_ft_bust', 2, 3),
+            ('pre_ft_ko', 3, 0), ('incomplete_ft', 3, 1),
         ]
         
         for key, row, col in positions:
@@ -337,6 +342,73 @@ class StatsGrid(QtWidgets.QWidget):
             bigko_layout.addWidget(self.bigko_cards[key])
             
         content_layout.addLayout(bigko_layout)
+        
+        # Добавляем стат KO Luck
+        ko_luck_layout = QtWidgets.QHBoxLayout()
+        ko_luck_layout.setSpacing(5)
+        ko_luck_layout.setContentsMargins(0, 5, 0, 0)
+        
+        # Заголовок стата
+        self.ko_luck_label = QtWidgets.QLabel("Удача KO:")
+        self.ko_luck_label.setStyleSheet("""
+            QLabel {
+                color: #A1A1AA;
+                font-size: 14px;
+                font-weight: 500;
+            }
+        """)
+        ko_luck_layout.addWidget(self.ko_luck_label)
+        
+        # Значение стата
+        self.ko_luck_value = QtWidgets.QLabel("-")
+        self.ko_luck_value.setStyleSheet("""
+            QLabel {
+                font-size: 16px;
+                font-weight: bold;
+            }
+        """)
+        ko_luck_layout.addWidget(self.ko_luck_value)
+        
+        # Иконка информации
+        self.ko_luck_info = QtWidgets.QLabel("ⓘ")
+        self.ko_luck_info.setStyleSheet("""
+            QLabel {
+                color: #71717A;
+                font-size: 14px;
+            }
+        """)
+        # Устанавливаем курсор-указатель
+        self.ko_luck_info.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        tooltip_text = ("Показывает отклонение полученных денег от нокаутов относительно среднего.\n"
+                       "Формула: сумма моих нокаутов ($) – количество_нокаутов × средний нокаут ($)\n"
+                       "Положительное значение означает удачу (выше среднего), отрицательное - неудачу.")
+        
+        # Создаем кастомный tooltip виджет
+        self.ko_luck_tooltip = QtWidgets.QLabel(tooltip_text, self)
+        self.ko_luck_tooltip.setWindowFlags(QtCore.Qt.WindowType.ToolTip | QtCore.Qt.WindowType.FramelessWindowHint)
+        self.ko_luck_tooltip.setStyleSheet("""
+            QLabel {
+                color: #1F2937;
+                background-color: #F3F4F6;
+                border: 1px solid #E5E7EB;
+                padding: 10px;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: 500;
+            }
+        """)
+        self.ko_luck_tooltip.hide()
+        
+        # Подключаем события для показа/скрытия кастомной подсказки
+        self.ko_luck_info.enterEvent = lambda event: self._show_ko_luck_tooltip()
+        self.ko_luck_info.leaveEvent = lambda event: self.ko_luck_tooltip.hide()
+        
+        ko_luck_layout.addWidget(self.ko_luck_info)
+        
+        # Добавляем растяжку для выравнивания по левому краю
+        ko_luck_layout.addStretch()
+        
+        content_layout.addLayout(ko_luck_layout)
         
         # Добавляем отступ внизу
         content_layout.addSpacing(5)
@@ -452,12 +524,16 @@ class StatsGrid(QtWidgets.QWidget):
             early_res = EarlyFTKOStat().compute([], [], [], overall_stats)
             early_ko = early_res.get('early_ft_ko_count', 0)
             early_ko_per = early_res.get('early_ft_ko_per_tournament', 0.0)
+            pre_ft_ko_res = PreFTKOStat().compute([], [], [], overall_stats)
+            pre_ft_ko_count = pre_ft_ko_res.get('pre_ft_ko_count', 0.0)
+            incomplete_ft_percent = IncompleteFTPercentStat().compute([], [], [], overall_stats).get('incomplete_ft_percent', 0)
             all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
             avg_all = sum(all_places) / len(all_places) if all_places else 0.0
             ft_places = [t.finish_place for t in all_tournaments if t.reached_final_table and t.finish_place is not None and 1 <= t.finish_place <= 9]
             avg_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
             no_ft_places = [t.finish_place for t in all_tournaments if not t.reached_final_table and t.finish_place is not None]
             avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
+            ko_luck_value = KOLuckStat().compute(all_tournaments, [], [], overall_stats).get('ko_luck', 0.0)
             return {
                 'overall_stats': overall_stats,
                 'all_tournaments': all_tournaments,
@@ -471,9 +547,12 @@ class StatsGrid(QtWidgets.QWidget):
                 'avg_bb': avg_bb,
                 'early_ko': early_ko,
                 'early_ko_per': early_ko_per,
+                'pre_ft_ko_count': pre_ft_ko_count,
+                'incomplete_ft_percent': incomplete_ft_percent,
                 'avg_place_all': avg_all,
                 'avg_place_ft': avg_ft,
                 'avg_place_no_ft': avg_no_ft,
+                'ko_luck': ko_luck_value,
             }
         thread_manager.run_in_thread(
             widget_id=str(id(self)),
@@ -492,11 +571,11 @@ class StatsGrid(QtWidgets.QWidget):
             self.cards['tournaments'].update_value(str(overall_stats.total_tournaments))
             logger.debug(f"Обновлена карточка tournaments: {overall_stats.total_tournaments}")
 
-            self.cards['knockouts'].update_value(str(overall_stats.total_knockouts))
-            logger.debug(f"Обновлена карточка knockouts: {overall_stats.total_knockouts}")
+            self.cards['knockouts'].update_value(f"{overall_stats.total_knockouts:.1f}")
+            logger.debug(f"Обновлена карточка knockouts: {overall_stats.total_knockouts:.1f}")
 
-            self.cards['avg_ko'].update_value(f"{overall_stats.avg_ko_per_tournament:.2f}")
-            logger.debug(f"Обновлена карточка avg_ko: {overall_stats.avg_ko_per_tournament:.2f}")
+            self.cards['avg_ko'].update_value(f"{overall_stats.avg_ko_per_tournament:.1f}")
+            logger.debug(f"Обновлена карточка avg_ko: {overall_stats.avg_ko_per_tournament:.1f}")
 
             roi_value = data['roi']
             roi_text = f"{roi_value:+.1f}%"
@@ -526,10 +605,10 @@ class StatsGrid(QtWidgets.QWidget):
             early_ko_per = data['early_ko_per']
             # Форматируем основное значение и подзаголовок
             self.cards['early_ft_ko'].update_value(
-                str(early_ko_count),
-                f"{early_ko_per:.2f} за турнир с FT"
+                f"{early_ko_count:.1f}",
+                f"{early_ko_per:.1f} за турнир с FT"
             )
-            logger.debug(f"Обновлена карточка early_ft_ko: {early_ko_count} / {early_ko_per:.2f}")
+            logger.debug(f"Обновлена карточка early_ft_ko: {early_ko_count} / {early_ko_per:.1f}")
 
             bust_result = EarlyFTBustStat().compute(all_tournaments, [], [], overall_stats)
             logger.debug(f"Early FT Bust result: {bust_result}")
@@ -566,6 +645,39 @@ class StatsGrid(QtWidgets.QWidget):
             )
             logger.debug(f"Обновлены карточки Big KO: x1.5={overall_stats.big_ko_x1_5}, x2={overall_stats.big_ko_x2}, x10={overall_stats.big_ko_x10}, x100={overall_stats.big_ko_x100}, x1000={overall_stats.big_ko_x1000}, x10000={overall_stats.big_ko_x10000}")
             
+            # Обновляем стат KO Luck
+            ko_luck = data.get('ko_luck', 0.0)
+            if ko_luck == 0:
+                ko_luck_text = "$0.00"
+            else:
+                ko_luck_text = f"${ko_luck:+.2f}"
+            self.ko_luck_value.setText(ko_luck_text)
+            # Применяем цвет в зависимости от значения
+            if ko_luck > 0:
+                self.ko_luck_value.setStyleSheet("""
+                    QLabel {
+                        font-size: 16px;
+                        font-weight: bold;
+                        color: #10B981;
+                    }
+                """)
+            elif ko_luck < 0:
+                self.ko_luck_value.setStyleSheet("""
+                    QLabel {
+                        font-size: 16px;
+                        font-weight: bold;
+                        color: #EF4444;
+                    }
+                """)
+            else:
+                self.ko_luck_value.setStyleSheet("""
+                    QLabel {
+                        font-size: 16px;
+                        font-weight: bold;
+                    }
+                """)
+            logger.debug(f"Обновлен KO Luck: {ko_luck_text}")
+            
             # Статы средних мест (fallback расчет, пока не обновлены другие компоненты)
             # Среднее место по всем турнирам
             all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
@@ -583,6 +695,15 @@ class StatsGrid(QtWidgets.QWidget):
             avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
             self.cards['avg_place_no_ft'].update_value(f"{avg_no_ft:.2f}")
             
+            # Pre-FT KO count
+            pre_ft_ko_count = data.get('pre_ft_ko_count', 0.0)
+            self.cards['pre_ft_ko'].update_value(f"{pre_ft_ko_count:.1f}")
+            logger.debug(f"Обновлена карточка pre_ft_ko: {pre_ft_ko_count:.1f}")
+
+            incomplete_percent = data.get('incomplete_ft_percent', 0)
+            self.cards['incomplete_ft'].update_value(f"{incomplete_percent}%")
+            logger.debug(f"Обновлена карточка incomplete_ft: {incomplete_percent}%")
+            
             self.place_dist_ft = data['place_dist']
             self.place_dist_pre_ft = data.get('place_dist_pre_ft', {})
             self.place_dist_all = data.get('place_dist_all', {})
@@ -593,6 +714,15 @@ class StatsGrid(QtWidgets.QWidget):
             # Скрываем индикатор загрузки
             if getattr(self, "_show_overlay", False):
                 self.hide_loading_overlay()
+    
+    def _show_ko_luck_tooltip(self):
+        """Показывает кастомную подсказку для KO Luck."""
+        # Получаем глобальную позицию иконки
+        global_pos = self.ko_luck_info.mapToGlobal(QtCore.QPoint(0, 0))
+        # Позиционируем подсказку выше иконки
+        tooltip_pos = QtCore.QPoint(global_pos.x() - 50, global_pos.y() - self.ko_luck_tooltip.sizeHint().height() - 5)
+        self.ko_luck_tooltip.move(tooltip_pos)
+        self.ko_luck_tooltip.show()
         
     def _update_chart(self, place_dist=None):
         """Обновляет гистограмму распределения мест."""

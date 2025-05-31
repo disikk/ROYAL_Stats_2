@@ -42,7 +42,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(config.APP_TITLE)
-        self.setMinimumSize(1200, 880)
+        self.setMinimumSize(1200, 945)
 
         # ApplicationService уже проинициализирован как синглтон
         self.app_service = application_service
@@ -183,15 +183,17 @@ class MainWindow(QtWidgets.QMainWindow):
     def manage_databases(self):
         """Открывает диалог управления базами данных."""
         dialog = DatabaseManagementDialog(self, self.app_service)
-        if dialog.exec(): # Модальное исполнение
-            if dialog.db_to_open_path != self.app_service.db_path:
-                self.app_service.db_path = dialog.db_to_open_path
-                config.set_db_path(self.app_service.db_path)
-                # Диалог уже вызвал app_service.switch_database() если пользователь выбрал другую БД
-                # Сбрасываем флаги загрузки и загружаем текущую вкладку
+        current_path = self.app_service.db_path
+        if dialog.exec():  # Модальное исполнение
+            new_path = self.app_service.db_path
+            if new_path != current_path:
+                config.set_db_path(new_path)
+                # Сбрасываем флаги загрузки и перезагружаем текущую вкладку
                 self._tab_loaded = {'stats': False, 'tournaments': False, 'sessions': False}
                 self._load_current_tab(show_overlay=True)
-            self.statusBar().showMessage(f"Подключена база данных: {os.path.basename(self.app_service.db_path)}")
+            self.statusBar().showMessage(
+                f"Подключена база данных: {os.path.basename(self.app_service.db_path)}"
+            )
         dialog.deleteLater()
 
     def import_files(self):
@@ -390,7 +392,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.total_tournaments_label.setText(f"Турниров: {stats.total_tournaments}")
         self.total_profit_label.setText(f"Прибыль: {format_money(stats.total_prize - stats.total_buy_in, with_plus=True)}")
         apply_cell_color_by_value(self.total_profit_label, stats.total_prize - stats.total_buy_in) # Применяем цвет
-        self.total_ko_label.setText(f"KO: {stats.total_knockouts}")
+        self.total_ko_label.setText(f"KO: {stats.total_knockouts:.1f}")
 
 
     def tab_changed(self, index):
