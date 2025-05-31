@@ -425,13 +425,17 @@ class ApplicationService:
                       final_tourney_data['final_table_initial_stack_chips'] = existing_tourney.final_table_initial_stack_chips
                       final_tourney_data['final_table_initial_stack_bb'] = existing_tourney.final_table_initial_stack_bb
 
-                 # session_id - сохраняем первый session_id, связанный с этим турниром
-                 if existing_tourney and existing_tourney.session_id:
-                      final_tourney_data['session_id'] = existing_tourney.session_id
+                # session_id - сохраняем первый session_id, связанный с этим турниром
+                if existing_tourney and existing_tourney.session_id:
+                     final_tourney_data['session_id'] = existing_tourney.session_id
 
+                # Если известно, что финишное место в топ-9, устанавливаем флаг финального стола
+                finish_place = final_tourney_data.get('finish_place')
+                if finish_place is not None and 1 <= finish_place <= 9:
+                     final_tourney_data['reached_final_table'] = True
 
-                 # Логируем финальные данные турнира перед сохранением
-                 logger.debug(f"Сохранение турнира {tourney_id}: name={final_tourney_data.get('tournament_name')}, " 
+                # Логируем финальные данные турнира перед сохранением
+                logger.debug(f"Сохранение турнира {tourney_id}: name={final_tourney_data.get('tournament_name')}, "
                             f"buyin={final_tourney_data.get('buyin')}, payout={final_tourney_data.get('payout')}, "
                             f"place={final_tourney_data.get('finish_place')}")
 
