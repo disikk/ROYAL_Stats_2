@@ -202,6 +202,9 @@ class StatsGrid(QtWidgets.QWidget):
         self.app_service = app_service
         self._data_cache = {}  # Кеш для данных
         self._cache_valid = False  # Флаг валидности кеша
+        self.current_buyin_filter = None
+        self.current_session_id = None
+        self._session_map = {}
         self._init_ui()
         
     def _init_ui(self):
@@ -220,17 +223,37 @@ class StatsGrid(QtWidgets.QWidget):
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(4)
         
-        # Заголовок
-        header = QtWidgets.QLabel("Общая статистика")
-        header.setStyleSheet("""
+        # Заголовок с панелью фильтров
+        header_layout = QtWidgets.QHBoxLayout()
+        header_label = QtWidgets.QLabel("Общая статистика")
+        header_label.setStyleSheet(
+            """
             QLabel {
                 font-size: 18px;
                 font-weight: bold;
                 color: #FAFAFA;
-                margin-bottom: 4px;
             }
-        """)
-        content_layout.addWidget(header)
+            """
+        )
+        header_layout.addWidget(header_label)
+
+        header_layout.addStretch()
+
+        header_layout.addWidget(QtWidgets.QLabel("Бай-ин:"))
+        self.buyin_filter = QtWidgets.QComboBox()
+        self.buyin_filter.setMinimumWidth(100)
+        self.buyin_filter.currentTextChanged.connect(self._on_filter_changed)
+        header_layout.addWidget(self.buyin_filter)
+
+        header_layout.addWidget(QtWidgets.QLabel("Сессия:"))
+        self.session_filter = QtWidgets.QComboBox()
+        self.session_filter.setMinimumWidth(140)
+        self.session_filter.currentTextChanged.connect(self._on_filter_changed)
+        header_layout.addWidget(self.session_filter)
+
+        content_layout.addLayout(header_layout)
+
+        self._update_filters()
         
         # Сетка карточек статистики
         stats_grid = QtWidgets.QGridLayout()
@@ -551,13 +574,42 @@ class StatsGrid(QtWidgets.QWidget):
     def hide_loading_overlay(self):
         """Скрывает оверлей загрузки."""
         self.loading_overlay.hide()
-        
+
     def resizeEvent(self, event):
         """Обрабатывает изменение размера виджета."""
         super().resizeEvent(event)
         # Обновляем размер оверлея при изменении размера виджета
         if hasattr(self, 'loading_overlay'):
             self.loading_overlay.resize(self.size())
+
+    def _update_filters(self):
+        """Обновляет доступные значения фильтров."""
+        self.buyin_filter.blockSignals(True)
+        self.buyin_filter.clear()
+        self.buyin_filter.addItem("Все")
+        for b in sorted(self.app_service.get_distinct_buyins()):
+            self.buyin_filter.addItem(str(b))
+        self.buyin_filter.blockSignals(False)
+
+        self.session_filter.blockSignals(True)
+        self.session_filter.clear()
+        self.session_filter.addItem("Все")
+        self._session_map.clear()
+        for s in self.app_service.get_all_sessions():
+            self.session_filter.addItem(s.session_name)
+            self._session_map[s.session_name] = s.session_id
+        self.session_filter.blockSignals(False)
+
+    def _on_filter_changed(self):
+        """Реагирует на изменение фильтров и перезагружает данные."""
+        buyin = self.buyin_filter.currentText()
+        self.current_buyin_filter = float(buyin) if buyin and buyin != "Все" else None
+        session_name = self.session_filter.currentText()
+        self.current_session_id = (
+            self._session_map.get(session_name) if session_name and session_name != "Все" else None
+        )
+        self.invalidate_cache()
+        self.reload()
             
     def invalidate_cache(self):
         """Сбрасывает кеш данных."""
@@ -572,34 +624,56 @@ class StatsGrid(QtWidgets.QWidget):
             self.show_loading_overlay()
         
         def load_data():
-            overall_stats = self.app_service.get_overall_stats()
-            all_tournaments = self.app_service.get_all_tournaments()
-            place_dist = self.app_service.get_place_distribution()
-            place_dist_pre_ft = self.app_service.get_place_distribution_pre_ft()
-            place_dist_all = self.app_service.get_place_distribution_overall()
+            tournaments = self.app_service.tournament_repo.get_all_tournaments(
+                session_id=self.current_session_id,
+                buyin_filter=self.current_buyin_filter,
+            )
+            if self.current_session_id:
+                ft_hands = self.app_service.ft_hand_repo.get_hands_by_session(self.current_session_id)
+            else:
+                ft_hands = self.app_service.ft_hand_repo.get_all_hands()
+            if self.current_buyin_filter is not None:
+                allowed_ids = {t.tournament_id for t in tournaments}
+                ft_hands = [h for h in ft_hands if h.tournament_id in allowed_ids]
+
+            overall_stats = self._compute_overall_stats_filtered(tournaments, ft_hands)
+
+            place_dist = {i: 0 for i in range(1, 10)}
+            place_dist_pre_ft = {i: 0 for i in range(10, 19)}
+            place_dist_all = {i: 0 for i in range(1, 19)}
+            for t in tournaments:
+                if t.finish_place is None:
+                    continue
+                if 1 <= t.finish_place <= 9:
+                    place_dist[t.finish_place] += 1
+                if 10 <= t.finish_place <= 18:
+                    place_dist_pre_ft[t.finish_place] += 1
+                if 1 <= t.finish_place <= 18:
+                    place_dist_all[t.finish_place] += 1
+
             roi_value = ROIStat().compute([], [], [], overall_stats).get('roi', 0.0)
-            itm_value = ITMStat().compute(all_tournaments, [], [], overall_stats).get('itm_percent', 0.0)
-            ft_reach = FinalTableReachStat().compute(all_tournaments, [], [], overall_stats).get('final_table_reach_percent', 0.0)
-            avg_stack_res = AvgFTInitialStackStat().compute(all_tournaments, [], [], overall_stats)
+            itm_value = ITMStat().compute(tournaments, [], [], overall_stats).get('itm_percent', 0.0)
+            ft_reach = FinalTableReachStat().compute(tournaments, [], [], overall_stats).get('final_table_reach_percent', 0.0)
+            avg_stack_res = AvgFTInitialStackStat().compute(tournaments, [], [], overall_stats)
             avg_chips = avg_stack_res.get('avg_ft_initial_stack_chips', 0.0)
             avg_bb = avg_stack_res.get('avg_ft_initial_stack_bb', 0.0)
-            early_res = EarlyFTKOStat().compute([], [], [], overall_stats)
+            early_res = EarlyFTKOStat().compute(tournaments, ft_hands, [], overall_stats)
             early_ko = early_res.get('early_ft_ko_count', 0)
             early_ko_per = early_res.get('early_ft_ko_per_tournament', 0.0)
-            pre_ft_ko_res = PreFTKOStat().compute([], [], [], overall_stats)
+            pre_ft_ko_res = PreFTKOStat().compute(tournaments, ft_hands, [], overall_stats)
             pre_ft_ko_count = pre_ft_ko_res.get('pre_ft_ko_count', 0.0)
-            incomplete_ft_percent = IncompleteFTPercentStat().compute([], [], [], overall_stats).get('incomplete_ft_percent', 0)
-            all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
+            incomplete_ft_percent = IncompleteFTPercentStat().compute(tournaments, ft_hands, [], overall_stats).get('incomplete_ft_percent', 0)
+            ko_luck_value = KOLuckStat().compute(tournaments, [], [], overall_stats).get('ko_luck', 0.0)
+            roi_adj_value = ROIAdjustedStat().compute(tournaments, ft_hands, [], overall_stats).get('roi_adj', 0.0)
+            all_places = [t.finish_place for t in tournaments if t.finish_place is not None]
             avg_all = sum(all_places) / len(all_places) if all_places else 0.0
-            ft_places = [t.finish_place for t in all_tournaments if t.reached_final_table and t.finish_place is not None and 1 <= t.finish_place <= 9]
+            ft_places = [t.finish_place for t in tournaments if t.reached_final_table and t.finish_place is not None and 1 <= t.finish_place <= 9]
             avg_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
-            no_ft_places = [t.finish_place for t in all_tournaments if not t.reached_final_table and t.finish_place is not None]
+            no_ft_places = [t.finish_place for t in tournaments if not t.reached_final_table and t.finish_place is not None]
             avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
-            ko_luck_value = KOLuckStat().compute(all_tournaments, [], [], overall_stats).get('ko_luck', 0.0)
-            roi_adj_value = ROIAdjustedStat().compute(all_tournaments, [], [], overall_stats).get('roi_adj', 0.0)
             return {
                 'overall_stats': overall_stats,
-                'all_tournaments': all_tournaments,
+                'all_tournaments': tournaments,
                 'place_dist': place_dist,
                 'place_dist_pre_ft': place_dist_pre_ft,
                 'place_dist_all': place_dist_all,
@@ -780,11 +854,89 @@ class StatsGrid(QtWidgets.QWidget):
             self.place_dist_all = data.get('place_dist_all', {})
             self._update_chart(self._get_current_distribution())
             logger.debug("=== Конец reload StatsGrid ===")
-        
+
         finally:
             # Скрываем индикатор загрузки
             if getattr(self, "_show_overlay", False):
                 self.hide_loading_overlay()
+
+    def _compute_overall_stats_filtered(self, tournaments, ft_hands):
+        """Вычисляет агрегированную статистику по отфильтрованным данным."""
+        stats = OverallStats()
+        stats.total_tournaments = len(tournaments)
+        ft_tournaments = [t for t in tournaments if t.reached_final_table]
+        stats.total_final_tables = len(ft_tournaments)
+        stats.total_buy_in = sum(t.buyin for t in tournaments if t.buyin is not None)
+        stats.total_prize = sum(t.payout for t in tournaments if t.payout is not None)
+        stats.total_knockouts = sum(t.ko_count for t in tournaments)
+        stats.avg_ko_per_tournament = (
+            stats.total_knockouts / stats.total_tournaments if stats.total_tournaments else 0.0
+        )
+        stats.final_table_reach_percent = (
+            stats.total_final_tables / stats.total_tournaments * 100 if stats.total_tournaments else 0.0
+        )
+        ft_chips = [t.final_table_initial_stack_chips for t in ft_tournaments if t.final_table_initial_stack_chips is not None]
+        stats.avg_ft_initial_stack_chips = sum(ft_chips) / len(ft_chips) if ft_chips else 0.0
+        ft_bb = [t.final_table_initial_stack_bb for t in ft_tournaments if t.final_table_initial_stack_bb is not None]
+        stats.avg_ft_initial_stack_bb = sum(ft_bb) / len(ft_bb) if ft_bb else 0.0
+        early_hands = [h for h in ft_hands if h.is_early_final]
+        stats.early_ft_ko_count = sum(h.hero_ko_this_hand for h in early_hands)
+        stats.early_ft_ko_per_tournament = (
+            stats.early_ft_ko_count / stats.total_final_tables if stats.total_final_tables else 0.0
+        )
+        stats.early_ft_bust_count = sum(
+            1 for t in ft_tournaments if t.finish_place is not None and 6 <= t.finish_place <= 9
+        )
+        stats.early_ft_bust_per_tournament = (
+            stats.early_ft_bust_count / stats.total_final_tables if stats.total_final_tables else 0.0
+        )
+        stats.pre_ft_ko_count = sum(h.pre_ft_ko for h in ft_hands)
+        first_hands = {}
+        for hand in ft_hands:
+            if hand.table_size == config.FINAL_TABLE_SIZE:
+                saved = first_hands.get(hand.tournament_id)
+                if saved is None or hand.hand_number < saved.hand_number:
+                    first_hands[hand.tournament_id] = hand
+        stats.incomplete_ft_count = sum(
+            1 for h in first_hands.values() if h.players_count < config.FINAL_TABLE_SIZE
+        )
+        stats.incomplete_ft_percent = (
+            int(round(stats.incomplete_ft_count / stats.total_final_tables * 100))
+            if stats.total_final_tables
+            else 0
+        )
+        all_places = [t.finish_place for t in tournaments if t.finish_place is not None]
+        stats.avg_finish_place = sum(all_places) / len(all_places) if all_places else 0.0
+        ft_places = [
+            t.finish_place
+            for t in ft_tournaments
+            if t.finish_place is not None and 1 <= t.finish_place <= 9
+        ]
+        stats.avg_finish_place_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
+        no_ft_places = [
+            t.finish_place
+            for t in tournaments
+            if not t.reached_final_table and t.finish_place is not None
+        ]
+        stats.avg_finish_place_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
+        bigko = BigKOStat().compute(tournaments, ft_hands, [], None)
+        stats.big_ko_x1_5 = bigko.get("x1.5", 0)
+        stats.big_ko_x2 = bigko.get("x2", 0)
+        stats.big_ko_x10 = bigko.get("x10", 0)
+        stats.big_ko_x100 = bigko.get("x100", 0)
+        stats.big_ko_x1000 = bigko.get("x1000", 0)
+        stats.big_ko_x10000 = bigko.get("x10000", 0)
+        stats.avg_finish_place = round(stats.avg_finish_place, 2)
+        stats.avg_finish_place_ft = round(stats.avg_finish_place_ft, 2)
+        stats.avg_finish_place_no_ft = round(stats.avg_finish_place_no_ft, 2)
+        stats.avg_ko_per_tournament = round(stats.avg_ko_per_tournament, 2)
+        stats.avg_ft_initial_stack_chips = round(stats.avg_ft_initial_stack_chips, 2)
+        stats.avg_ft_initial_stack_bb = round(stats.avg_ft_initial_stack_bb, 2)
+        stats.early_ft_ko_per_tournament = round(stats.early_ft_ko_per_tournament, 2)
+        stats.early_ft_bust_per_tournament = round(stats.early_ft_bust_per_tournament, 2)
+        stats.final_table_reach_percent = round(stats.final_table_reach_percent, 2)
+        stats.pre_ft_ko_count = round(stats.pre_ft_ko_count, 2)
+        return stats
     
     def _show_ko_luck_tooltip(self):
         """Показывает кастомную подсказку для KO Luck."""
