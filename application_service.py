@@ -7,6 +7,8 @@
 """
 
 import os
+import json
+import hashlib
 import logging
 import uuid
 from typing import List, Dict, Any, Optional
@@ -133,6 +135,10 @@ class ApplicationService:
         # Кеш статистики по БД. Ключ - путь к БД, значение - OverallStats
         self._overall_stats_cache: Dict[str, OverallStats] = {}
 
+        # Файл для сохранения кеша между перезапусками
+        self._cache_file = config.STATS_CACHE_FILE
+        self._persistent_cache = self._load_persistent_cache()
+
         self.hh_parser = HandHistoryParser()
         self.ts_parser = TournamentSummaryParser()
         
@@ -158,10 +164,59 @@ class ApplicationService:
         # подключении к этой базе
         self.ensure_overall_stats_cached()
 
+    def _compute_db_checksum(self, path: str) -> str:
+        """Возвращает MD5-хеш файла БД."""
+        try:
+            hasher = hashlib.md5()
+            with open(path, "rb") as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    hasher.update(chunk)
+            return hasher.hexdigest()
+        except Exception:
+            return ""
+
+    def _load_persistent_cache(self) -> Dict[str, Dict[str, Any]]:
+        """Загружает кеш статистики из файла."""
+        if os.path.exists(self._cache_file):
+            try:
+                with open(self._cache_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                result = {}
+                for db_path, entry in data.items():
+                    stats = OverallStats.from_dict(entry.get("overall_stats", {}))
+                    result[db_path] = {
+                        "checksum": entry.get("checksum", ""),
+                        "overall_stats": stats,
+                    }
+                return result
+            except Exception as e:
+                logger.warning(f"Не удалось загрузить кеш статистики: {e}")
+        return {}
+
+    def _save_persistent_cache(self) -> None:
+        """Сохраняет кеш статистики в файл."""
+        data = {}
+        for db_path, entry in self._persistent_cache.items():
+            data[db_path] = {
+                "checksum": entry.get("checksum", ""),
+                "overall_stats": entry.get("overall_stats", OverallStats()).as_dict(),
+            }
+        try:
+            with open(self._cache_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"Не удалось сохранить кеш статистики: {e}")
+
     def ensure_overall_stats_cached(self) -> None:
         """Гарантирует наличие кешированных статистик для текущей БД."""
         db_path = self.db.db_path
         if db_path in self._overall_stats_cache:
+            return
+
+        checksum = self._compute_db_checksum(db_path)
+        cached = self._persistent_cache.get(db_path)
+        if cached and cached.get("checksum") == checksum:
+            self._overall_stats_cache[db_path] = cached["overall_stats"]
             return
 
         # Проверяем, есть ли данные в таблице турниров
@@ -175,9 +230,11 @@ class ApplicationService:
             # Пустая база — статистика нулевая
             self.overall_stats_repo.update_overall_stats(OverallStats())
 
-        # Загружаем статистику из БД и кладём в кеш
+        # Загружаем статистику из БД и кладём в кеш и файл
         stats = self.overall_stats_repo.get_overall_stats()
         self._overall_stats_cache[db_path] = stats
+        self._persistent_cache[db_path] = {"checksum": checksum, "overall_stats": stats}
+        self._save_persistent_cache()
 
     def create_new_database(self, db_name: str):
         """Создает новую базу данных и переключается на нее."""
@@ -689,6 +746,15 @@ class ApplicationService:
             progress_callback(total_steps, total_steps, "Статистика обновлена")
 
         logger.info("Обновление всей статистики завершено (с учетом возможных ошибок).")
+
+        # Сохраняем обновленную статистику в файл кеша
+        checksum = self._compute_db_checksum(self.db.db_path)
+        current_stats = self._overall_stats_cache.get(self.db.db_path, OverallStats())
+        self._persistent_cache[self.db.db_path] = {
+            "checksum": checksum,
+            "overall_stats": current_stats,
+        }
+        self._save_persistent_cache()
 
 
     def _calculate_overall_stats(self) -> OverallStats:
