@@ -306,6 +306,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self.progress_dialog.deleteLater()
             self.progress_dialog = None
 
+        # Дожидаемся завершения потока и очищаем ссылки
+        if hasattr(self, "import_thread") and self.import_thread:
+            self.import_thread.wait()
+            self.import_thread.deleteLater()
+            self.import_thread = None
+
         # progress_dialog обычно закрывается автоматически, но принудительное
         # закрытие выше страхует от зависания интерфейса.
         
@@ -488,6 +494,14 @@ class ImportThread(QtCore.QThread):
             logger.critical(f"Критическая ошибка в потоке импорта: {e}")
             # Можно отправить сигнал об ошибке в UI
             self.progress_update.emit(0, 1, f"Ошибка импорта: {e}")
+        finally:
+            # Явно закрываем SQLite-соединение этого потока,
+            # чтобы избежать его закрытия из другого потока при сборке мусора.
+            try:
+                self.app_service.db.close_connection()
+            except Exception as e:
+                logger.warning(f"Ошибка при закрытии соединения в потоке импорта: {e}")
+
         logger.info("Поток импорта завершает работу.")
         
     def _is_import_canceled(self):
