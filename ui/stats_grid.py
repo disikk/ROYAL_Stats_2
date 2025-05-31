@@ -749,7 +749,7 @@ class StatsGrid(QtWidgets.QWidget):
             widget_id=str(id(self)),
             fn=load_data,
             callback=self._on_data_loaded,
-            error_callback=lambda e: logger.error(f"Ошибка загрузки данных StatsGrid: {e}"),
+            error_callback=self._on_load_error,
             owner=self
         )
         
@@ -922,6 +922,17 @@ class StatsGrid(QtWidgets.QWidget):
             # Скрываем индикатор загрузки
             if getattr(self, "_show_overlay", False):
                 self.hide_loading_overlay()
+
+    def _on_load_error(self, error):
+        """Обрабатывает ошибки при загрузке данных."""
+        logger.error(f"Ошибка загрузки данных StatsGrid: {error}")
+        if getattr(self, "_show_overlay", False):
+            self.hide_loading_overlay()
+        QtWidgets.QMessageBox.critical(
+            self,
+            "Ошибка загрузки",
+            str(error)
+        )
 
     def _compute_overall_stats_filtered(self, tournaments, ft_hands):
         """Вычисляет агрегированную статистику по отфильтрованным данным."""
