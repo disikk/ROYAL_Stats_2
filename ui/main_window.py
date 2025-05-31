@@ -200,13 +200,12 @@ class MainWindow(QtWidgets.QMainWindow):
         if dialog.exec():  # Модальное исполнение
             new_path = self.app_service.db_path
             if new_path != current_path:
+                # Отменяем все фоновые операции перед сменой БД
+                thread_manager.cancel_all()
                 config.set_db_path(new_path)
-                # Загружаем/пересчитываем статистику для новой БД
-                self.app_service.ensure_overall_stats_cached()
-                # Инвалидируем кеши и обновляем все представления
+                # Сбрасываем кеши и запускаем асинхронную загрузку данных
                 self.invalidate_all_caches()
-                self.refresh_all_views(force_all=True)
-                self._update_toolbar_info()
+                self.refresh_all_data()
             self._update_db_label()
             self.statusBar().showMessage(
                 f"Подключена база данных: {os.path.basename(self.app_service.db_path)}"
