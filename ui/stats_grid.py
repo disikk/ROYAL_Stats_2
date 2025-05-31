@@ -1264,7 +1264,8 @@ class StatsGrid(QtWidgets.QWidget):
 
                 text = QtWidgets.QGraphicsTextItem(f"{percentage:.1f}%")
                 text.setDefaultTextColor(QtGui.QColor("#FAFAFA"))
-                text.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Weight.Bold))
+                # Увеличиваем шрифт на 30% по сравнению с исходным
+                text.setFont(QtGui.QFont("Arial", 13, QtGui.QFont.Weight.Bold))
 
                 # Вычисляем позицию
                 x_pos = (
@@ -1278,18 +1279,21 @@ class StatsGrid(QtWidgets.QWidget):
                 bar_top = plot_area.bottom() - (plot_area.height() * bar_height_ratio)
                 label_height = text.boundingRect().height()
 
-                default_offset = 8
-                if bar_top - label_height - default_offset < plot_area.top():
-                    # Не хватает места сверху, располагаем метку внутри бара
-                    y_pos = bar_top + 2
-                    shadow = QtWidgets.QGraphicsDropShadowEffect()
-                    shadow.setBlurRadius(5)
-                    shadow.setOffset(0, 0)
-                    shadow.setColor(QtGui.QColor("#000000"))
-                    text.setGraphicsEffect(shadow)
+                inside_offset = 3
+                bar_height = plot_area.bottom() - bar_top
+
+                if bar_height >= label_height + inside_offset:
+                    # Размещаем метку внутри бара
+                    y_pos = bar_top + inside_offset
                 else:
-                    # Размещаем метку над баром
-                    y_pos = bar_top - label_height - default_offset
+                    # Бар слишком низкий, помещаем метку сверху с отступом 12px
+                    y_pos = bar_top - label_height - 12
+
+                shadow = QtWidgets.QGraphicsDropShadowEffect()
+                shadow.setBlurRadius(10)
+                shadow.setOffset(0, 0)
+                shadow.setColor(QtGui.QColor("#000000"))
+                text.setGraphicsEffect(shadow)
 
                 text.setPos(x_pos, y_pos)
                 chart.scene().addItem(text)
