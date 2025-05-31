@@ -216,6 +216,12 @@ class StatsGrid(QtWidgets.QWidget):
         self.current_buyin_filter = None
         self.current_session_id = None
         self._session_map = {}
+        
+        # Таймер для debounce фильтров
+        self._filter_timer = QtCore.QTimer()
+        self._filter_timer.setSingleShot(True)
+        self._filter_timer.timeout.connect(self._apply_filters)
+        
         self._init_ui()
         
     def _init_ui(self):
@@ -633,7 +639,13 @@ class StatsGrid(QtWidgets.QWidget):
         self.session_filter.blockSignals(False)
 
     def _on_filter_changed(self):
-        """Реагирует на изменение фильтров и перезагружает данные."""
+        """Запускает таймер для отложенного применения фильтров."""
+        # Отменяем предыдущий таймер и запускаем новый
+        self._filter_timer.stop()
+        self._filter_timer.start(300)  # 300мс задержка
+        
+    def _apply_filters(self):
+        """Применяет выбранные фильтры и перезагружает данные."""
         buyin = self.buyin_filter.currentText()
         self.current_buyin_filter = float(buyin) if buyin and buyin != "Все" else None
         session_name = self.session_filter.currentText()
@@ -676,20 +688,44 @@ class StatsGrid(QtWidgets.QWidget):
             self._session_map.get(session_name) if session_name and session_name != "Все" else None
         )
         
-        def load_data():
+        def load_data(is_cancelled_callback=None):
+            # Проверяем отмену перед загрузкой турниров
+            if is_cancelled_callback and is_cancelled_callback():
+                return None
+                
             tournaments = self.app_service.tournament_repo.get_all_tournaments(
                 session_id=self.current_session_id,
                 buyin_filter=self.current_buyin_filter,
             )
-            if self.current_session_id:
-                ft_hands = self.app_service.ft_hand_repo.get_hands_by_session(self.current_session_id)
-            else:
-                ft_hands = self.app_service.ft_hand_repo.get_all_hands()
+            
+            # Проверяем отмену после загрузки турниров
+            if is_cancelled_callback and is_cancelled_callback():
+                return None
+            
+            # Получаем руки финального стола с фильтрацией на уровне SQL
             if self.current_buyin_filter is not None:
-                allowed_ids = {t.tournament_id for t in tournaments}
-                ft_hands = [h for h in ft_hands if h.tournament_id in allowed_ids]
+                # Если есть фильтр по байину, получаем список tournament_id для этого байина
+                tournament_ids = [t.tournament_id for t in tournaments]
+                ft_hands = self.app_service.ft_hand_repo.get_hands_by_filters(
+                    session_id=self.current_session_id,
+                    tournament_ids=tournament_ids if tournament_ids else None
+                )
+            else:
+                # Если нет фильтра по байину, фильтруем только по сессии
+                ft_hands = self.app_service.ft_hand_repo.get_hands_by_filters(
+                    session_id=self.current_session_id
+                )
+                
+            # Проверяем отмену после загрузки рук
+            if is_cancelled_callback and is_cancelled_callback():
+                return None
 
+            # Вычисляем статистику в фоновом потоке
             overall_stats = self._compute_overall_stats_filtered(tournaments, ft_hands)
+            
+            # Проверяем отмену после вычисления статистики
+            if is_cancelled_callback and is_cancelled_callback():
+                return None
 
             place_dist = {i: 0 for i in range(1, 10)}
             place_dist_pre_ft = {i: 0 for i in range(10, 19)}
@@ -704,17 +740,29 @@ class StatsGrid(QtWidgets.QWidget):
                 if 1 <= t.finish_place <= 18:
                     place_dist_all[t.finish_place] += 1
 
+            # Вычисляем статистики с проверками отмены
             roi_value = ROIStat().compute([], [], [], overall_stats).get('roi', 0.0)
+            if is_cancelled_callback and is_cancelled_callback():
+                return None
+                
             itm_value = ITMStat().compute(tournaments, [], [], overall_stats).get('itm_percent', 0.0)
             ft_reach = FinalTableReachStat().compute(tournaments, [], [], overall_stats).get('final_table_reach_percent', 0.0)
             avg_stack_res = AvgFTInitialStackStat().compute(tournaments, [], [], overall_stats)
             avg_chips = avg_stack_res.get('avg_ft_initial_stack_chips', 0.0)
             avg_bb = avg_stack_res.get('avg_ft_initial_stack_bb', 0.0)
+            
+            if is_cancelled_callback and is_cancelled_callback():
+                return None
+                
             early_res = EarlyFTKOStat().compute(tournaments, ft_hands, [], overall_stats)
             early_ko = early_res.get('early_ft_ko_count', 0)
             early_ko_per = early_res.get('early_ft_ko_per_tournament', 0.0)
             pre_ft_ko_res = PreFTKOStat().compute(tournaments, ft_hands, [], overall_stats)
             pre_ft_ko_count = pre_ft_ko_res.get('pre_ft_ko_count', 0.0)
+            
+            if is_cancelled_callback and is_cancelled_callback():
+                return None
+                
             incomplete_ft_percent = IncompleteFTPercentStat().compute(tournaments, ft_hands, [], overall_stats).get('incomplete_ft_percent', 0)
             ko_luck_value = KOLuckStat().compute(tournaments, [], [], overall_stats).get('ko_luck', 0.0)
             roi_adj_value = ROIAdjustedStat().compute(tournaments, ft_hands, [], overall_stats).get('roi_adj', 0.0)
@@ -755,6 +803,11 @@ class StatsGrid(QtWidgets.QWidget):
         
     def _on_data_loaded(self, data: dict):
         """Применяет загруженные данные к UI."""
+        # Проверяем, что данные не были отменены
+        if data is None:
+            logger.debug("Загрузка данных была отменена")
+            return
+            
         try:
             overall_stats = data['overall_stats']
             all_tournaments = data['all_tournaments']
@@ -938,39 +991,65 @@ class StatsGrid(QtWidgets.QWidget):
         """Вычисляет агрегированную статистику по отфильтрованным данным."""
         stats = OverallStats()
         stats.total_tournaments = len(tournaments)
-        ft_tournaments = [t for t in tournaments if t.reached_final_table]
-        stats.total_final_tables = len(ft_tournaments)
-        stats.total_buy_in = sum(t.buyin for t in tournaments if t.buyin is not None)
-        stats.total_prize = sum(t.payout for t in tournaments if t.payout is not None)
-        stats.total_knockouts = sum(t.ko_count for t in tournaments)
-        stats.avg_ko_per_tournament = (
-            stats.total_knockouts / stats.total_tournaments if stats.total_tournaments else 0.0
-        )
-        stats.final_table_reach_percent = (
-            stats.total_final_tables / stats.total_tournaments * 100 if stats.total_tournaments else 0.0
-        )
-        ft_chips = [t.final_table_initial_stack_chips for t in ft_tournaments if t.final_table_initial_stack_chips is not None]
-        stats.avg_ft_initial_stack_chips = sum(ft_chips) / len(ft_chips) if ft_chips else 0.0
-        ft_bb = [t.final_table_initial_stack_bb for t in ft_tournaments if t.final_table_initial_stack_bb is not None]
-        stats.avg_ft_initial_stack_bb = sum(ft_bb) / len(ft_bb) if ft_bb else 0.0
-        early_hands = [h for h in ft_hands if h.is_early_final]
-        stats.early_ft_ko_count = sum(h.hero_ko_this_hand for h in early_hands)
-        stats.early_ft_ko_per_tournament = (
-            stats.early_ft_ko_count / stats.total_final_tables if stats.total_final_tables else 0.0
-        )
-        stats.early_ft_bust_count = sum(
-            1 for t in ft_tournaments if t.finish_place is not None and 6 <= t.finish_place <= 9
-        )
-        stats.early_ft_bust_per_tournament = (
-            stats.early_ft_bust_count / stats.total_final_tables if stats.total_final_tables else 0.0
-        )
-        stats.pre_ft_ko_count = sum(h.pre_ft_ko for h in ft_hands)
+        
+        # Оптимизированный подсчет с одним проходом по турнирам
+        ft_count = 0
+        total_buyin = 0.0
+        total_prize = 0.0
+        total_ko = 0.0
+        ft_chips_sum = 0.0
+        ft_chips_count = 0
+        ft_bb_sum = 0.0
+        ft_bb_count = 0
+        early_bust_count = 0
+        
+        for t in tournaments:
+            if t.reached_final_table:
+                ft_count += 1
+                if t.final_table_initial_stack_chips is not None:
+                    ft_chips_sum += t.final_table_initial_stack_chips
+                    ft_chips_count += 1
+                if t.final_table_initial_stack_bb is not None:
+                    ft_bb_sum += t.final_table_initial_stack_bb
+                    ft_bb_count += 1
+                if t.finish_place is not None and 6 <= t.finish_place <= 9:
+                    early_bust_count += 1
+            
+            if t.buyin is not None:
+                total_buyin += t.buyin
+            if t.payout is not None:
+                total_prize += t.payout
+            total_ko += t.ko_count
+        
+        stats.total_final_tables = ft_count
+        stats.total_buy_in = total_buyin
+        stats.total_prize = total_prize
+        stats.total_knockouts = total_ko
+        stats.avg_ko_per_tournament = total_ko / stats.total_tournaments if stats.total_tournaments else 0.0
+        stats.final_table_reach_percent = ft_count / stats.total_tournaments * 100 if stats.total_tournaments else 0.0
+        stats.avg_ft_initial_stack_chips = ft_chips_sum / ft_chips_count if ft_chips_count else 0.0
+        stats.avg_ft_initial_stack_bb = ft_bb_sum / ft_bb_count if ft_bb_count else 0.0
+        stats.early_ft_bust_count = early_bust_count
+        stats.early_ft_bust_per_tournament = early_bust_count / ft_count if ft_count else 0.0
+        
+        # Оптимизированный подсчет по рукам
+        early_ko_count = 0.0
+        pre_ft_ko_count = 0.0
         first_hands = {}
-        for hand in ft_hands:
-            if hand.table_size == config.FINAL_TABLE_SIZE:
-                saved = first_hands.get(hand.tournament_id)
-                if saved is None or hand.hand_number < saved.hand_number:
-                    first_hands[hand.tournament_id] = hand
+        
+        for h in ft_hands:
+            if h.is_early_final:
+                early_ko_count += h.hero_ko_this_hand
+            pre_ft_ko_count += h.pre_ft_ko
+            
+            if h.table_size == config.FINAL_TABLE_SIZE:
+                saved = first_hands.get(h.tournament_id)
+                if saved is None or h.hand_number < saved.hand_number:
+                    first_hands[h.tournament_id] = h
+        
+        stats.early_ft_ko_count = early_ko_count
+        stats.early_ft_ko_per_tournament = early_ko_count / ft_count if ft_count else 0.0
+        stats.pre_ft_ko_count = pre_ft_ko_count
         stats.incomplete_ft_count = sum(
             1 for h in first_hands.values() if h.players_count < config.FINAL_TABLE_SIZE
         )
@@ -983,8 +1062,8 @@ class StatsGrid(QtWidgets.QWidget):
         stats.avg_finish_place = sum(all_places) / len(all_places) if all_places else 0.0
         ft_places = [
             t.finish_place
-            for t in ft_tournaments
-            if t.finish_place is not None and 1 <= t.finish_place <= 9
+            for t in tournaments
+            if t.reached_final_table and t.finish_place is not None and 1 <= t.finish_place <= 9
         ]
         stats.avg_finish_place_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
         no_ft_places = [

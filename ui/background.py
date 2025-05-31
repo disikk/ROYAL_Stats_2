@@ -8,6 +8,7 @@ from PyQt6 import QtCore
 import logging
 from typing import Callable, Any, Optional
 import threading
+import time
 
 logger = logging.getLogger('ROYAL_Stats.Background')
 
@@ -40,8 +41,7 @@ class CancellableWorker(QtCore.QObject):
         """Выполняет функцию с обработкой ошибок."""
         try:
             # Передаем callback для проверки отмены
-            if 'is_cancelled_callback' in self.kwargs:
-                self.kwargs['is_cancelled_callback'] = self.is_cancelled
+            self.kwargs['is_cancelled_callback'] = self.is_cancelled
             
             result = self.fn(*self.args, **self.kwargs)
             
@@ -51,6 +51,14 @@ class CancellableWorker(QtCore.QObject):
             logger.error(f"Ошибка в фоновом потоке: {e}")
             if not self.is_cancelled():
                 self.error.emit(e)
+        finally:
+            # Закрываем соединение с БД для этого потока
+            try:
+                from db.manager import database_manager
+                database_manager.close_connection()
+                logger.debug("Соединение БД закрыто в фоновом потоке")
+            except:
+                pass
 
 
 class ThreadManager:
@@ -58,6 +66,7 @@ class ThreadManager:
     
     def __init__(self):
         self._threads = {}  # widget_id -> (thread, worker)
+        self._db_semaphore = threading.Semaphore(2)  # Ограничиваем до 2 одновременных операций с БД
         
     def run_in_thread(self, widget_id: str, fn: Callable, 
                      callback: Callable, error_callback: Optional[Callable] = None,
@@ -109,8 +118,10 @@ class ThreadManager:
             worker.cancel()
             if thread.isRunning():
                 thread.quit()
-                thread.wait(1000)  # Ждем максимум 1 секунду
+                # Увеличиваем время ожидания для больших операций
+                thread.wait(2000)  # Ждем максимум 2 секунды
                 if thread.isRunning():
+                    logger.warning(f"Поток {widget_id} не завершился, принудительное завершение")
                     thread.terminate()  # Принудительное завершение
                     
     def _cleanup(self, widget_id: str):

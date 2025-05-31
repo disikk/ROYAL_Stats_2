@@ -72,8 +72,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.manage_databases()
             return
 
-        # Статистика будет подсчитана асинхронно
-        self.refresh_all_data()
+        # Статистика будет подсчитана асинхронно с задержкой
+        QtCore.QTimer.singleShot(100, self.refresh_all_data)
 
 
     def _init_ui(self):

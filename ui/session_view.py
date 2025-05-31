@@ -202,7 +202,7 @@ class SessionView(QtWidgets.QWidget):
         self._show_overlay = show_overlay
         if show_overlay:
             self.show_loading_overlay()
-        def load_data():
+        def load_data(is_cancelled_callback=None):
             return self.app_service.get_all_sessions()
         thread_manager.run_in_thread(
             widget_id=str(id(self)),

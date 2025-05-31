@@ -272,7 +272,7 @@ class TournamentView(QtWidgets.QWidget):
         self._show_overlay = show_overlay
         if show_overlay:
             self.show_loading_overlay()
-        def load_filter_data():
+        def load_filter_data(is_cancelled_callback=None):
             return self.app_service.get_distinct_buyins()
         thread_manager.run_in_thread(
             widget_id=f"{id(self)}_filters",
@@ -286,7 +286,7 @@ class TournamentView(QtWidgets.QWidget):
         self._update_buyin_filter()
         self._load_tournaments_data()
     def _load_tournaments_data(self):
-        def load_data():
+        def load_data(is_cancelled_callback=None):
             result_filter_map = {
                 "В призах (1-3)": "prizes",
                 "Финальный стол": "final_table",

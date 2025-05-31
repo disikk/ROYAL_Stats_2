@@ -51,7 +51,13 @@ class ThreadLocalConnection:
         # Проверяем, есть ли у текущего потока соединение, и активно ли оно
         if not hasattr(self.local, 'connection') or self.local.connection is None:
             try:
-                self.local.connection = sqlite3.connect(self.db_path)
+                self.local.connection = sqlite3.connect(self.db_path, timeout=30.0)
+                # Настройки для лучшей производительности и многопоточности
+                self.local.connection.execute("PRAGMA journal_mode = WAL")  # Write-Ahead Logging для параллельного чтения
+                self.local.connection.execute("PRAGMA synchronous = NORMAL")  # Ускоряет запись, безопасно с WAL
+                self.local.connection.execute("PRAGMA cache_size = -64000")  # 64MB кеша в памяти
+                self.local.connection.execute("PRAGMA temp_store = MEMORY")  # Временные таблицы в памяти
+                self.local.connection.execute("PRAGMA mmap_size = 268435456")  # 256MB memory-mapped I/O
                 self.local.connection.execute("PRAGMA foreign_keys = ON")  # Включаем поддержку внешних ключей
                 self.local.connection.row_factory = sqlite3.Row # Добавляем Row Factory
                 self.local.cursor = self.local.connection.cursor()
@@ -79,6 +85,12 @@ class ThreadLocalConnection:
         """
         if hasattr(self.local, 'connection') and self.local.connection is not None:
             try:
+                # Откатываем незавершенные транзакции перед закрытием
+                try:
+                    self.local.connection.rollback()
+                except:
+                    pass
+                    
                 self.local.connection.close()
                 self.local.connection = None
                 self.local.cursor = None
