@@ -35,7 +35,19 @@ class TournamentRepository:
         Использует ON CONFLICT для upsert.
         Логика мерджа данных из HH и TS происходит в ApplicationService,
         сюда приходит уже подготовленный объект Tournament.
+        Если значения всех полей не изменились, обновление пропускается,
+        чтобы избежать лишних модификаций базы.
         """
+
+        existing = self.get_tournament_by_id(tournament.tournament_id)
+        if existing:
+            def _strip(t: Tournament) -> dict:
+                data = t.as_dict()
+                data.pop("id", None)
+                return data
+
+            if _strip(existing) == _strip(tournament):
+                return
         query = """
             INSERT INTO tournaments (
                 tournament_id, tournament_name, start_time, buyin, payout,

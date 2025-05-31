@@ -710,12 +710,13 @@ class ApplicationService:
         # --- Обновление Place Distribution ---
         try:
             logger.debug("Обновление распределения мест...")
-            self.place_dist_repo.reset_distribution()
+            new_distribution = {i: 0 for i in range(1, 10)}
             for tourney in all_final_tournaments:
-                self.place_dist_repo.increment_place_count(tourney.finish_place)
+                new_distribution[tourney.finish_place] += 1
                 current_step += 1
                 if progress_callback:
                     progress_callback(current_step, total_steps, f"Обновлено мест: {current_step-1}/{len(all_final_tournaments)}")
+            self.place_dist_repo.update_distribution(new_distribution)
             logger.info(f"Распределение мест обновлено для {len(all_final_tournaments)} турниров.")
         except Exception as e:
             logger.error(f"Ошибка при обновлении place_distribution: {e}")

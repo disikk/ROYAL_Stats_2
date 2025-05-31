@@ -37,7 +37,23 @@ class OverallStatsRepository:
         Обновляет агрегированную статистику Hero.
         Принимает объект OverallStats с уже подсчитанными агрегатами.
         Обновляет только запись с id=1.
+        Если новые значения совпадают с уже сохранёнными, обновление не
+        выполняется. Это предотвращает лишние изменения файла БД и,
+        соответственно, изменение его контрольной суммы.
         """
+
+        # Получаем текущие значения, чтобы сравнить с новыми
+        current = self.get_overall_stats()
+
+        def _strip(stats_obj: OverallStats) -> dict:
+            data = stats_obj.as_dict()
+            data.pop("last_updated", None)
+            data.pop("id", None)
+            return data
+
+        if _strip(current) == _strip(stats):
+            return
+
         query = """
             UPDATE overall_stats
             SET

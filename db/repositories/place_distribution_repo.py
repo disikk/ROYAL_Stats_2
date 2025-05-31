@@ -45,6 +45,19 @@ class PlaceDistributionRepository:
         query = "UPDATE places_distribution SET count = count + 1 WHERE place = ?"
         self.db.execute_update(query, (place,))
 
+    def update_distribution(self, distribution: Dict[int, int]):
+        """
+        Обновляет распределение мест, изменяя только отличающиеся значения.
+        Используется при пересчёте статистики, чтобы не трогать БД,
+        если распределение не изменилось.
+        """
+        current = self.get_distribution()
+        for place in range(1, 10):
+            new_count = distribution.get(place, 0)
+            if current.get(place, 0) != new_count:
+                query = "UPDATE places_distribution SET count = ? WHERE place = ?"
+                self.db.execute_update(query, (new_count, place))
+
     def reset_distribution(self):
         """
         Сбрасывает все счетчики распределения мест в 0.
