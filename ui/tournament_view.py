@@ -7,6 +7,7 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
 import logging
 from typing import List, Optional, Dict, Any
+from datetime import datetime
 
 from ui.app_style import setup_table_widget, format_money, apply_cell_color_by_value, format_percentage
 from application_service import ApplicationService
@@ -103,12 +104,12 @@ class TournamentView(QtWidgets.QWidget):
         # Настраиваем заголовки с сортировкой
         headers = [
             ("ID турнира", "tournament_id"),
-            ("Название", "tournament_name"), 
             ("Дата", "start_time"),
             ("Бай-ин", "buyin"),
             ("Место", "finish_place"),
             ("Выплата", "payout"),
             ("KO", "ko_count"),
+            ("Стек на ФТ", "final_table_initial_stack_chips"),
             ("Профит", "profit")
         ]
         header_labels = [h[0] for h in headers]
@@ -121,11 +122,15 @@ class TournamentView(QtWidgets.QWidget):
         self.table.setSortingEnabled(False)
 
         self.table.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
+
+        # Контекстное меню для копирования ID
+        self.table.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._show_context_menu)
         
         # Настройка ширины колонок
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         
         content_layout.addWidget(self.table)
@@ -359,20 +364,24 @@ class TournamentView(QtWidgets.QWidget):
         for row, t in enumerate(tournaments):
             # ID турнира
             self.table.setItem(row, 0, QtWidgets.QTableWidgetItem(t.tournament_id))
-            
-            # Название
-            name = t.tournament_name or "-"
-            self.table.setItem(row, 1, QtWidgets.QTableWidgetItem(name))
-            
+
             # Дата
             date = t.start_time or "-"
-            self.table.setItem(row, 2, QtWidgets.QTableWidgetItem(date))
-            
+            if t.start_time:
+                for fmt in ("%Y/%m/%d %H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+                    try:
+                        dt = datetime.strptime(t.start_time, fmt)
+                        date = dt.strftime("%d.%m.%Y %H:%M:%S")
+                        break
+                    except ValueError:
+                        continue
+            self.table.setItem(row, 1, QtWidgets.QTableWidgetItem(date))
+
             # Бай-ин
             buyin_item = QtWidgets.QTableWidgetItem(format_money(t.buyin, decimals=0))
             buyin_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
-            self.table.setItem(row, 3, buyin_item)
-            
+            self.table.setItem(row, 2, buyin_item)
+
             # Место
             place_text = str(t.finish_place) if t.finish_place else "-"
             place_item = QtWidgets.QTableWidgetItem(place_text)
@@ -385,21 +394,29 @@ class TournamentView(QtWidgets.QWidget):
                     place_item.setForeground(QtGui.QBrush(QtGui.QColor("#6EE7B7")))
                 elif t.finish_place == 3:
                     place_item.setForeground(QtGui.QBrush(QtGui.QColor("#FCD34D")))
-            self.table.setItem(row, 4, place_item)
-            
+            self.table.setItem(row, 3, place_item)
+
             # Выплата
             payout_item = QtWidgets.QTableWidgetItem(format_money(t.payout))
             payout_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
             apply_cell_color_by_value(payout_item, t.payout)
-            self.table.setItem(row, 5, payout_item)
-            
+            self.table.setItem(row, 4, payout_item)
+
             # KO
             ko_item = QtWidgets.QTableWidgetItem(str(t.ko_count))
             ko_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             if t.ko_count > 0:
                 ko_item.setForeground(QtGui.QBrush(QtGui.QColor("#10B981")))
-            self.table.setItem(row, 6, ko_item)
-            
+            self.table.setItem(row, 5, ko_item)
+
+            # Стартовый стек на финалке
+            stack_text = "—"
+            if t.final_table_initial_stack_chips is not None:
+                stack_text = f"{int(t.final_table_initial_stack_chips):,}"
+            stack_item = QtWidgets.QTableWidgetItem(stack_text)
+            stack_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            self.table.setItem(row, 6, stack_item)
+
             # Профит
             profit = (t.payout if t.payout is not None else 0) - (t.buyin if t.buyin is not None else 0)
             profit_item = QtWidgets.QTableWidgetItem(format_money(profit, with_plus=True))
@@ -432,3 +449,20 @@ class TournamentView(QtWidgets.QWidget):
             f"ITM: {itm_percent:.1f}% | "
             f"KO: {total_ko}"
         )
+
+    def _show_context_menu(self, position):
+        """Контекстное меню для копирования ID турнира."""
+        item = self.table.itemAt(position)
+        if not item:
+            return
+        row = item.row()
+        menu = QtWidgets.QMenu(self)
+        copy_action = menu.addAction("Копировать ID турнира")
+        copy_action.triggered.connect(lambda: self._copy_tournament_id(row))
+        menu.exec(self.table.viewport().mapToGlobal(position))
+
+    def _copy_tournament_id(self, row: int):
+        """Копирует ID турнира в буфер обмена."""
+        if 0 <= row < len(self.tournaments):
+            t_id = self.tournaments[row].tournament_id
+            QtWidgets.QApplication.clipboard().setText(t_id)
