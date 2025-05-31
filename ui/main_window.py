@@ -61,6 +61,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """Подключает последнюю БД и запускает обновление статистики."""
         try:
             self.app_service.switch_database(config.LAST_DB_PATH, load_stats=False)
+            self._update_db_label()
             self.statusBar().showMessage(
                 f"Подключена база данных: {os.path.basename(self.app_service.db_path)}"
             )
@@ -82,6 +83,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Строка состояния
         self.setStatusBar(QtWidgets.QStatusBar(self))
+        # Постоянная метка с информацией о текущей БД
+        self.db_status_label = QtWidgets.QLabel("")
+        self.db_status_label.setStyleSheet("color: #777; margin-right: 8px;")
+        self.statusBar().addPermanentWidget(self.db_status_label)
 
         # Панель инструментов
         self.toolbar = self.addToolBar("Панель инструментов")
@@ -202,6 +207,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.invalidate_all_caches()
                 self.refresh_all_views(force_all=True)
                 self._update_toolbar_info()
+            self._update_db_label()
             self.statusBar().showMessage(
                 f"Подключена база данных: {os.path.basename(self.app_service.db_path)}"
             )
@@ -307,6 +313,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_toolbar_info()
         self.invalidate_all_caches()
         self.refresh_all_views(show_overlay=False)
+        self._update_db_label()
 
         self.statusBar().showMessage(
             f"Импорт завершен. База данных: {os.path.basename(self.app_service.db_path)}",
@@ -389,6 +396,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.refresh_all_views(force_all=True)
         if hasattr(self, 'refresh_action'):
             self.refresh_action.setEnabled(True)
+        self._update_db_label()
         self.statusBar().showMessage(f"Данные обновлены. База данных: {os.path.basename(self.app_service.db_path)}", 3000)
 
     @QtCore.pyqtSlot(str)
@@ -416,6 +424,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.total_profit_label.setText(f"Прибыль: {format_money(stats.total_prize - stats.total_buy_in, with_plus=True)}")
         apply_cell_color_by_value(self.total_profit_label, stats.total_prize - stats.total_buy_in) # Применяем цвет
         self.total_ko_label.setText(f"KO: {stats.total_knockouts:.1f}")
+
+    def _update_db_label(self):
+        """Отображает имя текущей базы данных в строке состояния."""
+        self.db_status_label.setText(
+            f"БД: {os.path.basename(self.app_service.db_path)}"
+        )
 
 
     def tab_changed(self, index):
