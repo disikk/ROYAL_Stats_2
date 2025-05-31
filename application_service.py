@@ -130,6 +130,9 @@ class ApplicationService:
         self.place_dist_repo = PlaceDistributionRepository()
         self.ft_hand_repo = FinalTableHandRepository()
 
+        # Кеш статистики по БД. Ключ - путь к БД, значение - OverallStats
+        self._overall_stats_cache: Dict[str, OverallStats] = {}
+
         self.hh_parser = HandHistoryParser()
         self.ts_parser = TournamentSummaryParser()
         
@@ -151,6 +154,30 @@ class ApplicationService:
         """Переключает активную базу данных."""
         self.db.set_db_path(db_path)
         # После смены БД, репозитории автоматически будут работать с новой БД
+        # Подгружаем статистику для новой БД или пересчитываем её при первом
+        # подключении к этой базе
+        self.ensure_overall_stats_cached()
+
+    def ensure_overall_stats_cached(self) -> None:
+        """Гарантирует наличие кешированных статистик для текущей БД."""
+        db_path = self.db.db_path
+        if db_path in self._overall_stats_cache:
+            return
+
+        # Проверяем, есть ли данные в таблице турниров
+        count = self.db.execute_query("SELECT COUNT(*) AS c FROM tournaments")
+        tournaments_num = count[0][0] if count else 0
+
+        if tournaments_num > 0:
+            # Если база не пуста и статистика ещё не рассчитана, пересчитываем
+            self._update_all_statistics("", progress_callback=None)
+        else:
+            # Пустая база — статистика нулевая
+            self.overall_stats_repo.update_overall_stats(OverallStats())
+
+        # Загружаем статистику из БД и кладём в кеш
+        stats = self.overall_stats_repo.get_overall_stats()
+        self._overall_stats_cache[db_path] = stats
 
     def create_new_database(self, db_name: str):
         """Создает новую базу данных и переключается на нее."""
@@ -596,6 +623,8 @@ class ApplicationService:
             logger.debug("Обновление общей статистики...")
             overall_stats = self._calculate_overall_stats()
             self.overall_stats_repo.update_overall_stats(overall_stats)
+            # Обновляем кеш для текущей БД
+            self._overall_stats_cache[self.db.db_path] = overall_stats
             logger.info("Общая статистика обновлена успешно.")
             current_step += 1
             if progress_callback:
@@ -835,7 +864,8 @@ class ApplicationService:
 
     def get_overall_stats(self) -> OverallStats:
         """Возвращает объект OverallStats с общей статистикой."""
-        return self.overall_stats_repo.get_overall_stats()
+        self.ensure_overall_stats_cached()
+        return self._overall_stats_cache.get(self.db.db_path, OverallStats())
 
     def get_all_tournaments(self, buyin_filter: Optional[float] = None) -> List[Tournament]:
         """Возвращает список всех турниров Hero, опционально фильтруя по бай-ину."""
