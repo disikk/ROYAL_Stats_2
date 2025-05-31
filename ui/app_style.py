@@ -33,11 +33,13 @@ def apply_dark_theme(app: QtWidgets.QApplication):
     # Дополнительные стили для виджетов
     app.setStyleSheet("""
         QToolTip {
-            color: #FAFAFA;
-            background-color: #27272A;
-            border: 1px solid #3F3F46;
-            padding: 4px;
-            border-radius: 4px;
+            color: #1F2937;
+            background-color: #F3F4F6;
+            border: 1px solid #E5E7EB;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
         }
         
         QMenu {
