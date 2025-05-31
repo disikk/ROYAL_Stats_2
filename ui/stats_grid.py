@@ -196,6 +196,8 @@ class SpecialStatCard(QtWidgets.QFrame):
 
 class StatsGrid(QtWidgets.QWidget):
     """Виджет с сеткой статистических показателей и графиками."""
+
+    overallStatsChanged = QtCore.pyqtSignal(OverallStats)
     
     def __init__(self, app_service: ApplicationService, parent=None):
         super().__init__(parent)
@@ -870,11 +872,12 @@ class StatsGrid(QtWidgets.QWidget):
             self.cards['incomplete_ft'].update_value(f"{incomplete_percent}%")
             logger.debug(f"Обновлена карточка incomplete_ft: {incomplete_percent}%")
             
-            self.place_dist_ft = data['place_dist']
-            self.place_dist_pre_ft = data.get('place_dist_pre_ft', {})
-            self.place_dist_all = data.get('place_dist_all', {})
-            self._update_chart(self._get_current_distribution())
-            logger.debug("=== Конец reload StatsGrid ===")
+        self.place_dist_ft = data['place_dist']
+        self.place_dist_pre_ft = data.get('place_dist_pre_ft', {})
+        self.place_dist_all = data.get('place_dist_all', {})
+        self._update_chart(self._get_current_distribution())
+        self.overallStatsChanged.emit(overall_stats)
+        logger.debug("=== Конец reload StatsGrid ===")
 
         finally:
             # Скрываем индикатор загрузки
