@@ -6,9 +6,18 @@
 """
 
 from PyQt6 import QtWidgets, QtCore, QtGui
-from PyQt6.QtCharts import QChart, QChartView, QBarSeries, QBarSet, QBarCategoryAxis, QValueAxis, QStackedBarSeries
+from PyQt6.QtCharts import (
+    QChart,
+    QChartView,
+    QBarSeries,
+    QBarSet,
+    QBarCategoryAxis,
+    QValueAxis,
+    QStackedBarSeries,
+)
 import logging
 from typing import Dict, List, Any
+import math
 
 import config
 from application_service import ApplicationService
@@ -899,12 +908,13 @@ class StatsGrid(QtWidgets.QWidget):
             self.cards['incomplete_ft'].update_value(f"{incomplete_percent}%")
             logger.debug(f"Обновлена карточка incomplete_ft: {incomplete_percent}%")
             
-        self.place_dist_ft = data['place_dist']
-        self.place_dist_pre_ft = data.get('place_dist_pre_ft', {})
-        self.place_dist_all = data.get('place_dist_all', {})
-        self._update_chart(self._get_current_distribution())
-        self.overallStatsChanged.emit(overall_stats)
-        logger.debug("=== Конец reload StatsGrid ===")
+
+            self.place_dist_ft = data['place_dist']
+            self.place_dist_pre_ft = data.get('place_dist_pre_ft', {})
+            self.place_dist_all = data.get('place_dist_all', {})
+            self._update_chart(self._get_current_distribution())
+            self.overallStatsChanged.emit(overall_stats)
+            logger.debug("=== Конец reload StatsGrid ===")
 
         finally:
             # Скрываем индикатор загрузки
@@ -1098,13 +1108,27 @@ class StatsGrid(QtWidgets.QWidget):
         axis_y.setMinorGridLineVisible(False)
         
         max_count = max(place_dist.values()) if place_dist.values() else 1
-        axis_y.setRange(0, max_count * 1.1)
-        
+
         if max_count <= 10:
+            axis_y.setRange(0, max_count)
             axis_y.setTickCount(max_count + 1)
         else:
-            axis_y.setTickCount(min(11, max_count // 5 + 1))
-            
+            def _nice_step(value: int) -> int:
+                raw_step = value / 10
+                magnitude = 10 ** int(math.floor(math.log10(raw_step)))
+                for m in (1, 2, 5, 10):
+                    step = m * magnitude
+                    if raw_step <= step:
+                        break
+                if step >= 10 and step % 10 != 0:
+                    step = math.ceil(step / 10) * 10
+                return step
+
+            step = _nice_step(max_count)
+            max_val = int(math.ceil(max_count / step) * step)
+            axis_y.setRange(0, max_val)
+            axis_y.setTickCount(max_val // step + 1)
+
         axis_y.setLabelFormat("%d")
         
         # Привязываем оси к графику
