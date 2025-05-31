@@ -289,8 +289,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.import_thread and self.import_thread.isRunning():
             # Используем безопасный метод отмены через флаг
             self.import_thread.cancel()
-            # Обновляем диалог прогресса
-            self.progress_dialog.setLabelText("Отмена импорта, пожалуйста подождите...")
+            # Отключаем обновление прогресса, чтобы диалог не появлялся снова
+            try:
+                self.import_progress_signal.disconnect(self._update_progress)
+            except TypeError:
+                pass
+            # Закрываем диалог, чтобы он не показывался снова
+            if self.progress_dialog:
+                self.progress_dialog.close()
             self.statusBar().showMessage("Импорт отменен пользователем", 3000)
 
     @QtCore.pyqtSlot()
