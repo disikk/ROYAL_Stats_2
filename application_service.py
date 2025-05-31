@@ -430,55 +430,57 @@ class ApplicationService:
         total_tournaments = len(parsed_tournaments_data)
         
         for tourney_id, data in parsed_tournaments_data.items():
-             try:
-                 # Запрашиваем текущий турнир для merge
-                 existing_tourney = self.tournament_repo.get_tournament_by_id(tourney_id)
+            try:
+                # Запрашиваем текущий турнир для merge
+                existing_tourney = self.tournament_repo.get_tournament_by_id(tourney_id)
 
-                 # Объединяем данные: TS > HH > Existing
-                 final_tourney_data = {}
-                 if existing_tourney:
-                     final_tourney_data.update(existing_tourney.as_dict()) # Base from existing
+                # Объединяем данные: TS > HH > Existing
+                final_tourney_data = {}
+                if existing_tourney:
+                    final_tourney_data.update(existing_tourney.as_dict()) # Base from existing
 
-                 final_tourney_data.update(data) # Override with data from parsed file batch
+                final_tourney_data.update(data) # Override with data from parsed file batch
 
-                 # Специальная логика для полей, которые должны объединяться, а не перезаписываться
-                 # reached_final_table = Existing OR New
-                 if existing_tourney and existing_tourney.reached_final_table:
-                     final_tourney_data['reached_final_table'] = True # Если хоть раз достигли финалки, флаг остается TRUE
+                # Специальная логика для полей, которые должны объединяться, а не перезаписываться
+                # reached_final_table = Existing OR New
+                if existing_tourney and existing_tourney.reached_final_table:
+                    final_tourney_data['reached_final_table'] = True # Если хоть раз достигли финалки, флаг остается TRUE
 
-                 # final_table_initial_stack - сохраняем только если это первая раздача финалки в истории парсинга этого турнира
-                 if existing_tourney and existing_tourney.final_table_initial_stack_chips is not None:
-                      # Если стек уже сохранен в БД, не перезаписываем его
-                      final_tourney_data['final_table_initial_stack_chips'] = existing_tourney.final_table_initial_stack_chips
-                      final_tourney_data['final_table_initial_stack_bb'] = existing_tourney.final_table_initial_stack_bb
+                # final_table_initial_stack - сохраняем только если это первая раздача финалки в истории парсинга этого турнира
+                if existing_tourney and existing_tourney.final_table_initial_stack_chips is not None:
+                    # Если стек уже сохранен в БД, не перезаписываем его
+                    final_tourney_data['final_table_initial_stack_chips'] = existing_tourney.final_table_initial_stack_chips
+                    final_tourney_data['final_table_initial_stack_bb'] = existing_tourney.final_table_initial_stack_bb
 
                 # session_id - сохраняем первый session_id, связанный с этим турниром
                 if existing_tourney and existing_tourney.session_id:
-                     final_tourney_data['session_id'] = existing_tourney.session_id
+                    final_tourney_data['session_id'] = existing_tourney.session_id
 
                 # Если известно, что финишное место в топ-9, устанавливаем флаг финального стола
                 finish_place = final_tourney_data.get('finish_place')
                 if finish_place is not None and 1 <= finish_place <= 9:
-                     final_tourney_data['reached_final_table'] = True
+                    final_tourney_data['reached_final_table'] = True
 
                 # Логируем финальные данные турнира перед сохранением
-                logger.debug(f"Сохранение турнира {tourney_id}: name={final_tourney_data.get('tournament_name')}, "
-                            f"buyin={final_tourney_data.get('buyin')}, payout={final_tourney_data.get('payout')}, "
-                            f"place={final_tourney_data.get('finish_place')}")
+                logger.debug(
+                    f"Сохранение турнира {tourney_id}: name={final_tourney_data.get('tournament_name')}, "
+                    f"buyin={final_tourney_data.get('buyin')}, payout={final_tourney_data.get('payout')}, "
+                    f"place={final_tourney_data.get('finish_place')}"
+                )
 
-                 # Создаем объект Tournament из объединенных данных
-                 merged_tournament = Tournament.from_dict(final_tourney_data)
-                 self.tournament_repo.add_or_update_tournament(merged_tournament)
-                 tournaments_saved += 1
+                # Создаем объект Tournament из объединенных данных
+                merged_tournament = Tournament.from_dict(final_tourney_data)
+                self.tournament_repo.add_or_update_tournament(merged_tournament)
+                tournaments_saved += 1
                  
-                 # Обновляем прогресс
-                 if tournaments_saved % 5 == 0 or tournaments_saved == total_tournaments:
-                     save_progress = current_progress + int((tournaments_saved / max(total_tournaments, 1)) * (SAVING_WEIGHT * 0.4))
-                     if progress_callback:
-                         progress_callback(save_progress, total_steps, f"Сохранено турниров: {tournaments_saved}/{total_tournaments}")
+                # Обновляем прогресс
+                if tournaments_saved % 5 == 0 or tournaments_saved == total_tournaments:
+                    save_progress = current_progress + int((tournaments_saved / max(total_tournaments, 1)) * (SAVING_WEIGHT * 0.4))
+                    if progress_callback:
+                        progress_callback(save_progress, total_steps, f"Сохранено турниров: {tournaments_saved}/{total_tournaments}")
 
-             except Exception as e:
-                  logger.error(f"Ошибка сохранения/обновления турнира {tourney_id}: {e}")
+            except Exception as e:
+                logger.error(f"Ошибка сохранения/обновления турнира {tourney_id}: {e}")
 
         logger.info(f"Сохранено/обновлено {tournaments_saved} турниров.")
 
