@@ -273,13 +273,14 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.pyqtSlot(int, int, str)
     def _update_progress(self, current: int, total: int, text: str):
         """Обновляет прогресс-бар."""
-        if self.progress_dialog:
-            if total != self.progress_dialog.maximum() and total != 0:
-                self.progress_dialog.setMaximum(total)
-            elif self.progress_dialog.maximum() == 0:
-                self.progress_dialog.setMaximum(total)
-            self.progress_dialog.setValue(current)
-            self.progress_dialog.setLabelText(text)
+        dialog = self.progress_dialog
+        if dialog:
+            if total != dialog.maximum() and total != 0:
+                dialog.setMaximum(total)
+            elif dialog.maximum() == 0:
+                dialog.setMaximum(total)
+            dialog.setValue(current)
+            dialog.setLabelText(text)
             # QApplication.processEvents() # Может понадобиться для моментального обновления, но exec() в диалоге обычно справляется
 
     @QtCore.pyqtSlot()
@@ -297,6 +298,8 @@ class MainWindow(QtWidgets.QMainWindow):
             # Закрываем диалог, чтобы он не показывался снова
             if self.progress_dialog:
                 self.progress_dialog.close()
+                self.progress_dialog.deleteLater()
+                self.progress_dialog = None
             self.statusBar().showMessage("Импорт отменен пользователем", 3000)
 
     @QtCore.pyqtSlot()
