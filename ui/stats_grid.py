@@ -40,6 +40,7 @@ from stats import (
     PreFTKOStat,
     IncompleteFTPercentStat,
     KOLuckStat,
+    ROIAdjustedStat,
 )
 
 from ui.background import thread_manager
@@ -368,7 +369,7 @@ class StatsGrid(QtWidgets.QWidget):
             }
         """)
         ko_luck_layout.addWidget(self.ko_luck_value)
-        
+
         # Иконка информации
         self.ko_luck_info = QtWidgets.QLabel("ⓘ")
         self.ko_luck_info.setStyleSheet("""
@@ -402,9 +403,34 @@ class StatsGrid(QtWidgets.QWidget):
         # Подключаем события для показа/скрытия кастомной подсказки
         self.ko_luck_info.enterEvent = lambda event: self._show_ko_luck_tooltip()
         self.ko_luck_info.leaveEvent = lambda event: self.ko_luck_tooltip.hide()
-        
+
         ko_luck_layout.addWidget(self.ko_luck_info)
-        
+
+        # ROI с поправкой на KO Luck
+        ko_luck_layout.addSpacing(10)
+        self.roi_adj_label = QtWidgets.QLabel("ROI adj:")
+        self.roi_adj_label.setStyleSheet(
+            """
+            QLabel {
+                color: #A1A1AA;
+                font-size: 14px;
+                font-weight: 500;
+            }
+            """
+        )
+        ko_luck_layout.addWidget(self.roi_adj_label)
+
+        self.roi_adj_value = QtWidgets.QLabel("-")
+        self.roi_adj_value.setStyleSheet(
+            """
+            QLabel {
+                font-size: 16px;
+                font-weight: bold;
+            }
+            """
+        )
+        ko_luck_layout.addWidget(self.roi_adj_value)
+
         # Добавляем растяжку для выравнивания по левому краю
         ko_luck_layout.addStretch()
         
@@ -534,6 +560,7 @@ class StatsGrid(QtWidgets.QWidget):
             no_ft_places = [t.finish_place for t in all_tournaments if not t.reached_final_table and t.finish_place is not None]
             avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
             ko_luck_value = KOLuckStat().compute(all_tournaments, [], [], overall_stats).get('ko_luck', 0.0)
+            roi_adj_value = ROIAdjustedStat().compute(all_tournaments, [], [], overall_stats).get('roi_adj', 0.0)
             return {
                 'overall_stats': overall_stats,
                 'all_tournaments': all_tournaments,
@@ -553,6 +580,7 @@ class StatsGrid(QtWidgets.QWidget):
                 'avg_place_ft': avg_ft,
                 'avg_place_no_ft': avg_no_ft,
                 'ko_luck': ko_luck_value,
+                'roi_adj': roi_adj_value,
             }
         thread_manager.run_in_thread(
             widget_id=str(id(self)),
@@ -677,6 +705,13 @@ class StatsGrid(QtWidgets.QWidget):
                     }
                 """)
             logger.debug(f"Обновлен KO Luck: {ko_luck_text}")
+
+            # Обновляем ROI с поправкой на KO Luck
+            roi_adj = data.get('roi_adj', 0.0)
+            roi_adj_text = f"{roi_adj:+.1f}%"
+            self.roi_adj_value.setText(roi_adj_text)
+            apply_cell_color_by_value(self.roi_adj_value, roi_adj)
+            logger.debug(f"Обновлен ROI adj: {roi_adj_text}")
             
             # Статы средних мест (fallback расчет, пока не обновлены другие компоненты)
             # Среднее место по всем турнирам
