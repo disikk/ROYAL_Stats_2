@@ -431,6 +431,42 @@ class StatsGrid(QtWidgets.QWidget):
         )
         ko_luck_layout.addWidget(self.roi_adj_value)
 
+        # Иконка информации для ROI adj
+        self.roi_adj_info = QtWidgets.QLabel("ⓘ")
+        self.roi_adj_info.setStyleSheet("""
+            QLabel {
+                color: #71717A;
+                font-size: 14px;
+            }
+        """)
+        # Устанавливаем курсор-указатель
+        self.roi_adj_info.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        roi_adj_tooltip_text = ("ROI с поправкой на удачу в нокаутах.\n"
+                               "Формула: (Прибыль - KO Luck) / Общий байин × 100%\n"
+                               "Показывает реальную доходность с учетом везения/невезения в размерах KO.")
+        
+        # Создаем кастомный tooltip виджет для ROI adj
+        self.roi_adj_tooltip = QtWidgets.QLabel(roi_adj_tooltip_text, self)
+        self.roi_adj_tooltip.setWindowFlags(QtCore.Qt.WindowType.ToolTip | QtCore.Qt.WindowType.FramelessWindowHint)
+        self.roi_adj_tooltip.setStyleSheet("""
+            QLabel {
+                color: #1F2937;
+                background-color: #F3F4F6;
+                border: 1px solid #E5E7EB;
+                padding: 10px;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: 500;
+            }
+        """)
+        self.roi_adj_tooltip.hide()
+        
+        # Подключаем события для показа/скрытия кастомной подсказки
+        self.roi_adj_info.enterEvent = lambda event: self._show_roi_adj_tooltip()
+        self.roi_adj_info.leaveEvent = lambda event: self.roi_adj_tooltip.hide()
+        
+        ko_luck_layout.addWidget(self.roi_adj_info)
+
         # Добавляем растяжку для выравнивания по левому краю
         ko_luck_layout.addStretch()
         
@@ -602,8 +638,8 @@ class StatsGrid(QtWidgets.QWidget):
             self.cards['knockouts'].update_value(f"{overall_stats.total_knockouts:.1f}")
             logger.debug(f"Обновлена карточка knockouts: {overall_stats.total_knockouts:.1f}")
 
-            self.cards['avg_ko'].update_value(f"{overall_stats.avg_ko_per_tournament:.1f}")
-            logger.debug(f"Обновлена карточка avg_ko: {overall_stats.avg_ko_per_tournament:.1f}")
+            self.cards['avg_ko'].update_value(f"{overall_stats.avg_ko_per_tournament:.2f}")
+            logger.debug(f"Обновлена карточка avg_ko: {overall_stats.avg_ko_per_tournament:.2f}")
 
             roi_value = data['roi']
             roi_text = f"{roi_value:+.1f}%"
@@ -634,9 +670,9 @@ class StatsGrid(QtWidgets.QWidget):
             # Форматируем основное значение и подзаголовок
             self.cards['early_ft_ko'].update_value(
                 f"{early_ko_count:.1f}",
-                f"{early_ko_per:.1f} за турнир с FT"
+                f"{early_ko_per:.2f} за турнир с FT"
             )
-            logger.debug(f"Обновлена карточка early_ft_ko: {early_ko_count} / {early_ko_per:.1f}")
+            logger.debug(f"Обновлена карточка early_ft_ko: {early_ko_count} / {early_ko_per:.2f}")
 
             bust_result = EarlyFTBustStat().compute(all_tournaments, [], [], overall_stats)
             logger.debug(f"Early FT Bust result: {bust_result}")
@@ -758,6 +794,15 @@ class StatsGrid(QtWidgets.QWidget):
         tooltip_pos = QtCore.QPoint(global_pos.x() - 50, global_pos.y() - self.ko_luck_tooltip.sizeHint().height() - 5)
         self.ko_luck_tooltip.move(tooltip_pos)
         self.ko_luck_tooltip.show()
+    
+    def _show_roi_adj_tooltip(self):
+        """Показывает кастомную подсказку для ROI adj."""
+        # Получаем глобальную позицию иконки
+        global_pos = self.roi_adj_info.mapToGlobal(QtCore.QPoint(0, 0))
+        # Позиционируем подсказку выше иконки
+        tooltip_pos = QtCore.QPoint(global_pos.x() - 50, global_pos.y() - self.roi_adj_tooltip.sizeHint().height() - 5)
+        self.roi_adj_tooltip.move(tooltip_pos)
+        self.roi_adj_tooltip.show()
         
     def _update_chart(self, place_dist=None):
         """Обновляет гистограмму распределения мест."""
