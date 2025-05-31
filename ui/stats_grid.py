@@ -346,8 +346,25 @@ class StatsGrid(QtWidgets.QWidget):
                 margin-bottom: 3px;
             }
         """)
-        content_layout.addWidget(bigko_header)
-        
+
+        # Текст с информацией о частоте KO x10
+        self.bigko_x10_info_label = QtWidgets.QLabel("")
+        self.bigko_x10_info_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.bigko_x10_info_label.setStyleSheet(
+            "QLabel { color: #A1A1AA; font-size: 10px; }"
+        )
+
+        # Шапка секции Big KO с выравниванием текста x10 по карточке
+        bigko_header_layout = QtWidgets.QGridLayout()
+        bigko_header_layout.setContentsMargins(0, 0, 0, 0)
+        bigko_header_layout.setSpacing(0)
+        for i in range(6):
+            bigko_header_layout.setColumnStretch(i, 1)
+        bigko_header_layout.addWidget(bigko_header, 0, 0, 1, 2, alignment=QtCore.Qt.AlignmentFlag.AlignLeft)
+        bigko_header_layout.addWidget(self.bigko_x10_info_label, 0, 2, alignment=QtCore.Qt.AlignmentFlag.AlignHCenter)
+
+        content_layout.addLayout(bigko_header_layout)
+
         # Горизонтальный layout для всех карточек Big KO в одну строку
         bigko_layout = QtWidgets.QHBoxLayout()
         bigko_layout.setSpacing(3)
@@ -361,25 +378,10 @@ class StatsGrid(QtWidgets.QWidget):
             'x10000': StatCard("KO x10000", "-"),
         }
 
-        # Текст с информацией о частоте KO x10
-        self.bigko_x10_info_label = QtWidgets.QLabel("")
-        self.bigko_x10_info_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.bigko_x10_info_label.setStyleSheet(
-            "QLabel { color: #A1A1AA; font-size: 10px; }"
-        )
-
-        # Контейнер для карточки x10 и текста над ней
-        x10_container = QtWidgets.QVBoxLayout()
-        x10_container.setSpacing(1)
-        x10_container.addWidget(self.bigko_x10_info_label)
-        x10_container.addWidget(self.bigko_cards['x10'])
-        x10_widget = QtWidgets.QWidget()
-        x10_widget.setLayout(x10_container)
-
         # Добавляем все карточки Big KO в горизонтальный layout
         bigko_layout.addWidget(self.bigko_cards['x1.5'])
         bigko_layout.addWidget(self.bigko_cards['x2'])
-        bigko_layout.addWidget(x10_widget)
+        bigko_layout.addWidget(self.bigko_cards['x10'])
         bigko_layout.addWidget(self.bigko_cards['x100'])
         bigko_layout.addWidget(self.bigko_cards['x1000'])
         bigko_layout.addWidget(self.bigko_cards['x10000'])
