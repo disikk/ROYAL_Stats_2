@@ -36,6 +36,7 @@ class TournamentView(QtWidgets.QWidget):
         self.sort_direction = "DESC"
         # Параметры фильтрации
         self.current_buyin_filter = None
+        self.session_mapping = {}
         self._data_cache = {}  # Кеш для данных
         self._cache_valid = False  # Флаг валидности кеша
         self._init_ui()
@@ -65,6 +66,13 @@ class TournamentView(QtWidgets.QWidget):
         # Панель фильтров
         filter_layout = QtWidgets.QHBoxLayout()
         filter_layout.setSpacing(12)
+
+        # Фильтр по сессии
+        filter_layout.addWidget(QtWidgets.QLabel("Сессия:"))
+        self.session_filter = QtWidgets.QComboBox()
+        self.session_filter.setMinimumWidth(150)
+        self.session_filter.currentTextChanged.connect(self._on_filter_changed)
+        filter_layout.addWidget(self.session_filter)
         
         # Фильтр по бай-ину
         filter_layout.addWidget(QtWidgets.QLabel("Бай-ин:"))
@@ -265,6 +273,7 @@ class TournamentView(QtWidgets.QWidget):
         """Сбрасывает кеш данных."""
         self._cache_valid = False
         self._data_cache.clear()
+        self.session_mapping.clear()
         
     def reload(self, show_overlay: bool = True):
         """Перезагружает данные из ApplicationService."""
@@ -273,7 +282,9 @@ class TournamentView(QtWidgets.QWidget):
         if show_overlay:
             self.show_loading_overlay()
         def load_filter_data(is_cancelled_callback=None):
-            return self.app_service.get_distinct_buyins()
+            buyins = self.app_service.get_distinct_buyins()
+            sessions = self.app_service.get_all_sessions()
+            return buyins, sessions
         thread_manager.run_in_thread(
             widget_id=f"{id(self)}_filters",
             fn=load_filter_data,
@@ -281,9 +292,13 @@ class TournamentView(QtWidgets.QWidget):
             error_callback=self._on_load_error,
             owner=self
         )
-    def _on_filter_data_loaded(self, buyins):
+
+    def _on_filter_data_loaded(self, data):
+        buyins, sessions = data
         self._data_cache['buyins'] = buyins
+        self._data_cache['sessions'] = sessions
         self._update_buyin_filter()
+        self._update_session_filter()
         self._load_tournaments_data()
     def _load_tournaments_data(self):
         def load_data(is_cancelled_callback=None):
@@ -296,9 +311,11 @@ class TournamentView(QtWidgets.QWidget):
             buyin = self.buyin_filter.currentText()
             buyin_filter = float(buyin) if buyin and buyin != "Все" else None
             result_filter = result_filter_map.get(self.result_filter.currentText())
+            session_id = self.session_filter.currentData()
             return self.app_service.tournament_repo.get_tournaments_paginated(
                 page=self.current_page,
                 page_size=int(self.page_size_combo.currentText()),
+                session_id=session_id,
                 buyin_filter=buyin_filter,
                 result_filter=result_filter,
                 sort_column=self.sort_column,
@@ -338,6 +355,16 @@ class TournamentView(QtWidgets.QWidget):
         for b in sorted(self._data_cache.get('buyins', [])):
             self.buyin_filter.addItem(str(b))
         self.buyin_filter.blockSignals(False)
+
+    def _update_session_filter(self):
+        self.session_filter.blockSignals(True)
+        self.session_filter.clear()
+        self.session_filter.addItem("Все", userData=None)
+        self.session_mapping.clear()
+        for s in self._data_cache.get('sessions', []):
+            self.session_filter.addItem(s.session_name, userData=s.session_id)
+            self.session_mapping[s.session_name] = s.session_id
+        self.session_filter.blockSignals(False)
     def _on_filter_changed(self):
         self.current_page = 1
         self._load_tournaments_data()
