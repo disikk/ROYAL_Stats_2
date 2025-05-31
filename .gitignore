@@ -83,3 +83,4 @@ cache/
 *.diff
 *.patch
 last_db_path.txt
+/databases
