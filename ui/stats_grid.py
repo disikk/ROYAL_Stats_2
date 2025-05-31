@@ -838,7 +838,7 @@ class StatsGrid(QtWidgets.QWidget):
             if overall_stats.big_ko_x10 > 0:
                 per_tourn = overall_stats.total_tournaments / overall_stats.big_ko_x10
                 per_ko = overall_stats.total_knockouts / overall_stats.big_ko_x10 if overall_stats.total_knockouts > 0 else 0
-                info_text = f"1 на {per_tourn:.0f} турниров\n1 к {per_ko:.0f} нокаутов"
+                info_text = f"1 на {per_tourn:.0f} турниров\n1 на {per_ko:.0f} нокаутов"
             else:
                 info_text = "нет"
             self.bigko_x10_info_label.setText(info_text)
@@ -1180,7 +1180,8 @@ class StatsGrid(QtWidgets.QWidget):
                 x_pos = plot_area.left() + bar_width * (idx + 0.5) - text.boundingRect().width() / 2
                 max_y_value = max(place_dist.values()) * 1.1
                 bar_height_ratio = count / max_y_value
-                y_pos = plot_area.bottom() - (plot_area.height() * bar_height_ratio) - text.boundingRect().height() - 5
+                # Немного поднимаем процентные метки, чтобы они не перекрывались с барами
+                y_pos = plot_area.bottom() - (plot_area.height() * bar_height_ratio) - text.boundingRect().height() - 8
                 
                 text.setPos(x_pos, y_pos)
                 chart.scene().addItem(text)
