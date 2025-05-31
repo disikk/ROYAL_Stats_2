@@ -9,7 +9,7 @@ from PyQt6 import QtWidgets, QtGui, QtCore
 import sys
 import os
 import logging
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 
 import config
@@ -24,6 +24,7 @@ from ui.session_view import SessionView
 from ui.session_select_dialog import SessionSelectDialog
 from ui.custom_icons import CustomIcons  # Импортируем кастомные иконки
 from ui.background import thread_manager
+from models import OverallStats
 
 # Импортируем диалог управления БД
 from ui.database_management_dialog import DatabaseManagementDialog # Предполагаем, что такой файл будет создан
@@ -168,6 +169,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Передаем им ApplicationService или ссылки на репозитории через ApplicationService
         # Лучше передавать сам ApplicationService, чтобы Views могли запрашивать у него данные
         self.stats_grid = StatsGrid(self.app_service)
+        self.stats_grid.overallStatsChanged.connect(self._update_toolbar_info)
         self.tournament_view = TournamentView(self.app_service)
         self.session_view = SessionView(self.app_service)
 
@@ -443,9 +445,10 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
 
-    def _update_toolbar_info(self):
+    def _update_toolbar_info(self, stats: Optional[OverallStats] = None):
         """Обновляет информационные Label в панели инструментов."""
-        stats = self.app_service.get_overall_stats()
+        if stats is None:
+            stats = self.app_service.get_overall_stats()
         self.total_tournaments_label.setText(f"Турниров: {stats.total_tournaments}")
         self.total_profit_label.setText(f"Прибыль: {format_money(stats.total_prize - stats.total_buy_in, with_plus=True)}")
         apply_cell_color_by_value(self.total_profit_label, stats.total_prize - stats.total_buy_in) # Применяем цвет
