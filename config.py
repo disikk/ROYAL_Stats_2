@@ -20,6 +20,8 @@ DB_PATH = os.path.join(DEFAULT_DB_DIR, DEFAULT_DB_NAME)
 
 # Файл для хранения последней выбранной БД
 LAST_DB_FILE = os.path.join(DEFAULT_DB_DIR, "last_db_path.txt")
+# Файл для хранения кеша статистики по базам данных
+STATS_CACHE_FILE = os.path.join(DEFAULT_DB_DIR, "stats_cache.json")
 
 # Последняя открытая БД
 if os.path.exists(LAST_DB_FILE):
