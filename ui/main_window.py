@@ -268,8 +268,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def _update_progress(self, current: int, total: int, text: str):
         """Обновляет прогресс-бар."""
         if self.progress_dialog:
-            if self.progress_dialog.maximum() == 0: # Устанавливаем максимум при первом вызове
-                 self.progress_dialog.setMaximum(total)
+            if total != self.progress_dialog.maximum() and total != 0:
+                self.progress_dialog.setMaximum(total)
+            elif self.progress_dialog.maximum() == 0:
+                self.progress_dialog.setMaximum(total)
             self.progress_dialog.setValue(current)
             self.progress_dialog.setLabelText(text)
             # QApplication.processEvents() # Может понадобиться для моментального обновления, но exec() в диалоге обычно справляется
