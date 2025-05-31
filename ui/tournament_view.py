@@ -278,7 +278,7 @@ class TournamentView(QtWidgets.QWidget):
             widget_id=f"{id(self)}_filters",
             fn=load_filter_data,
             callback=self._on_filter_data_loaded,
-            error_callback=lambda e: logger.error(f"Ошибка загрузки фильтров TournamentView: {e}"),
+            error_callback=self._on_load_error,
             owner=self
         )
     def _on_filter_data_loaded(self, buyins):
@@ -308,7 +308,7 @@ class TournamentView(QtWidgets.QWidget):
             widget_id=f"{id(self)}_tournaments",
             fn=load_data,
             callback=self._on_tournaments_data_loaded,
-            error_callback=lambda e: logger.error(f"Ошибка загрузки турниров TournamentView: {e}"),
+            error_callback=self._on_load_error,
             owner=self
         )
     def _on_tournaments_data_loaded(self, pagination_result: PaginationResult):
@@ -320,6 +320,17 @@ class TournamentView(QtWidgets.QWidget):
         self._update_tournaments_table(self.tournaments)
         self._update_pagination_info()
         self.hide_loading_overlay()
+
+    def _on_load_error(self, error):
+        """Обрабатывает ошибки при загрузке данных."""
+        logger.error(f"Ошибка загрузки турниров TournamentView: {error}")
+        if getattr(self, "_show_overlay", False):
+            self.hide_loading_overlay()
+        QtWidgets.QMessageBox.critical(
+            self,
+            "Ошибка загрузки",
+            str(error)
+        )
     def _update_buyin_filter(self):
         self.buyin_filter.blockSignals(True)
         self.buyin_filter.clear()
