@@ -188,9 +188,12 @@ class MainWindow(QtWidgets.QMainWindow):
             new_path = self.app_service.db_path
             if new_path != current_path:
                 config.set_db_path(new_path)
-                # Сбрасываем флаги загрузки и перезагружаем текущую вкладку
-                self._tab_loaded = {'stats': False, 'tournaments': False, 'sessions': False}
-                self._load_current_tab(show_overlay=True)
+                # Загружаем/пересчитываем статистику для новой БД
+                self.app_service.ensure_overall_stats_cached()
+                # Инвалидируем кеши и обновляем все представления
+                self.invalidate_all_caches()
+                self.refresh_all_views(force_all=True)
+                self._update_toolbar_info()
             self.statusBar().showMessage(
                 f"Подключена база данных: {os.path.basename(self.app_service.db_path)}"
             )
@@ -485,10 +488,10 @@ class RefreshThread(QtCore.QThread):
         try:
             self.progress_update.emit("Обновление общей статистики...")
             self.progress_percent.emit(0)
-            
-            # Вызываем метод обновления статистики с callback для прогресса
-            self.app_service._update_all_statistics(None, progress_callback=self._report_progress)
-            
+
+            # Пересчитываем статистику только при первом открытии базы данных
+            self.app_service.ensure_overall_stats_cached()
+
             self.progress_update.emit("Данные обновлены")
             self.progress_percent.emit(100)
             self.finished_update.emit()
