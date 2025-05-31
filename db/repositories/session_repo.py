@@ -52,7 +52,23 @@ class SessionRepository:
         """
         Обновляет агрегированную статистику для существующей сессии.
         Принимает объект Session с уже подсчитанными агрегатами.
+        Если значения статистики не изменились, обновление не выполняется,
+        чтобы не менять файл базы данных лишний раз.
         """
+
+        current = self.get_session_by_id(session.session_id)
+        if current:
+            def _strip(s: Session) -> dict:
+                data = s.as_dict()
+                # Поля session_name и created_at не меняются при обновлении
+                data.pop("id", None)
+                data.pop("session_name", None)
+                data.pop("created_at", None)
+                return data
+
+            if _strip(current) == _strip(session):
+                return
+
         query = """
             UPDATE sessions
             SET

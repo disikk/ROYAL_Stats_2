@@ -54,16 +54,25 @@ class MainWindow(QtWidgets.QMainWindow):
         # Инициализируем UI
         self._init_ui()
 
-        # Подключаемся к последней использованной БД при старте
+        # Загружаем данные после отображения окна, чтобы не блокировать GUI
+        QtCore.QTimer.singleShot(0, self._load_initial_data)
+
+    def _load_initial_data(self):
+        """Подключает последнюю БД и запускает обновление статистики."""
         try:
-            self.app_service.switch_database(config.LAST_DB_PATH)
-            self.statusBar().showMessage(f"Подключена база данных: {os.path.basename(self.app_service.db_path)}")
-            self.refresh_all_data() # Обновляем данные после подключения
+            self.app_service.switch_database(config.LAST_DB_PATH, load_stats=False)
+            self._update_db_label()
+            self.statusBar().showMessage(
+                f"Подключена база данных: {os.path.basename(self.app_service.db_path)}"
+            )
         except Exception as e:
             logger.error(f"Ошибка при подключении к последней БД {config.LAST_DB_PATH}: {e}")
             self.statusBar().showMessage(f"Ошибка подключения к БД: {e}", 5000)
-            # Можно предложить пользователю выбрать или создать БД
             self.manage_databases()
+            return
+
+        # Статистика будет подсчитана асинхронно
+        self.refresh_all_data()
 
 
     def _init_ui(self):
@@ -74,6 +83,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Строка состояния
         self.setStatusBar(QtWidgets.QStatusBar(self))
+        # Постоянная метка с информацией о текущей БД
+        self.db_status_label = QtWidgets.QLabel("")
+        self.db_status_label.setStyleSheet("color: #777; margin-right: 8px;")
+        self.statusBar().addPermanentWidget(self.db_status_label)
 
         # Панель инструментов
         self.toolbar = self.addToolBar("Панель инструментов")
@@ -188,9 +201,13 @@ class MainWindow(QtWidgets.QMainWindow):
             new_path = self.app_service.db_path
             if new_path != current_path:
                 config.set_db_path(new_path)
-                # Сбрасываем флаги загрузки и перезагружаем текущую вкладку
-                self._tab_loaded = {'stats': False, 'tournaments': False, 'sessions': False}
-                self._load_current_tab(show_overlay=True)
+                # Загружаем/пересчитываем статистику для новой БД
+                self.app_service.ensure_overall_stats_cached()
+                # Инвалидируем кеши и обновляем все представления
+                self.invalidate_all_caches()
+                self.refresh_all_views(force_all=True)
+                self._update_toolbar_info()
+            self._update_db_label()
             self.statusBar().showMessage(
                 f"Подключена база данных: {os.path.basename(self.app_service.db_path)}"
             )
@@ -256,11 +273,14 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.pyqtSlot(int, int, str)
     def _update_progress(self, current: int, total: int, text: str):
         """Обновляет прогресс-бар."""
-        if self.progress_dialog:
-            if self.progress_dialog.maximum() == 0: # Устанавливаем максимум при первом вызове
-                 self.progress_dialog.setMaximum(total)
-            self.progress_dialog.setValue(current)
-            self.progress_dialog.setLabelText(text)
+        dialog = self.progress_dialog
+        if dialog:
+            if total != dialog.maximum() and total != 0:
+                dialog.setMaximum(total)
+            elif dialog.maximum() == 0:
+                dialog.setMaximum(total)
+            dialog.setValue(current)
+            dialog.setLabelText(text)
             # QApplication.processEvents() # Может понадобиться для моментального обновления, но exec() в диалоге обычно справляется
 
     @QtCore.pyqtSlot()
@@ -270,20 +290,45 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.import_thread and self.import_thread.isRunning():
             # Используем безопасный метод отмены через флаг
             self.import_thread.cancel()
-            # Обновляем диалог прогресса
-            self.progress_dialog.setLabelText("Отмена импорта, пожалуйста подождите...")
+            # Отключаем обновление прогресса, чтобы диалог не появлялся снова
+            try:
+                self.import_progress_signal.disconnect(self._update_progress)
+            except TypeError:
+                pass
+            # Закрываем диалог, чтобы он не показывался снова
+            if self.progress_dialog:
+                self.progress_dialog.close()
+                self.progress_dialog.deleteLater()
+                self.progress_dialog = None
             self.statusBar().showMessage("Импорт отменен пользователем", 3000)
 
     @QtCore.pyqtSlot()
     def _import_finished(self):
         """Вызывается по завершении потока импорта."""
         logger.info("Поток импорта завершен.")
-        # progress_dialog закроется автоматически если autoClose=True
+        # Без гарантированного закрытия прогресс-диалога иногда возникал
+        # сценарий, когда диалог оставался открытым из-за ошибки в потоке
+        # импорта и блокировал главный цикл событий. Поэтому дополнительно
+        # закрываем диалог принудительно.
+        if hasattr(self, "progress_dialog") and self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog.deleteLater()
+            self.progress_dialog = None
+
+        # Дожидаемся завершения потока и очищаем ссылки
+        if hasattr(self, "import_thread") and self.import_thread:
+            self.import_thread.wait()
+            self.import_thread.deleteLater()
+            self.import_thread = None
+
+        # progress_dialog обычно закрывается автоматически, но принудительное
+        # закрытие выше страхует от зависания интерфейса.
         
         # По завершении импорта сразу обновляем UI
         self._update_toolbar_info()
         self.invalidate_all_caches()
         self.refresh_all_views(show_overlay=False)
+        self._update_db_label()
 
         self.statusBar().showMessage(
             f"Импорт завершен. База данных: {os.path.basename(self.app_service.db_path)}",
@@ -366,6 +411,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.refresh_all_views(force_all=True)
         if hasattr(self, 'refresh_action'):
             self.refresh_action.setEnabled(True)
+        self._update_db_label()
         self.statusBar().showMessage(f"Данные обновлены. База данных: {os.path.basename(self.app_service.db_path)}", 3000)
 
     @QtCore.pyqtSlot(str)
@@ -393,6 +439,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.total_profit_label.setText(f"Прибыль: {format_money(stats.total_prize - stats.total_buy_in, with_plus=True)}")
         apply_cell_color_by_value(self.total_profit_label, stats.total_prize - stats.total_buy_in) # Применяем цвет
         self.total_ko_label.setText(f"KO: {stats.total_knockouts:.1f}")
+
+    def _update_db_label(self):
+        """Отображает имя текущей базы данных в строке состояния."""
+        self.db_status_label.setText(
+            f"БД: {os.path.basename(self.app_service.db_path)}"
+        )
 
 
     def tab_changed(self, index):
@@ -451,6 +503,14 @@ class ImportThread(QtCore.QThread):
             logger.critical(f"Критическая ошибка в потоке импорта: {e}")
             # Можно отправить сигнал об ошибке в UI
             self.progress_update.emit(0, 1, f"Ошибка импорта: {e}")
+        finally:
+            # Явно закрываем SQLite-соединение этого потока,
+            # чтобы избежать его закрытия из другого потока при сборке мусора.
+            try:
+                self.app_service.db.close_connection()
+            except Exception as e:
+                logger.warning(f"Ошибка при закрытии соединения в потоке импорта: {e}")
+
         logger.info("Поток импорта завершает работу.")
         
     def _is_import_canceled(self):
@@ -485,10 +545,12 @@ class RefreshThread(QtCore.QThread):
         try:
             self.progress_update.emit("Обновление общей статистики...")
             self.progress_percent.emit(0)
-            
-            # Вызываем метод обновления статистики с callback для прогресса
-            self.app_service._update_all_statistics(None, progress_callback=self._report_progress)
-            
+
+            # Пересчитываем статистику только при первом открытии базы данных
+            self.app_service.ensure_overall_stats_cached(
+                progress_callback=self._report_progress
+            )
+
             self.progress_update.emit("Данные обновлены")
             self.progress_percent.emit(100)
             self.finished_update.emit()

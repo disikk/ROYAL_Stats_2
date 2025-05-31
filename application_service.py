@@ -7,6 +7,8 @@
 """
 
 import os
+import json
+import hashlib
 import logging
 import uuid
 from typing import List, Dict, Any, Optional
@@ -130,6 +132,15 @@ class ApplicationService:
         self.place_dist_repo = PlaceDistributionRepository()
         self.ft_hand_repo = FinalTableHandRepository()
 
+        # Кеш статистики по БД. Ключ - путь к БД, значение - OverallStats
+        self._overall_stats_cache: Dict[str, OverallStats] = {}
+        # Кеш гистограммы распределения финишных позиций
+        self._place_distribution_cache: Dict[str, Dict[int, int]] = {}
+
+        # Файл для сохранения кеша между перезапусками
+        self._cache_file = config.STATS_CACHE_FILE
+        self._persistent_cache = self._load_persistent_cache()
+
         self.hh_parser = HandHistoryParser()
         self.ts_parser = TournamentSummaryParser()
         
@@ -147,10 +158,97 @@ class ApplicationService:
         """Возвращает список доступных файлов баз данных."""
         return self.db.get_available_databases()
 
-    def switch_database(self, db_path: str):
+    def switch_database(self, db_path: str, load_stats: bool = True):
         """Переключает активную базу данных."""
         self.db.set_db_path(db_path)
-        # После смены БД, репозитории автоматически будут работать с новой БД
+        # После смены БД репозитории автоматически работают с новой БД
+        if load_stats:
+            # Подгружаем статистику или пересчитываем её при первом подключении
+            self.ensure_overall_stats_cached()
+
+    def _compute_db_checksum(self, path: str) -> str:
+        """Возвращает MD5-хеш файла БД."""
+        try:
+            hasher = hashlib.md5()
+            with open(path, "rb") as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    hasher.update(chunk)
+            return hasher.hexdigest()
+        except Exception:
+            return ""
+
+    def _load_persistent_cache(self) -> Dict[str, Dict[str, Any]]:
+        """Загружает кеш статистики из файла."""
+        if os.path.exists(self._cache_file):
+            try:
+                with open(self._cache_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                result = {}
+                for db_path, entry in data.items():
+                    stats = OverallStats.from_dict(entry.get("overall_stats", {}))
+                    distribution = {int(k): int(v) for k, v in entry.get("place_distribution", {}).items()}
+                    result[db_path] = {
+                        "checksum": entry.get("checksum", ""),
+                        "overall_stats": stats,
+                        "place_distribution": distribution,
+                    }
+                return result
+            except Exception as e:
+                logger.warning(f"Не удалось загрузить кеш статистики: {e}")
+        return {}
+
+    def _save_persistent_cache(self) -> None:
+        """Сохраняет кеш статистики в файл."""
+        data = {}
+        for db_path, entry in self._persistent_cache.items():
+            data[db_path] = {
+                "checksum": entry.get("checksum", ""),
+                "overall_stats": entry.get("overall_stats", OverallStats()).as_dict(),
+                "place_distribution": entry.get("place_distribution", {i: 0 for i in range(1, 10)}),
+            }
+        try:
+            with open(self._cache_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"Не удалось сохранить кеш статистики: {e}")
+
+    def ensure_overall_stats_cached(self, progress_callback=None) -> None:
+        """Гарантирует наличие кешированных статистик для текущей БД."""
+        db_path = self.db.db_path
+        if db_path in self._overall_stats_cache and db_path in self._place_distribution_cache:
+            return
+
+        checksum = self._compute_db_checksum(db_path)
+        cached = self._persistent_cache.get(db_path)
+        if cached and cached.get("checksum") == checksum:
+            self._overall_stats_cache[db_path] = cached.get("overall_stats", OverallStats())
+            self._place_distribution_cache[db_path] = cached.get("place_distribution", {i: 0 for i in range(1, 10)})
+            logger.info("Используется сохранённый кэш статистики")
+            return
+        logger.info("Кэш не найден или устарел, пересчёт статистики")
+
+        # Проверяем, есть ли данные в таблице турниров
+        count = self.db.execute_query("SELECT COUNT(*) AS c FROM tournaments")
+        tournaments_num = count[0][0] if count else 0
+
+        if tournaments_num > 0:
+            # Если база не пуста и статистика ещё не рассчитана, пересчитываем
+            self._update_all_statistics("", progress_callback=progress_callback)
+        else:
+            # Пустая база — статистика нулевая
+            self.overall_stats_repo.update_overall_stats(OverallStats())
+
+        # Загружаем статистику из БД и кладём в кеш и файл
+        stats = self.overall_stats_repo.get_overall_stats()
+        distribution = self.place_dist_repo.get_distribution()
+        self._overall_stats_cache[db_path] = stats
+        self._place_distribution_cache[db_path] = distribution
+        self._persistent_cache[db_path] = {
+            "checksum": checksum,
+            "overall_stats": stats,
+            "place_distribution": distribution,
+        }
+        self._save_persistent_cache()
 
     def create_new_database(self, db_name: str):
         """Создает новую базу данных и переключается на нее."""
@@ -196,30 +294,67 @@ class ApplicationService:
         logger.info(f"=== НАЧАЛО ИМПОРТА ===")
         logger.info(f"is_canceled_callback передан: {is_canceled_callback is not None}")
 
-        # Инициализируем единый прогресс-бар
+        # Инициализируем прогресс-бар и оцениваем количество файлов
         if progress_callback:
-            progress_callback(0, 100, "Подготовка файлов...")
-        
+            progress_callback(0, 0, "Подготовка файлов...")
+
+        total_candidates = 0
+        for path in paths:
+            if is_canceled_callback and is_canceled_callback():
+                logger.info("Импорт отменен пользователем при подсчете файлов.")
+                if progress_callback:
+                    progress_callback(0, 0, "Импорт отменен пользователем")
+                return
+            if os.path.isdir(path):
+                for _, _, filenames in os.walk(path):
+                    if is_canceled_callback and is_canceled_callback():
+                        logger.info("Импорт отменен пользователем при подсчете файлов.")
+                        if progress_callback:
+                            progress_callback(0, 0, "Импорт отменен пользователем")
+                        return
+                    total_candidates += len([f for f in filenames if f.lower().endswith(".txt")])
+            elif os.path.isfile(path) and path.lower().endswith(".txt"):
+                total_candidates += 1
+
         all_files_to_process = []
         filtered_files_count = 0
+        processed_candidates = 0
         for path in paths:
+            if is_canceled_callback and is_canceled_callback():
+                logger.info("Импорт отменен пользователем при подготовке файлов.")
+                if progress_callback:
+                    progress_callback(processed_candidates, total_candidates, "Импорт отменен пользователем")
+                return
             if os.path.isdir(path):
                 for root, _, filenames in os.walk(path):
                     for fname in filenames:
-                        if fname.lower().endswith((".txt")):
+                        if is_canceled_callback and is_canceled_callback():
+                            logger.info("Импорт отменен пользователем при подготовке файлов.")
+                            if progress_callback:
+                                progress_callback(processed_candidates, total_candidates, "Импорт отменен пользователем")
+                            return
+                        if fname.lower().endswith(".txt"):
                             full_path = os.path.join(root, fname)
                             if is_poker_file(full_path):
                                 all_files_to_process.append(full_path)
                             else:
                                 filtered_files_count += 1
-                                logger.debug(f"Файл отфильтрован (нет покерных шаблонов): {fname}")
-            elif os.path.isfile(path):
-                if path.lower().endswith((".txt")):
-                    if is_poker_file(path):
-                        all_files_to_process.append(path)
-                    else:
-                        filtered_files_count += 1
-                        logger.debug(f"Файл отфильтрован (нет покерных шаблонов): {os.path.basename(path)}")
+                            processed_candidates += 1
+                            if progress_callback and total_candidates:
+                                progress_callback(processed_candidates, total_candidates, "Подготовка файлов...")
+            elif os.path.isfile(path) and path.lower().endswith(".txt"):
+                if is_canceled_callback and is_canceled_callback():
+                    logger.info("Импорт отменен пользователем при подготовке файлов.")
+                    if progress_callback:
+                        progress_callback(processed_candidates, total_candidates, "Импорт отменен пользователем")
+                    return
+                if is_poker_file(path):
+                    all_files_to_process.append(path)
+                else:
+                    filtered_files_count += 1
+                processed_candidates += 1
+                if progress_callback and total_candidates:
+                    progress_callback(processed_candidates, total_candidates, "Подготовка файлов...")
         if filtered_files_count > 0:
             logger.info(f"Отфильтровано {filtered_files_count} файлов без покерных шаблонов")
 
@@ -403,51 +538,57 @@ class ApplicationService:
         total_tournaments = len(parsed_tournaments_data)
         
         for tourney_id, data in parsed_tournaments_data.items():
-             try:
-                 # Запрашиваем текущий турнир для merge
-                 existing_tourney = self.tournament_repo.get_tournament_by_id(tourney_id)
+            try:
+                # Запрашиваем текущий турнир для merge
+                existing_tourney = self.tournament_repo.get_tournament_by_id(tourney_id)
 
-                 # Объединяем данные: TS > HH > Existing
-                 final_tourney_data = {}
-                 if existing_tourney:
-                     final_tourney_data.update(existing_tourney.as_dict()) # Base from existing
+                # Объединяем данные: TS > HH > Existing
+                final_tourney_data = {}
+                if existing_tourney:
+                    final_tourney_data.update(existing_tourney.as_dict()) # Base from existing
 
-                 final_tourney_data.update(data) # Override with data from parsed file batch
+                final_tourney_data.update(data) # Override with data from parsed file batch
 
-                 # Специальная логика для полей, которые должны объединяться, а не перезаписываться
-                 # reached_final_table = Existing OR New
-                 if existing_tourney and existing_tourney.reached_final_table:
-                     final_tourney_data['reached_final_table'] = True # Если хоть раз достигли финалки, флаг остается TRUE
+                # Специальная логика для полей, которые должны объединяться, а не перезаписываться
+                # reached_final_table = Existing OR New
+                if existing_tourney and existing_tourney.reached_final_table:
+                    final_tourney_data['reached_final_table'] = True # Если хоть раз достигли финалки, флаг остается TRUE
 
-                 # final_table_initial_stack - сохраняем только если это первая раздача финалки в истории парсинга этого турнира
-                 if existing_tourney and existing_tourney.final_table_initial_stack_chips is not None:
-                      # Если стек уже сохранен в БД, не перезаписываем его
-                      final_tourney_data['final_table_initial_stack_chips'] = existing_tourney.final_table_initial_stack_chips
-                      final_tourney_data['final_table_initial_stack_bb'] = existing_tourney.final_table_initial_stack_bb
+                # final_table_initial_stack - сохраняем только если это первая раздача финалки в истории парсинга этого турнира
+                if existing_tourney and existing_tourney.final_table_initial_stack_chips is not None:
+                    # Если стек уже сохранен в БД, не перезаписываем его
+                    final_tourney_data['final_table_initial_stack_chips'] = existing_tourney.final_table_initial_stack_chips
+                    final_tourney_data['final_table_initial_stack_bb'] = existing_tourney.final_table_initial_stack_bb
 
-                 # session_id - сохраняем первый session_id, связанный с этим турниром
-                 if existing_tourney and existing_tourney.session_id:
-                      final_tourney_data['session_id'] = existing_tourney.session_id
+                # session_id - сохраняем первый session_id, связанный с этим турниром
+                if existing_tourney and existing_tourney.session_id:
+                    final_tourney_data['session_id'] = existing_tourney.session_id
 
+                # Если известно, что финишное место в топ-9, устанавливаем флаг финального стола
+                finish_place = final_tourney_data.get('finish_place')
+                if finish_place is not None and 1 <= finish_place <= 9:
+                    final_tourney_data['reached_final_table'] = True
 
-                 # Логируем финальные данные турнира перед сохранением
-                 logger.debug(f"Сохранение турнира {tourney_id}: name={final_tourney_data.get('tournament_name')}, " 
-                            f"buyin={final_tourney_data.get('buyin')}, payout={final_tourney_data.get('payout')}, "
-                            f"place={final_tourney_data.get('finish_place')}")
+                # Логируем финальные данные турнира перед сохранением
+                logger.debug(
+                    f"Сохранение турнира {tourney_id}: name={final_tourney_data.get('tournament_name')}, "
+                    f"buyin={final_tourney_data.get('buyin')}, payout={final_tourney_data.get('payout')}, "
+                    f"place={final_tourney_data.get('finish_place')}"
+                )
 
-                 # Создаем объект Tournament из объединенных данных
-                 merged_tournament = Tournament.from_dict(final_tourney_data)
-                 self.tournament_repo.add_or_update_tournament(merged_tournament)
-                 tournaments_saved += 1
+                # Создаем объект Tournament из объединенных данных
+                merged_tournament = Tournament.from_dict(final_tourney_data)
+                self.tournament_repo.add_or_update_tournament(merged_tournament)
+                tournaments_saved += 1
                  
-                 # Обновляем прогресс
-                 if tournaments_saved % 5 == 0 or tournaments_saved == total_tournaments:
-                     save_progress = current_progress + int((tournaments_saved / max(total_tournaments, 1)) * (SAVING_WEIGHT * 0.4))
-                     if progress_callback:
-                         progress_callback(save_progress, total_steps, f"Сохранено турниров: {tournaments_saved}/{total_tournaments}")
+                # Обновляем прогресс
+                if tournaments_saved % 5 == 0 or tournaments_saved == total_tournaments:
+                    save_progress = current_progress + int((tournaments_saved / max(total_tournaments, 1)) * (SAVING_WEIGHT * 0.4))
+                    if progress_callback:
+                        progress_callback(save_progress, total_steps, f"Сохранено турниров: {tournaments_saved}/{total_tournaments}")
 
-             except Exception as e:
-                  logger.error(f"Ошибка сохранения/обновления турнира {tourney_id}: {e}")
+            except Exception as e:
+                logger.error(f"Ошибка сохранения/обновления турнира {tourney_id}: {e}")
 
         logger.info(f"Сохранено/обновлено {tournaments_saved} турниров.")
 
@@ -592,6 +733,8 @@ class ApplicationService:
             logger.debug("Обновление общей статистики...")
             overall_stats = self._calculate_overall_stats()
             self.overall_stats_repo.update_overall_stats(overall_stats)
+            # Обновляем кеш для текущей БД
+            self._overall_stats_cache[self.db.db_path] = overall_stats
             logger.info("Общая статистика обновлена успешно.")
             current_step += 1
             if progress_callback:
@@ -604,12 +747,13 @@ class ApplicationService:
         # --- Обновление Place Distribution ---
         try:
             logger.debug("Обновление распределения мест...")
-            self.place_dist_repo.reset_distribution()
+            new_distribution = {i: 0 for i in range(1, 10)}
             for tourney in all_final_tournaments:
-                self.place_dist_repo.increment_place_count(tourney.finish_place)
+                new_distribution[tourney.finish_place] += 1
                 current_step += 1
                 if progress_callback:
                     progress_callback(current_step, total_steps, f"Обновлено мест: {current_step-1}/{len(all_final_tournaments)}")
+            self.place_dist_repo.update_distribution(new_distribution)
             logger.info(f"Распределение мест обновлено для {len(all_final_tournaments)} турниров.")
         except Exception as e:
             logger.error(f"Ошибка при обновлении place_distribution: {e}")
@@ -654,6 +798,18 @@ class ApplicationService:
             progress_callback(total_steps, total_steps, "Статистика обновлена")
 
         logger.info("Обновление всей статистики завершено (с учетом возможных ошибок).")
+
+        # Сохраняем обновленную статистику в файл кеша
+        checksum = self._compute_db_checksum(self.db.db_path)
+        current_stats = self._overall_stats_cache.get(self.db.db_path, OverallStats())
+        current_dist = self.place_dist_repo.get_distribution()
+        self._place_distribution_cache[self.db.db_path] = current_dist
+        self._persistent_cache[self.db.db_path] = {
+            "checksum": checksum,
+            "overall_stats": current_stats,
+            "place_distribution": current_dist,
+        }
+        self._save_persistent_cache()
 
 
     def _calculate_overall_stats(self) -> OverallStats:
@@ -831,7 +987,8 @@ class ApplicationService:
 
     def get_overall_stats(self) -> OverallStats:
         """Возвращает объект OverallStats с общей статистикой."""
-        return self.overall_stats_repo.get_overall_stats()
+        self.ensure_overall_stats_cached()
+        return self._overall_stats_cache.get(self.db.db_path, OverallStats())
 
     def get_all_tournaments(self, buyin_filter: Optional[float] = None) -> List[Tournament]:
         """Возвращает список всех турниров Hero, опционально фильтруя по бай-ину."""
@@ -843,7 +1000,11 @@ class ApplicationService:
 
     def get_place_distribution(self) -> Dict[int, int]:
         """Возвращает распределение мест на финальном столе (1-9)."""
-        return self.place_dist_repo.get_distribution()
+        self.ensure_overall_stats_cached()
+        return self._place_distribution_cache.get(
+            self.db.db_path,
+            self.place_dist_repo.get_distribution(),
+        )
 
     def get_place_distribution_pre_ft(self) -> Dict[int, int]:
         """Возвращает распределение мест до финального стола (10-18)."""
