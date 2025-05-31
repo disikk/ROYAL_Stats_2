@@ -281,7 +281,17 @@ class MainWindow(QtWidgets.QMainWindow):
     def _import_finished(self):
         """Вызывается по завершении потока импорта."""
         logger.info("Поток импорта завершен.")
-        # progress_dialog закроется автоматически если autoClose=True
+        # Без гарантированного закрытия прогресс-диалога иногда возникал
+        # сценарий, когда диалог оставался открытым из-за ошибки в потоке
+        # импорта и блокировал главный цикл событий. Поэтому дополнительно
+        # закрываем диалог принудительно.
+        if hasattr(self, "progress_dialog") and self.progress_dialog:
+            self.progress_dialog.close()
+            self.progress_dialog.deleteLater()
+            self.progress_dialog = None
+
+        # progress_dialog обычно закрывается автоматически, но принудительное
+        # закрытие выше страхует от зависания интерфейса.
         
         # По завершении импорта сразу обновляем UI
         self._update_toolbar_info()
