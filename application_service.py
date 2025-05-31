@@ -300,8 +300,18 @@ class ApplicationService:
 
         total_candidates = 0
         for path in paths:
+            if is_canceled_callback and is_canceled_callback():
+                logger.info("Импорт отменен пользователем при подсчете файлов.")
+                if progress_callback:
+                    progress_callback(0, 0, "Импорт отменен пользователем")
+                return
             if os.path.isdir(path):
                 for _, _, filenames in os.walk(path):
+                    if is_canceled_callback and is_canceled_callback():
+                        logger.info("Импорт отменен пользователем при подсчете файлов.")
+                        if progress_callback:
+                            progress_callback(0, 0, "Импорт отменен пользователем")
+                        return
                     total_candidates += len([f for f in filenames if f.lower().endswith(".txt")])
             elif os.path.isfile(path) and path.lower().endswith(".txt"):
                 total_candidates += 1
@@ -310,9 +320,19 @@ class ApplicationService:
         filtered_files_count = 0
         processed_candidates = 0
         for path in paths:
+            if is_canceled_callback and is_canceled_callback():
+                logger.info("Импорт отменен пользователем при подготовке файлов.")
+                if progress_callback:
+                    progress_callback(processed_candidates, total_candidates, "Импорт отменен пользователем")
+                return
             if os.path.isdir(path):
                 for root, _, filenames in os.walk(path):
                     for fname in filenames:
+                        if is_canceled_callback and is_canceled_callback():
+                            logger.info("Импорт отменен пользователем при подготовке файлов.")
+                            if progress_callback:
+                                progress_callback(processed_candidates, total_candidates, "Импорт отменен пользователем")
+                            return
                         if fname.lower().endswith(".txt"):
                             full_path = os.path.join(root, fname)
                             if is_poker_file(full_path):
@@ -323,6 +343,11 @@ class ApplicationService:
                             if progress_callback and total_candidates:
                                 progress_callback(processed_candidates, total_candidates, "Подготовка файлов...")
             elif os.path.isfile(path) and path.lower().endswith(".txt"):
+                if is_canceled_callback and is_canceled_callback():
+                    logger.info("Импорт отменен пользователем при подготовке файлов.")
+                    if progress_callback:
+                        progress_callback(processed_candidates, total_candidates, "Импорт отменен пользователем")
+                    return
                 if is_poker_file(path):
                     all_files_to_process.append(path)
                 else:
