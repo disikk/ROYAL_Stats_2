@@ -622,6 +622,27 @@ class StatsGrid(QtWidgets.QWidget):
         self._show_overlay = show_overlay
         if show_overlay:
             self.show_loading_overlay()
+
+        # Перед загрузкой данных обновляем фильтры, чтобы они отражали текущее
+        # состояние базы данных. Сохраняем выбранные значения, если они все ещё
+        # присутствуют в новой выборке.
+        prev_buyin = self.buyin_filter.currentText()
+        prev_session = self.session_filter.currentText()
+        self._update_filters()
+        self.buyin_filter.blockSignals(True)
+        if prev_buyin in [self.buyin_filter.itemText(i) for i in range(self.buyin_filter.count())]:
+            self.buyin_filter.setCurrentText(prev_buyin)
+        self.buyin_filter.blockSignals(False)
+        self.session_filter.blockSignals(True)
+        if prev_session in [self.session_filter.itemText(i) for i in range(self.session_filter.count())]:
+            self.session_filter.setCurrentText(prev_session)
+        self.session_filter.blockSignals(False)
+        buyin = self.buyin_filter.currentText()
+        self.current_buyin_filter = float(buyin) if buyin and buyin != "Все" else None
+        session_name = self.session_filter.currentText()
+        self.current_session_id = (
+            self._session_map.get(session_name) if session_name and session_name != "Все" else None
+        )
         
         def load_data():
             tournaments = self.app_service.tournament_repo.get_all_tournaments(
