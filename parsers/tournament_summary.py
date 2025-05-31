@@ -28,7 +28,7 @@ class TournamentSummaryParser(BaseParser):
         self.re_tournament_id_title = re.compile(r"Tournament #(\d+)") # Из заголовка (первая строка)
         self.re_buyin_line = re.compile(r"Buy-in:.*?(\$|€)([\d]+(?:[.,]\d+)?)(?:\+(\$|€)?([\d]+(?:[.,]\d+)?))?") # Для поиска бай-ина в специальной строке "Buy-in:"
         self.re_place = re.compile(r"You finished the tournament in (\d+)[a-z]{0,2} place") # Место Hero
-        self.re_payout = re.compile(r"You received a total of (?:\$|€)?([\d]+(?:[.,]\d+)?)") # Выплата Hero
+        self.re_payout = re.compile(r"You received a total of (?:\$|€)?([\d,]+(?:\.\d+)?)") # Выплата Hero
         self.re_start_time = re.compile(r"Tournament started (\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})") # Время старта
         self.re_tournament_name_title = re.compile(r"Tournament #\d+,\s*(.+)") # Название турнира из заголовка (первая строка)
 
@@ -108,8 +108,8 @@ class TournamentSummaryParser(BaseParser):
         m_payout = self.re_payout.search(file_content_str)
         if m_payout:
             try:
-                # Заменяем запятую на точку для корректного преобразования в float
-                payout_str = m_payout.group(1).replace(',', '.')
+                # Удаляем запятые-разделители тысяч
+                payout_str = m_payout.group(1).replace(',', '')
                 payout = float(payout_str)
             except ValueError:
                  logger.warning(f"Не удалось распарсить выплату из '{m_payout.group(1)}' в файле {filename}")
