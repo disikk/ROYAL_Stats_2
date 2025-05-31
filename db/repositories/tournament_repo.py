@@ -447,12 +447,12 @@ class TournamentRepository:
         page_size = max(1, min(500, page_size))
         allowed_sort_columns = {
             "tournament_id": "tournament_id",
-            "tournament_name": "tournament_name", 
             "start_time": "start_time",
             "buyin": "buyin",
             "finish_place": "finish_place",
             "payout": "payout",
             "ko_count": "ko_count",
+            "final_table_initial_stack_chips": "final_table_initial_stack_chips",
             "profit": "(COALESCE(payout, 0) - COALESCE(buyin, 0))"
         }
         if sort_column not in allowed_sort_columns:
