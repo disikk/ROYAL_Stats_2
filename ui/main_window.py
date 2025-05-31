@@ -289,8 +289,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.import_thread and self.import_thread.isRunning():
             # Используем безопасный метод отмены через флаг
             self.import_thread.cancel()
-            # Обновляем диалог прогресса
-            self.progress_dialog.setLabelText("Отмена импорта, пожалуйста подождите...")
+            # Отключаем обновление прогресса, чтобы диалог не появлялся снова
+            try:
+                self.import_progress_signal.disconnect(self._update_progress)
+            except TypeError:
+                pass
+            # Закрываем диалог, чтобы он не показывался снова
+            if self.progress_dialog:
+                self.progress_dialog.close()
             self.statusBar().showMessage("Импорт отменен пользователем", 3000)
 
     @QtCore.pyqtSlot()
@@ -305,6 +311,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self.progress_dialog.close()
             self.progress_dialog.deleteLater()
             self.progress_dialog = None
+
+        # Дожидаемся завершения потока и очищаем ссылки
+        if hasattr(self, "import_thread") and self.import_thread:
+            self.import_thread.wait()
+            self.import_thread.deleteLater()
+            self.import_thread = None
 
         # progress_dialog обычно закрывается автоматически, но принудительное
         # закрытие выше страхует от зависания интерфейса.
@@ -488,6 +500,14 @@ class ImportThread(QtCore.QThread):
             logger.critical(f"Критическая ошибка в потоке импорта: {e}")
             # Можно отправить сигнал об ошибке в UI
             self.progress_update.emit(0, 1, f"Ошибка импорта: {e}")
+        finally:
+            # Явно закрываем SQLite-соединение этого потока,
+            # чтобы избежать его закрытия из другого потока при сборке мусора.
+            try:
+                self.app_service.db.close_connection()
+            except Exception as e:
+                logger.warning(f"Ошибка при закрытии соединения в потоке импорта: {e}")
+
         logger.info("Поток импорта завершает работу.")
         
     def _is_import_canceled(self):
