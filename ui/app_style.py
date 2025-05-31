@@ -346,7 +346,9 @@ def apply_bigko_x10_color(label: QtWidgets.QLabel, total_tournaments: int, x10_c
     if x10_count <= 0 or total_tournaments <= 0:
         color = "#EF4444"  # Red when there were no x10 knockouts
     else:
-        avg_interval = total_tournaments / x10_count
+        # Интервал может быть дробным. Приводим его к целому, чтобы не
+        # возникало «дыр» между граничными значениями диапазонов.
+        avg_interval = int(round(total_tournaments / x10_count))
 
         if avg_interval <= 51:
             # Bright green color and add fire emoji when very frequent

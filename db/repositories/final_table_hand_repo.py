@@ -129,6 +129,41 @@ class FinalTableHandRepository:
         results = self.db.execute_query(query, params)
         return [FinalTableHand.from_dict(dict(row)) for row in results]
 
+    def get_hands_by_filters(self, session_id: Optional[str] = None, tournament_ids: Optional[List[str]] = None) -> List[FinalTableHand]:
+        """
+        Возвращает раздачи финального стола с фильтрацией на уровне SQL.
+        
+        Args:
+            session_id: ID сессии для фильтрации (если не указан - все сессии)
+            tournament_ids: Список ID турниров для фильтрации (если не указан - все турниры)
+            
+        Returns:
+            Список раздач финального стола
+        """
+        query = """
+            SELECT
+                id, tournament_id, hand_id, hand_number, table_size, bb,
+                hero_stack, players_count, hero_ko_this_hand, pre_ft_ko,
+                session_id, is_early_final
+            FROM hero_final_table_hands
+            WHERE 1=1
+        """
+        params = []
+        
+        if session_id:
+            query += " AND session_id = ?"
+            params.append(session_id)
+            
+        if tournament_ids:
+            placeholders = ','.join(['?' for _ in tournament_ids])
+            query += f" AND tournament_id IN ({placeholders})"
+            params.extend(tournament_ids)
+            
+        query += " ORDER BY hand_number ASC"
+        
+        results = self.db.execute_query(query, params)
+        return [FinalTableHand.from_dict(dict(row)) for row in results]
+
     def get_first_final_table_hand_for_tournament(self, tournament_id: str) -> Optional[FinalTableHand]:
          """
          Возвращает первую раздачу 9-max стола (по hand_number) для указанного турнира.

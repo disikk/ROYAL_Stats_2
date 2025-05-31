@@ -15,6 +15,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 import math # Для округления в BB
 import re  # Добавить к существующим импортам
+import threading
 
 import config
 from db.manager import database_manager # Используем синглтон менеджер БД
@@ -140,6 +141,10 @@ class ApplicationService:
         # Файл для сохранения кеша между перезапусками
         self._cache_file = config.STATS_CACHE_FILE
         self._persistent_cache = self._load_persistent_cache()
+        
+        # Блокировка для предотвращения параллельного пересчета статистики
+        self._stats_update_lock = threading.Lock()
+        self._is_updating_stats = False
 
         self.hh_parser = HandHistoryParser()
         self.ts_parser = TournamentSummaryParser()
@@ -218,37 +223,62 @@ class ApplicationService:
         if db_path in self._overall_stats_cache and db_path in self._place_distribution_cache:
             return
 
-        checksum = self._compute_db_checksum(db_path)
-        cached = self._persistent_cache.get(db_path)
-        if cached and cached.get("checksum") == checksum:
-            self._overall_stats_cache[db_path] = cached.get("overall_stats", OverallStats())
-            self._place_distribution_cache[db_path] = cached.get("place_distribution", {i: 0 for i in range(1, 10)})
-            logger.info("Используется сохранённый кэш статистики")
-            return
-        logger.info("Кэш не найден или устарел, пересчёт статистики")
+        # Проверяем, не идет ли уже пересчет
+        with self._stats_update_lock:
+            if self._is_updating_stats:
+                logger.info("Пересчет статистики уже идет, пропускаем")
+                return
+            self._is_updating_stats = True
 
-        # Проверяем, есть ли данные в таблице турниров
-        count = self.db.execute_query("SELECT COUNT(*) AS c FROM tournaments")
-        tournaments_num = count[0][0] if count else 0
+        try:
+            checksum = self._compute_db_checksum(db_path)
+            cached = self._persistent_cache.get(db_path)
+            if cached and cached.get("checksum") == checksum:
+                self._overall_stats_cache[db_path] = cached.get("overall_stats", OverallStats())
+                self._place_distribution_cache[db_path] = cached.get("place_distribution", {i: 0 for i in range(1, 10)})
+                logger.info("Используется сохранённый кэш статистики")
+                return
+            logger.info("Кэш не найден или устарел, пересчёт статистики")
 
-        if tournaments_num > 0:
-            # Если база не пуста и статистика ещё не рассчитана, пересчитываем
-            self._update_all_statistics("", progress_callback=progress_callback)
-        else:
-            # Пустая база — статистика нулевая
-            self.overall_stats_repo.update_overall_stats(OverallStats())
+            # Проверяем, есть ли данные в таблице турниров
+            count = self.db.execute_query("SELECT COUNT(*) AS c FROM tournaments")
+            tournaments_num = count[0][0] if count else 0
 
-        # Загружаем статистику из БД и кладём в кеш и файл
-        stats = self.overall_stats_repo.get_overall_stats()
-        distribution = self.place_dist_repo.get_distribution()
-        self._overall_stats_cache[db_path] = stats
-        self._place_distribution_cache[db_path] = distribution
-        self._persistent_cache[db_path] = {
-            "checksum": checksum,
-            "overall_stats": stats,
-            "place_distribution": distribution,
-        }
-        self._save_persistent_cache()
+            if tournaments_num > 0:
+                # Если база не пуста и статистика ещё не рассчитана, пересчитываем
+                # НО! Проверяем, есть ли уже статистика в БД
+                existing_stats = self.overall_stats_repo.get_overall_stats()
+                if existing_stats and existing_stats.total_tournaments > 0:
+                    # Используем существующую статистику из БД
+                    logger.info("Используется существующая статистика из БД")
+                    self._overall_stats_cache[db_path] = existing_stats
+                    distribution = self.place_dist_repo.get_distribution()
+                    self._place_distribution_cache[db_path] = distribution
+                    return
+                else:
+                    # Только если статистики нет, запускаем пересчет
+                    logger.info("Статистика отсутствует, запускаем пересчет")
+                    self._update_all_statistics("", progress_callback=progress_callback)
+            else:
+                # Пустая база — статистика нулевая
+                self.overall_stats_repo.update_overall_stats(OverallStats())
+
+            # Загружаем статистику из БД и кладём в кеш и файл
+            stats = self.overall_stats_repo.get_overall_stats()
+            distribution = self.place_dist_repo.get_distribution()
+            self._overall_stats_cache[db_path] = stats
+            self._place_distribution_cache[db_path] = distribution
+            self._persistent_cache[db_path] = {
+                "checksum": checksum,
+                "overall_stats": stats,
+                "place_distribution": distribution,
+            }
+            self._save_persistent_cache()
+        
+        finally:
+            # Освобождаем флаг
+            with self._stats_update_lock:
+                self._is_updating_stats = False
 
     def create_new_database(self, db_name: str):
         """Создает новую базу данных и переключается на нее."""
