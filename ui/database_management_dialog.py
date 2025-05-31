@@ -251,12 +251,13 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
         """Выбирает БД и закрывает диалог."""
         if self.selected_db_path and self.selected_db_path != self.app_service.db_path:
             try:
-                self.app_service.switch_database(self.selected_db_path)
+                # Загружаем новую БД без синхронного пересчёта статистики
+                self.app_service.switch_database(self.selected_db_path, load_stats=False)
                 self.accept()
             except Exception as e:
                 QtWidgets.QMessageBox.critical(
-                    self, 
-                    "Ошибка", 
+                    self,
+                    "Ошибка",
                     f"Не удалось переключиться на базу данных:\n{e}"
                 )
         else:
