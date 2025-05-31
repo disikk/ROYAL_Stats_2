@@ -109,7 +109,7 @@ class TournamentView(QtWidgets.QWidget):
             ("Место", "finish_place"),
             ("Выплата", "payout"),
             ("KO", "ko_count"),
-            ("Стек на ФТ", "final_table_initial_stack_chips"),
+            ("Старт стек\nна ФТ", "final_table_initial_stack_chips"),
             ("Профит", "profit")
         ]
         header_labels = [h[0] for h in headers]
