@@ -327,9 +327,11 @@ class StatsGrid(QtWidgets.QWidget):
             }
         """)
 
-        content_layout.addWidget(self.chart_header)
+        # Заголовок и переключатель типа гистограммы в одной строке
+        chart_header_layout = QtWidgets.QHBoxLayout()
+        chart_header_layout.addWidget(self.chart_header)
+        chart_header_layout.addStretch()
 
-        # Переключатель типа гистограммы
         self.chart_selector = QtWidgets.QComboBox()
         self.chart_selector.addItems([
             "Финальный стол",
@@ -338,7 +340,8 @@ class StatsGrid(QtWidgets.QWidget):
         ])
         self.chart_selector.currentIndexChanged.connect(self._on_chart_selector_changed)
         self.chart_type = 'ft'
-        content_layout.addWidget(self.chart_selector, alignment=QtCore.Qt.AlignmentFlag.AlignLeft)
+        chart_header_layout.addWidget(self.chart_selector)
+        content_layout.addLayout(chart_header_layout)
         
         # Создаем виджет для графика
         self.chart_view = QChartView()
