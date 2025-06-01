@@ -172,21 +172,7 @@ class TournamentView(QtWidgets.QWidget):
         self.goto_page_input.returnPressed.connect(self._on_goto_page)
         pagination_layout.addWidget(self.goto_page_input)
         content_layout.addLayout(pagination_layout)
-        
-        # Статистика внизу
-        self.stats_label = QtWidgets.QLabel("")
-        self.stats_label.setStyleSheet("""
-            QLabel {
-                color: #E4E4E7;
-                font-size: 14px;
-                padding: 12px;
-                background-color: #27272A;
-                border-radius: 8px;
-                margin-top: 8px;
-            }
-        """)
-        content_layout.addWidget(self.stats_label)
-        
+
         self.main_layout.addWidget(self.content_widget)
         
         # Создаем loading overlay
@@ -460,32 +446,6 @@ class TournamentView(QtWidgets.QWidget):
             profit_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
             apply_cell_color_by_value(profit_item, profit)
             self.table.setItem(row, 7, profit_item)
-            
-    def _update_statistics(self, tournaments: List[Tournament]):
-        """Обновляет статистику для отфильтрованных турниров."""
-        if not tournaments:
-            self.stats_label.setText("Нет турниров для отображения")
-            return
-            
-        total = len(tournaments)
-        total_buyin = sum(t.buyin for t in tournaments if t.buyin is not None)
-        total_payout = sum(t.payout if t.payout is not None else 0 for t in tournaments)
-        total_profit = total_payout - total_buyin
-        total_ko = sum(t.ko_count for t in tournaments)
-        itm_count = sum(1 for t in tournaments if t.finish_place and 1 <= t.finish_place <= 3)
-        itm_percent = (itm_count / total * 100) if total > 0 else 0
-        
-        roi = ((total_profit / total_buyin) * 100) if total_buyin > 0 else 0
-        
-        self.stats_label.setText(
-            f"Турниров: {total} | "
-            f"Бай-ин: {format_money(total_buyin)} | "
-            f"Выплаты: {format_money(total_payout)} | "
-            f"Профит: {format_money(total_profit, with_plus=True)} | "
-            f"ROI: {roi:+.1f}% | "
-            f"ITM: {itm_percent:.1f}% | "
-            f"KO: {total_ko}"
-        )
 
     def _show_context_menu(self, position):
         """Контекстное меню для копирования ID турнира."""
