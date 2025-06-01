@@ -89,6 +89,11 @@ class SessionRepository:
         )
         self.db.execute_update(query, params)
 
+    def update_session_name(self, session_id: str, new_name: str):
+        """Обновляет название сессии."""
+        query = "UPDATE sessions SET session_name = ? WHERE session_id = ?"
+        self.db.execute_update(query, (new_name, session_id))
+
     def get_session_by_id(self, session_id: str) -> Optional[Session]:
         """
         Получает агрегированную инфу по одной сессии Hero по session_id.

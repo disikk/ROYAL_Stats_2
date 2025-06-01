@@ -86,26 +86,10 @@ class SessionView(QtWidgets.QWidget):
         
         content_layout.addWidget(self.table)
         
-        # Панель кнопок
+        # Панель кнопок (оставлена пустой для возможных будущих действий)
         button_layout = QtWidgets.QHBoxLayout()
         button_layout.setSpacing(8)
-        
-        self.delete_btn = QtWidgets.QPushButton("Удалить сессию")
-        self.delete_btn.setIcon(QtGui.QIcon.fromTheme("edit-delete"))
-        self.delete_btn.setEnabled(False)
-        self.delete_btn.clicked.connect(self._delete_session)
-        self.delete_btn.setStyleSheet("""
-            QPushButton:enabled {
-                background-color: #DC2626;
-            }
-            QPushButton:enabled:hover {
-                background-color: #EF4444;
-            }
-        """)
-        button_layout.addWidget(self.delete_btn)
-        
         button_layout.addStretch()
-        
         content_layout.addLayout(button_layout)
         
         # Подключаем сигналы
@@ -297,8 +281,8 @@ class SessionView(QtWidgets.QWidget):
             
     def _on_selection_changed(self):
         """Обработчик изменения выбора в таблице."""
-        selected = self.table.selectedItems()
-        self.delete_btn.setEnabled(len(selected) > 0)
+        # В текущей версии внизу нет кнопки удаления, поэтому обработчик пустой
+        pass
         
     def _show_context_menu(self, position):
         """Показывает контекстное меню для таблицы."""
@@ -307,28 +291,35 @@ class SessionView(QtWidgets.QWidget):
             return
             
         menu = QtWidgets.QMenu(self)
-        
-        # Действие просмотра турниров сессии
-        view_action = menu.addAction(QtGui.QIcon.fromTheme("view-list-details"), "Показать турниры сессии")
-        view_action.triggered.connect(lambda: self._view_session_tournaments(item.row()))
-        
+
+        # Действие переименования
+        rename_action = menu.addAction(QtGui.QIcon.fromTheme("edit-rename"), "Переименовать сессию")
+        rename_action.triggered.connect(lambda: self._rename_session(item.row()))
+
         # Действие удаления
         delete_action = menu.addAction(QtGui.QIcon.fromTheme("edit-delete"), "Удалить сессию")
         delete_action.triggered.connect(lambda: self._delete_session())
         
         menu.exec(self.table.mapToGlobal(position))
-        
-    def _view_session_tournaments(self, row: int):
-        """Показывает турниры выбранной сессии."""
-        # В простой версии просто показываем сообщение
-        # В полной версии можно было бы открыть диалог или переключиться на вкладку турниров с фильтром
+
+    def _rename_session(self, row: int):
+        """Переименовывает выбранную сессию."""
         session = self.sessions[row]
-        QtWidgets.QMessageBox.information(
+        new_name, ok = QtWidgets.QInputDialog.getText(
             self,
-            "Турниры сессии",
-            f"В сессии '{session.session_name}' сыграно {session.tournaments_count} турниров.\n\n"
-            f"Для просмотра турниров перейдите на вкладку 'Турниры' и используйте фильтры."
+            "Переименование сессии",
+            "Новое название сессии:",
+            QtWidgets.QLineEdit.EchoMode.Normal,
+            session.session_name,
         )
+        if ok and new_name and new_name != session.session_name:
+            try:
+                self.app_service.rename_session(session.session_id, new_name)
+                self.invalidate_cache()
+                self.reload(show_overlay=False)
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(self, "Ошибка", f"Не удалось переименовать сессию:\n{str(e)}")
+        
         
     def _delete_session(self):
         """Удаляет выбранную сессию."""
