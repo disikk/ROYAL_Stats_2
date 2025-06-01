@@ -103,9 +103,16 @@ class TournamentRepository:
             return Tournament.from_dict(dict(result[0]))
         return None
 
-    def get_all_tournaments(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> List[Tournament]:
+    def get_all_tournaments(
+        self,
+        session_id: Optional[str] = None,
+        buyin_filter: Optional[float] = None,
+        start_time_from: Optional[str] = None,
+        start_time_to: Optional[str] = None,
+    ) -> List[Tournament]:
         """
-        Возвращает список всех турниров Hero, опционально фильтруя по сессии или бай-ину.
+        Возвращает список всех турниров Hero с возможной фильтрацией по сессии,
+        бай-ину и диапазону дат.
         """
         query = """
             SELECT
@@ -124,6 +131,14 @@ class TournamentRepository:
         if buyin_filter is not None:
             conditions.append("buyin = ?")
             params.append(buyin_filter)
+
+        if start_time_from:
+            conditions.append("start_time >= ?")
+            params.append(start_time_from)
+
+        if start_time_to:
+            conditions.append("start_time <= ?")
+            params.append(start_time_to)
 
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
@@ -423,14 +438,16 @@ class TournamentRepository:
         return ko_counts
 
     def get_tournaments_paginated(
-        self, 
-        page: int = 1, 
+        self,
+        page: int = 1,
         page_size: int = 50,
         session_id: Optional[str] = None,
         buyin_filter: Optional[float] = None,
         result_filter: Optional[str] = None,
         sort_column: str = "start_time",
-        sort_direction: str = "DESC"
+        sort_direction: str = "DESC",
+        start_time_from: Optional[str] = None,
+        start_time_to: Optional[str] = None,
     ) -> PaginationResult:
         """
         Возвращает пагинированный список турниров с сортировкой.
@@ -442,6 +459,8 @@ class TournamentRepository:
             result_filter: Фильтр по результату ("prizes", "final_table", "out_of_prizes")
             sort_column: Колонка для сортировки
             sort_direction: Направление сортировки ("ASC" или "DESC")
+            start_time_from: Начальная дата для фильтрации
+            start_time_to: Конечная дата для фильтрации
         """
         page = max(1, page)
         page_size = max(1, min(500, page_size))
@@ -475,6 +494,12 @@ class TournamentRepository:
         if buyin_filter is not None:
             conditions.append("buyin = ?")
             params.append(buyin_filter)
+        if start_time_from:
+            conditions.append("start_time >= ?")
+            params.append(start_time_from)
+        if start_time_to:
+            conditions.append("start_time <= ?")
+            params.append(start_time_to)
         if result_filter:
             if result_filter == "prizes":
                 conditions.append("finish_place IS NOT NULL AND finish_place BETWEEN 1 AND 3")
