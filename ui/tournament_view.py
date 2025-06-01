@@ -353,8 +353,10 @@ class TournamentView(QtWidgets.QWidget):
                 result_filter=result_filter,
                 sort_column=self.sort_column,
                 sort_direction=self.sort_direction,
-                start_time_from=self.current_date_from.strftime("%Y-%m-%d %H:%M:%S"),
-                start_time_to=self.current_date_to.strftime("%Y-%m-%d %H:%M:%S"),
+                # Фильтр дат сравнивается со строкой вида "YYYY/MM/DD HH:MM:SS" в БД,
+                # поэтому здесь формируем такую же строку
+                start_time_from=self.current_date_from.strftime("%Y/%m/%d %H:%M:%S"),
+                start_time_to=self.current_date_to.strftime("%Y/%m/%d %H:%M:%S"),
             )
         thread_manager.run_in_thread(
             widget_id=f"{id(self)}_tournaments",
