@@ -265,7 +265,7 @@ class SessionView(QtWidgets.QWidget):
             self.table.setItem(row, 5, profit_item)
             
             # KO
-            ko_item = QtWidgets.QTableWidgetItem(str(session.knockouts_count))
+            ko_item = QtWidgets.QTableWidgetItem(f"{session.knockouts_count:.1f}")
             ko_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             if session.knockouts_count > 0:
                 ko_item.setForeground(QtGui.QBrush(QtGui.QColor("#10B981")))
