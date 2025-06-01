@@ -89,14 +89,6 @@ class TournamentView(QtWidgets.QWidget):
         self.result_filter.currentTextChanged.connect(self._on_filter_changed)
         filter_layout.addWidget(self.result_filter)
         
-        # Размер страницы
-        filter_layout.addWidget(QtWidgets.QLabel("На странице:"))
-        self.page_size_combo = QtWidgets.QComboBox()
-        self.page_size_combo.addItems(["50", "100", "200", "500"])
-        self.page_size_combo.setCurrentText(str(self.page_size))
-        self.page_size_combo.currentTextChanged.connect(self._on_page_size_changed)
-        filter_layout.addWidget(self.page_size_combo)
-        
         filter_layout.addStretch()
         
         # Информация о пагинации
@@ -167,6 +159,12 @@ class TournamentView(QtWidgets.QWidget):
         self.last_page_btn.clicked.connect(lambda: self._go_to_page(self.total_pages))
         pagination_layout.addWidget(self.last_page_btn)
         pagination_layout.addStretch()
+        pagination_layout.addWidget(QtWidgets.QLabel("На странице:"))
+        self.page_size_combo = QtWidgets.QComboBox()
+        self.page_size_combo.addItems(["50", "100", "200", "500"])
+        self.page_size_combo.setCurrentText(str(self.page_size))
+        self.page_size_combo.currentTextChanged.connect(self._on_page_size_changed)
+        pagination_layout.addWidget(self.page_size_combo)
         pagination_layout.addWidget(QtWidgets.QLabel("Перейти к:"))
         self.goto_page_input = QtWidgets.QLineEdit()
         self.goto_page_input.setMaximumWidth(60)
