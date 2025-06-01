@@ -1257,6 +1257,18 @@ class StatsGrid(QtWidgets.QWidget):
         num_places = len(categories)
         bar_width = plot_area.width() / num_places
 
+        # Получаем максимальное значение по оси Y, чтобы корректно рассчитывать
+        # высоту баров. Это значение соответствует диапазону, заданному для
+        # оси графика, поэтому вычисленные координаты будут совпадать с
+        # реальным размером столбцов.
+        axis_y = chart.axisY()
+        try:
+            y_max = float(axis_y.max())
+        except Exception:
+            # На случай, если метод или свойство отличаются в версии Qt,
+            # используем максимальное значение из данных как резервное.
+            y_max = float(max(place_dist.values())) if place_dist else 1
+
         for idx, place in enumerate(categories):
             count = place_dist.get(place, 0)
             if count > 0:
@@ -1274,8 +1286,8 @@ class StatsGrid(QtWidgets.QWidget):
                     - text.boundingRect().width() / 2
                 )
 
-                max_y_value = max(place_dist.values()) * 1.1
-                bar_height_ratio = count / max_y_value
+                # Высота столбца относительно установленного диапазона оси Y
+                bar_height_ratio = count / y_max if y_max else 0
                 bar_top = plot_area.bottom() - (plot_area.height() * bar_height_ratio)
                 label_height = text.boundingRect().height()
 
