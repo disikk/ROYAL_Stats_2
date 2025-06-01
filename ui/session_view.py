@@ -265,7 +265,7 @@ class SessionView(QtWidgets.QWidget):
             self.table.setItem(row, 5, profit_item)
             
             # KO
-            ko_item = QtWidgets.QTableWidgetItem(str(session.knockouts_count))
+            ko_item = QtWidgets.QTableWidgetItem(f"{session.knockouts_count:.1f}")
             ko_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             if session.knockouts_count > 0:
                 ko_item.setForeground(QtGui.QBrush(QtGui.QColor("#10B981")))
@@ -317,6 +317,13 @@ class SessionView(QtWidgets.QWidget):
                 self.app_service.rename_session(session.session_id, new_name)
                 self.invalidate_cache()
                 self.reload(show_overlay=False)
+                # После переименования обновляем связанные представления,
+                # чтобы новое название появилось в фильтрах других вкладок.
+                main_window = self.window()
+                if hasattr(main_window, "invalidate_all_caches") and hasattr(main_window, "refresh_all_views"):
+                    main_window.invalidate_all_caches()
+                    # Обновляем все вкладки без показа оверлея загрузки
+                    main_window.refresh_all_views(show_overlay=False, force_all=True)
             except Exception as e:
                 QtWidgets.QMessageBox.critical(self, "Ошибка", f"Не удалось переименовать сессию:\n{str(e)}")
         
