@@ -18,6 +18,7 @@ from PyQt6.QtCharts import (
 import logging
 from typing import Dict, List, Any
 import math
+from datetime import datetime
 
 import config
 from application_service import ApplicationService
@@ -216,6 +217,8 @@ class StatsGrid(QtWidgets.QWidget):
         self._cache_valid = False  # Флаг валидности кеша
         self.current_buyin_filter = None
         self.current_session_id = None
+        self.current_date_from = datetime(2025, 1, 1, 0, 0)
+        self.current_date_to = datetime.now()
         self._session_map = {}
         
         # Таймер для debounce фильтров
@@ -257,17 +260,60 @@ class StatsGrid(QtWidgets.QWidget):
 
         header_layout.addStretch()
 
-        header_layout.addWidget(QtWidgets.QLabel("Бай-ин:"))
+        # Бай-ин
+        buyin_widget = QtWidgets.QWidget()
+        buyin_layout = QtWidgets.QVBoxLayout(buyin_widget)
+        buyin_layout.setContentsMargins(0, 0, 0, 0)
+        buyin_layout.setSpacing(2)
+        buyin_label = QtWidgets.QLabel("Бай-ин")
         self.buyin_filter = QtWidgets.QComboBox()
         self.buyin_filter.setMinimumWidth(100)
         self.buyin_filter.currentTextChanged.connect(self._on_filter_changed)
-        header_layout.addWidget(self.buyin_filter)
+        buyin_layout.addWidget(buyin_label)
+        buyin_layout.addWidget(self.buyin_filter)
+        header_layout.addWidget(buyin_widget)
 
-        header_layout.addWidget(QtWidgets.QLabel("Сессия:"))
+        # Сессия
+        session_widget = QtWidgets.QWidget()
+        session_layout = QtWidgets.QVBoxLayout(session_widget)
+        session_layout.setContentsMargins(0, 0, 0, 0)
+        session_layout.setSpacing(2)
+        session_label = QtWidgets.QLabel("Сессия")
         self.session_filter = QtWidgets.QComboBox()
         self.session_filter.setMinimumWidth(140)
         self.session_filter.currentTextChanged.connect(self._on_filter_changed)
-        header_layout.addWidget(self.session_filter)
+        session_layout.addWidget(session_label)
+        session_layout.addWidget(self.session_filter)
+        header_layout.addWidget(session_widget)
+
+        # Диапазон дат
+        from_widget = QtWidgets.QWidget()
+        from_layout = QtWidgets.QVBoxLayout(from_widget)
+        from_layout.setContentsMargins(0, 0, 0, 0)
+        from_layout.setSpacing(2)
+        from_label = QtWidgets.QLabel("С")
+        self.date_from_edit = QtWidgets.QDateTimeEdit()
+        self.date_from_edit.setCalendarPopup(True)
+        self.date_from_edit.setDisplayFormat("dd.MM.yyyy HH:mm")
+        self.date_from_edit.setDateTime(QtCore.QDateTime.fromString("2025-01-01 00:00:00", "yyyy-MM-dd HH:mm:ss"))
+        self.date_from_edit.dateTimeChanged.connect(self._on_filter_changed)
+        from_layout.addWidget(from_label)
+        from_layout.addWidget(self.date_from_edit)
+        header_layout.addWidget(from_widget)
+
+        to_widget = QtWidgets.QWidget()
+        to_layout = QtWidgets.QVBoxLayout(to_widget)
+        to_layout.setContentsMargins(0, 0, 0, 0)
+        to_layout.setSpacing(2)
+        to_label = QtWidgets.QLabel("По")
+        self.date_to_edit = QtWidgets.QDateTimeEdit()
+        self.date_to_edit.setCalendarPopup(True)
+        self.date_to_edit.setDisplayFormat("dd.MM.yyyy HH:mm")
+        self.date_to_edit.setDateTime(QtCore.QDateTime.currentDateTime())
+        self.date_to_edit.dateTimeChanged.connect(self._on_filter_changed)
+        to_layout.addWidget(to_label)
+        to_layout.addWidget(self.date_to_edit)
+        header_layout.addWidget(to_widget)
 
         content_layout.addLayout(header_layout)
 
@@ -657,6 +703,8 @@ class StatsGrid(QtWidgets.QWidget):
         self.current_session_id = (
             self._session_map.get(session_name) if session_name and session_name != "Все" else None
         )
+        self.current_date_from = self.date_from_edit.dateTime().toPyDateTime()
+        self.current_date_to = self.date_to_edit.dateTime().toPyDateTime()
         self.invalidate_cache()
         self.reload()
             
@@ -697,10 +745,12 @@ class StatsGrid(QtWidgets.QWidget):
             # Проверяем отмену перед загрузкой турниров
             if is_cancelled_callback and is_cancelled_callback():
                 return None
-                
+
             tournaments = self.app_service.tournament_repo.get_all_tournaments(
                 session_id=self.current_session_id,
                 buyin_filter=self.current_buyin_filter,
+                start_time_from=self.current_date_from.strftime("%Y-%m-%d %H:%M:%S"),
+                start_time_to=self.current_date_to.strftime("%Y-%m-%d %H:%M:%S"),
             )
             
             # Проверяем отмену после загрузки турниров
