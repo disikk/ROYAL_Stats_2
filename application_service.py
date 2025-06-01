@@ -1086,6 +1086,10 @@ class ApplicationService:
         self.session_repo.delete_session_by_id(session_id)
         # Статистика пересчитывается асинхронно во внешнем потоке
 
+    def rename_session(self, session_id: str, new_name: str):
+        """Переименовывает сессию."""
+        self.session_repo.update_session_name(session_id, new_name)
+
 
 # Создаем синглтон экземпляр ApplicationService
 application_service = ApplicationService()
