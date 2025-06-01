@@ -70,7 +70,7 @@ class StatCard(QtWidgets.QFrame):
             QFrame {
                 background-color: #27272A;
                 border-radius: 8px;
-                padding: 4px 8px;
+                padding: 3px 6px;
                 border: 1px solid #3F3F46;
             }
             QFrame:hover {
@@ -80,14 +80,14 @@ class StatCard(QtWidgets.QFrame):
         """)
         
         layout = QtWidgets.QHBoxLayout(self)
-        layout.setSpacing(4)
+        layout.setSpacing(3)
         layout.setContentsMargins(0, 0, 0, 0)
         
         self.title_label = QtWidgets.QLabel(title)
         self.title_label.setStyleSheet("""
             QLabel {
                 color: #A1A1AA;
-                font-size: 12px;
+                font-size: 11px;
                 font-weight: 500;
                 background-color: transparent;
             }
@@ -101,7 +101,7 @@ class StatCard(QtWidgets.QFrame):
         self.value_label.setStyleSheet("""
             QLabel {
                 color: #FAFAFA;
-                font-size: 18px;
+                font-size: 16px;
                 font-weight: bold;
                 background-color: transparent;
             }
@@ -127,7 +127,7 @@ class SpecialStatCard(QtWidgets.QFrame):
             QFrame {
                 background-color: #27272A;
                 border-radius: 8px;
-                padding: 4px 8px;
+                padding: 3px 6px;
                 border: 1px solid #3F3F46;
             }
             QFrame:hover {
@@ -137,18 +137,18 @@ class SpecialStatCard(QtWidgets.QFrame):
         """)
         
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setSpacing(1)
+        layout.setSpacing(0)
         layout.setContentsMargins(0, 0, 0, 0)
         
         # Верхняя строка с заголовком и значением
         top_layout = QtWidgets.QHBoxLayout()
-        top_layout.setSpacing(4)
+        top_layout.setSpacing(3)
         
         self.title_label = QtWidgets.QLabel(title)
         self.title_label.setStyleSheet("""
             QLabel {
                 color: #A1A1AA;
-                font-size: 12px;
+                font-size: 11px;
                 font-weight: 500;
                 background-color: transparent;
             }
@@ -161,7 +161,7 @@ class SpecialStatCard(QtWidgets.QFrame):
         self.value_label.setStyleSheet("""
             QLabel {
                 color: #FAFAFA;
-                font-size: 18px;
+                font-size: 16px;
                 font-weight: bold;
                 background-color: transparent;
             }
@@ -242,7 +242,7 @@ class StatsGrid(QtWidgets.QWidget):
         content_widget = QtWidgets.QWidget()
         content_layout = QtWidgets.QVBoxLayout(content_widget)
         content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(4)
+        content_layout.setSpacing(3)
         
         # Заголовок с панелью фильтров
         header_layout = QtWidgets.QHBoxLayout()
@@ -321,7 +321,7 @@ class StatsGrid(QtWidgets.QWidget):
         
         # Сетка карточек статистики
         stats_grid = QtWidgets.QGridLayout()
-        stats_grid.setSpacing(3)
+        stats_grid.setSpacing(2)
         
         # Создаем карточки для основных показателей
         self.cards = {
@@ -342,12 +342,11 @@ class StatsGrid(QtWidgets.QWidget):
             'incomplete_ft': StatCard("Неполные финалки", "-"),
         }
         
-        # Размещаем карточки в сетке (4 колонки)
+        # Размещаем карточки в сетке (5 колонок)
         positions = [
-            ('tournaments', 0, 0), ('knockouts', 0, 1), ('avg_ko', 0, 2), ('roi', 0, 3),
-            ('itm', 1, 0), ('ft_reach', 1, 1), ('avg_ft_stack', 1, 2), ('early_ft_ko', 1, 3),
-            ('avg_place_all', 2, 0), ('avg_place_ft', 2, 1), ('avg_place_no_ft', 2, 2), ('early_ft_bust', 2, 3),
-            ('pre_ft_ko', 3, 0), ('incomplete_ft', 3, 1), ('ko_contribution', 3, 2),
+            ('tournaments', 0, 0), ('knockouts', 0, 1), ('avg_ko', 0, 2), ('roi', 0, 3), ('itm', 0, 4),
+            ('ft_reach', 1, 0), ('avg_ft_stack', 1, 1), ('early_ft_ko', 1, 2), ('avg_place_all', 1, 3), ('avg_place_ft', 1, 4),
+            ('avg_place_no_ft', 2, 0), ('early_ft_bust', 2, 1), ('pre_ft_ko', 2, 2), ('incomplete_ft', 2, 3), ('ko_contribution', 2, 4),
         ]
         
         for key, row, col in positions:
@@ -359,7 +358,7 @@ class StatsGrid(QtWidgets.QWidget):
         # Разделитель
         separator = QtWidgets.QFrame()
         separator.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        separator.setStyleSheet("QFrame { background-color: #3F3F46; max-height: 1px; margin: 5px 0; }")
+        separator.setStyleSheet("QFrame { background-color: #3F3F46; max-height: 1px; margin: 3px 0; }")
         content_layout.addWidget(separator)
         
         # График распределения мест
@@ -392,8 +391,8 @@ class StatsGrid(QtWidgets.QWidget):
         # Создаем виджет для графика
         self.chart_view = QChartView()
         self.chart_view.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        self.chart_view.setMinimumHeight(315)
-        self.chart_view.setMaximumHeight(405)
+        self.chart_view.setMinimumHeight(236)
+        self.chart_view.setMaximumHeight(304)
         content_layout.addWidget(self.chart_view)
         self.chart_view.chart_labels = []  # Список для хранения меток
         
@@ -445,6 +444,11 @@ class StatsGrid(QtWidgets.QWidget):
             'x1000': StatCard("KO x1000", "-"),
             'x10000': StatCard("KO x10000", "-"),
         }
+        
+        # Фиксируем минимальную высоту для карточек Big KO
+        for card in self.bigko_cards.values():
+            card.setMinimumHeight(40)
+            card.setMaximumHeight(40)
 
         # Добавляем все карточки Big KO в горизонтальный layout
         bigko_layout.addWidget(self.bigko_cards['x1.5'])

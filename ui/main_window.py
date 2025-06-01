@@ -43,7 +43,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(config.APP_TITLE)
-        self.setMinimumSize(1200, 952)
+        self.setMinimumSize(1200, 880)
 
         # ApplicationService уже проинициализирован как синглтон
         self.app_service = application_service
@@ -85,7 +85,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Строка состояния. Оставляем небольшую высоту для сообщений.
         self.setStatusBar(QtWidgets.QStatusBar(self))
         self.statusBar().setStyleSheet(
-            "padding: 2px 4px; margin: 0; height: 16px; font-size: 10px;"
+            "padding: 2px 4px; margin: 0; height: 16px; font-size: 12px;"
         )
         self.statusBar().setSizeGripEnabled(False)
 
