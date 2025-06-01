@@ -749,8 +749,10 @@ class StatsGrid(QtWidgets.QWidget):
             tournaments = self.app_service.tournament_repo.get_all_tournaments(
                 session_id=self.current_session_id,
                 buyin_filter=self.current_buyin_filter,
-                start_time_from=self.current_date_from.strftime("%Y-%m-%d %H:%M:%S"),
-                start_time_to=self.current_date_to.strftime("%Y-%m-%d %H:%M:%S"),
+                # В БД дата хранится в формате "YYYY/MM/DD HH:MM:SS", поэтому
+                # формируем строки фильтра аналогично, чтобы сравнение прошло корректно
+                start_time_from=self.current_date_from.strftime("%Y/%m/%d %H:%M:%S"),
+                start_time_to=self.current_date_to.strftime("%Y/%m/%d %H:%M:%S"),
             )
             
             # Проверяем отмену после загрузки турниров
