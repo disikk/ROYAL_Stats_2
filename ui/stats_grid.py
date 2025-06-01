@@ -50,6 +50,7 @@ from stats import (
     IncompleteFTPercentStat,
     KOLuckStat,
     ROIAdjustedStat,
+    KOContributionStat,
 )
 
 from ui.background import thread_manager
@@ -282,6 +283,7 @@ class StatsGrid(QtWidgets.QWidget):
             'knockouts': StatCard("Всего нокаутов", "-"),
             'avg_ko': StatCard("Среднее KO за турнир", "-"),
             'roi': StatCard("ROI", "-"),
+            'ko_contribution': SpecialStatCard("Вклад KO", "-"),
             'itm': StatCard("ITM%", "-"),
             'ft_reach': StatCard("% Достижения FT", "-"),
             'avg_ft_stack': SpecialStatCard("Средний стек на FT", "-"),
@@ -299,7 +301,7 @@ class StatsGrid(QtWidgets.QWidget):
             ('tournaments', 0, 0), ('knockouts', 0, 1), ('avg_ko', 0, 2), ('roi', 0, 3),
             ('itm', 1, 0), ('ft_reach', 1, 1), ('avg_ft_stack', 1, 2), ('early_ft_ko', 1, 3),
             ('avg_place_all', 2, 0), ('avg_place_ft', 2, 1), ('avg_place_no_ft', 2, 2), ('early_ft_bust', 2, 3),
-            ('pre_ft_ko', 3, 0), ('incomplete_ft', 3, 1),
+            ('pre_ft_ko', 3, 0), ('incomplete_ft', 3, 1), ('ko_contribution', 3, 2),
         ]
         
         for key, row, col in positions:
@@ -766,6 +768,9 @@ class StatsGrid(QtWidgets.QWidget):
             incomplete_ft_percent = IncompleteFTPercentStat().compute(tournaments, ft_hands, [], overall_stats).get('incomplete_ft_percent', 0)
             ko_luck_value = KOLuckStat().compute(tournaments, [], [], overall_stats).get('ko_luck', 0.0)
             roi_adj_value = ROIAdjustedStat().compute(tournaments, ft_hands, [], overall_stats).get('roi_adj', 0.0)
+            ko_contrib_res = KOContributionStat().compute(tournaments, [], [], None)
+            ko_contrib = ko_contrib_res.get('ko_contribution', 0.0)
+            ko_contrib_adj = ko_contrib_res.get('ko_contribution_adj', 0.0)
             all_places = [t.finish_place for t in tournaments if t.finish_place is not None]
             avg_all = sum(all_places) / len(all_places) if all_places else 0.0
             ft_places = [t.finish_place for t in tournaments if t.reached_final_table and t.finish_place is not None and 1 <= t.finish_place <= 9]
@@ -792,6 +797,8 @@ class StatsGrid(QtWidgets.QWidget):
                 'avg_place_no_ft': avg_no_ft,
                 'ko_luck': ko_luck_value,
                 'roi_adj': roi_adj_value,
+                'ko_contribution': ko_contrib,
+                'ko_contribution_adj': ko_contrib_adj,
             }
         thread_manager.run_in_thread(
             widget_id=str(id(self)),
@@ -827,6 +834,16 @@ class StatsGrid(QtWidgets.QWidget):
             logger.debug(f"Обновлена карточка roi: {roi_text}")
             # Применяем цвет только к тексту, а не к фону
             apply_cell_color_by_value(self.cards['roi'].value_label, roi_value)
+
+            ko_contrib = data.get('ko_contribution', 0.0)
+            ko_contrib_adj = data.get('ko_contribution_adj', 0.0)
+            self.cards['ko_contribution'].update_value(
+                f"{ko_contrib:.1f}%",
+                f"adj {ko_contrib_adj:.1f}%"
+            )
+            logger.debug(
+                f"Обновлена карточка ko_contribution: {ko_contrib:.1f}% / {ko_contrib_adj:.1f}%"
+            )
 
             itm_value = data['itm']
             self.cards['itm'].update_value(f"{itm_value:.1f}%")
