@@ -1261,12 +1261,22 @@ class StatsGrid(QtWidgets.QWidget):
         # высоту баров. Это значение соответствует диапазону, заданному для
         # оси графика, поэтому вычисленные координаты будут совпадать с
         # реальным размером столбцов.
-        axis_y = chart.axisY()
+        # В Qt6 метод axisY() отсутствует, поэтому используем общий способ
+        # получения осей графика
+        if hasattr(chart, "axisY"):
+            axis_y = chart.axisY()
+        else:
+            vertical_axes = chart.axes(QtCore.Qt.Orientation.Vertical)
+            axis_y = vertical_axes[0] if vertical_axes else None
+
         try:
-            y_max = float(axis_y.max())
+            y_max = float(axis_y.max()) if axis_y is not None else None
         except Exception:
-            # На случай, если метод или свойство отличаются в версии Qt,
-            # используем максимальное значение из данных как резервное.
+            y_max = None
+
+        if y_max is None:
+            # На случай, если метод или свойство отличаются в версии Qt
+            # используем максимальное значение из данных как резервное
             y_max = float(max(place_dist.values())) if place_dist else 1
 
         for idx, place in enumerate(categories):
