@@ -89,59 +89,133 @@ def apply_dark_theme(app: QtWidgets.QApplication):
         QComboBox {
             background-color: #27272A;
             border: 1px solid #3F3F46;
-            padding: 6px 12px;
+            padding: 2px 10px;
             border-radius: 6px;
             min-width: 100px;
         }
         
-        QComboBox {
-    background-color: #27272A;
-    border: 1px solid #3F3F46;
-    padding: 6px 12px;
-    border-radius: 6px;
-    min-width: 100px;
-}
-
-QComboBox:hover {
-    border: 1px solid #52525B;
-}
-
-QComboBox::drop-down {
-    border: none;
-    padding-right: 8px;
-}
-
-QComboBox::down-arrow {
-    image: none;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 5px solid #A1A1AA;
-    margin-right: 5px;
-}
-
-QComboBox QAbstractItemView {
-    background-color: #27272A;
-    border: 1px solid #3F3F46;
-    selection-background-color: #71717A;
-    selection-color: #FFD700;
-    outline: none;
-}
-
-QComboBox QAbstractItemView::item {
-    padding: 8px 12px;
-    border: none;
-    color: #E4E4E7;
-}
-
-QComboBox QAbstractItemView::item:hover {
-    background-color: #71717A;
-    color: #FFD700;
-}
-
-QComboBox QAbstractItemView::item:selected {
-    background-color: #71717A;
-    color: #FFD700;
-}
+        QComboBox:hover {
+            border: 1px solid #52525B;
+        }
+        
+        QComboBox:focus {
+            border: 1px solid #3B82F6;
+        }
+        
+        QComboBox::drop-down {
+            border: none;
+            padding-right: 8px;
+        }
+        
+        QComboBox::down-arrow {
+            image: none;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 5px solid #A1A1AA;
+            margin-right: 5px;
+        }
+        
+        QComboBox QAbstractItemView {
+            background-color: #27272A;
+            border: 1px solid #3F3F46;
+            selection-background-color: #71717A;
+            selection-color: #FFD700;
+            outline: none;
+        }
+        
+        QComboBox QAbstractItemView::item {
+            padding: 4px 10px;
+            border: none;
+            color: #E4E4E7;
+        }
+        
+        QComboBox QAbstractItemView::item:hover {
+            background-color: #71717A;
+            color: #FFD700;
+        }
+        
+        QComboBox QAbstractItemView::item:selected {
+            background-color: #71717A;
+            color: #FFD700;
+        }
+        
+        QDateTimeEdit, QDateEdit {
+            background-color: #27272A;
+            border: 1px solid #3F3F46;
+            padding: 2px 10px;
+            border-radius: 6px;
+            min-width: 150px;
+        }
+        
+        QDateTimeEdit:hover, QDateEdit:hover {
+            border: 1px solid #52525B;
+        }
+        
+        QDateTimeEdit:focus, QDateEdit:focus {
+            border: 1px solid #3B82F6;
+        }
+        
+        QDateTimeEdit::drop-down, QDateEdit::drop-down {
+            border: none;
+            padding-right: 8px;
+        }
+        
+        QDateTimeEdit::down-arrow, QDateEdit::down-arrow {
+            image: none;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 5px solid #A1A1AA;
+            margin-right: 5px;
+        }
+        
+        QCalendarWidget {
+            background-color: #27272A;
+            border: 1px solid #3F3F46;
+            border-radius: 8px;
+        }
+        
+        QCalendarWidget QToolButton {
+            background-color: transparent;
+            color: #E4E4E7;
+            border: none;
+            padding: 4px;
+            border-radius: 4px;
+        }
+        
+        QCalendarWidget QToolButton:hover {
+            background-color: #3F3F46;
+        }
+        
+        QCalendarWidget QToolButton:pressed {
+            background-color: #52525B;
+        }
+        
+        QCalendarWidget QMenu {
+            background-color: #27272A;
+            border: 1px solid #3F3F46;
+        }
+        
+        QCalendarWidget QSpinBox {
+            background-color: #27272A;
+            border: 1px solid #3F3F46;
+            padding: 2px;
+            border-radius: 4px;
+        }
+        
+        QCalendarWidget QAbstractItemView {
+            background-color: #27272A;
+            color: #E4E4E7;
+            selection-background-color: #3B82F6;
+            selection-color: #FFFFFF;
+        }
+        
+        QCalendarWidget QAbstractItemView:enabled {
+            color: #E4E4E7;
+        }
+        
+        QCalendarWidget QAbstractItemView:disabled {
+            color: #71717A;
+        }
         
         QTableWidget {
             background-color: #18181B;

@@ -43,7 +43,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(config.APP_TITLE)
-        self.setMinimumSize(1200, 952)
+        self.setMinimumSize(1300, 880)
 
         # ApplicationService уже проинициализирован как синглтон
         self.app_service = application_service
@@ -82,12 +82,16 @@ class MainWindow(QtWidgets.QMainWindow):
         main_layout = QtWidgets.QVBoxLayout(central_widget)
         self.setCentralWidget(central_widget)
 
-        # Строка состояния
+        # Строка состояния. Оставляем небольшую высоту для сообщений.
         self.setStatusBar(QtWidgets.QStatusBar(self))
-        # Постоянная метка с информацией о текущей БД
+        self.statusBar().setStyleSheet(
+            "padding: 2px 4px; margin: 0; height: 16px; font-size: 12px;"
+        )
+        self.statusBar().setSizeGripEnabled(False)
+
+        # Метка с информацией о текущей БД (будет размещена в тулбаре)
         self.db_status_label = QtWidgets.QLabel("")
         self.db_status_label.setStyleSheet("color: #777; margin-right: 8px;")
-        self.statusBar().addPermanentWidget(self.db_status_label)
 
         # Панель инструментов
         self.toolbar = self.addToolBar("Панель инструментов")
@@ -161,6 +165,12 @@ class MainWindow(QtWidgets.QMainWindow):
         spacer.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding)
         self.toolbar.addWidget(spacer)
 
+        # Метка с именем подключенной базы данных и версией приложения в правой части тулбара
+        self.toolbar.addWidget(self.db_status_label)
+        version_label = QtWidgets.QLabel(f"v{config.APP_VERSION}")
+        version_label.setStyleSheet("color: #777; font-size: 9px; margin-right: 4px;")
+        self.toolbar.addWidget(version_label)
+
         # QTabWidget
         self.tabs = QtWidgets.QTabWidget()
         main_layout.addWidget(self.tabs)
@@ -181,11 +191,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Подключаем сигнал изменения вкладки
         self.tabs.currentChanged.connect(self.tab_changed)
 
-        # Добавляем метку версии в нижний правый угол
-        version_label = QtWidgets.QLabel(f"v{config.APP_VERSION}")
-        version_label.setStyleSheet("color: #777; font-size: 9px; margin: 5px;")
-        version_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignBottom)
-        main_layout.addWidget(version_label, alignment=QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignBottom)
+        # Место под версию и название БД сверху освободило нижнюю область окна
 
 
     def _init_menu(self):
@@ -463,7 +469,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.total_ko_label.setText(f"KO: {stats.total_knockouts:.1f}")
 
     def _update_db_label(self):
-        """Отображает имя текущей базы данных в строке состояния."""
+        """Отображает имя текущей базы данных в правой части тулбара."""
         self.db_status_label.setText(
             f"БД: {os.path.basename(self.app_service.db_path)}"
         )

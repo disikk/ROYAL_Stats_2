@@ -36,6 +36,8 @@ class TournamentView(QtWidgets.QWidget):
         self.sort_direction = "DESC"
         # Параметры фильтрации
         self.current_buyin_filter = None
+        self.current_date_from = datetime(2025, 1, 1, 0, 0)
+        self.current_date_to = datetime.now()
         self.session_mapping = {}
         self._data_cache = {}  # Кеш для данных
         self._cache_valid = False  # Флаг валидности кеша
@@ -68,26 +70,73 @@ class TournamentView(QtWidgets.QWidget):
         filter_layout.setSpacing(12)
 
         # Фильтр по сессии
-        filter_layout.addWidget(QtWidgets.QLabel("Сессия:"))
+        session_widget = QtWidgets.QWidget()
+        session_layout = QtWidgets.QVBoxLayout(session_widget)
+        session_layout.setContentsMargins(0, 0, 0, 0)
+        session_layout.setSpacing(2)
+        session_label = QtWidgets.QLabel("Сессия")
         self.session_filter = QtWidgets.QComboBox()
         self.session_filter.setMinimumWidth(150)
         self.session_filter.currentTextChanged.connect(self._on_filter_changed)
-        filter_layout.addWidget(self.session_filter)
-        
+        session_layout.addWidget(session_label)
+        session_layout.addWidget(self.session_filter)
+        filter_layout.addWidget(session_widget)
+
         # Фильтр по бай-ину
-        filter_layout.addWidget(QtWidgets.QLabel("Бай-ин:"))
+        buyin_widget = QtWidgets.QWidget()
+        buyin_layout = QtWidgets.QVBoxLayout(buyin_widget)
+        buyin_layout.setContentsMargins(0, 0, 0, 0)
+        buyin_layout.setSpacing(2)
+        buyin_label = QtWidgets.QLabel("Бай-ин")
         self.buyin_filter = QtWidgets.QComboBox()
         self.buyin_filter.setMinimumWidth(120)
         self.buyin_filter.currentTextChanged.connect(self._on_filter_changed)
-        filter_layout.addWidget(self.buyin_filter)
-        
+        buyin_layout.addWidget(buyin_label)
+        buyin_layout.addWidget(self.buyin_filter)
+        filter_layout.addWidget(buyin_widget)
+
         # Фильтр по результату
-        filter_layout.addWidget(QtWidgets.QLabel("Результат:"))
+        result_widget = QtWidgets.QWidget()
+        result_layout = QtWidgets.QVBoxLayout(result_widget)
+        result_layout.setContentsMargins(0, 0, 0, 0)
+        result_layout.setSpacing(2)
+        result_label = QtWidgets.QLabel("Результат")
         self.result_filter = QtWidgets.QComboBox()
         self.result_filter.setMinimumWidth(150)
         self.result_filter.addItems(["Все", "В призах (1-3)", "Финальный стол", "Вне призов"])
         self.result_filter.currentTextChanged.connect(self._on_filter_changed)
-        filter_layout.addWidget(self.result_filter)
+        result_layout.addWidget(result_label)
+        result_layout.addWidget(self.result_filter)
+        filter_layout.addWidget(result_widget)
+
+        # Диапазон дат
+        from_widget = QtWidgets.QWidget()
+        from_layout = QtWidgets.QVBoxLayout(from_widget)
+        from_layout.setContentsMargins(0, 0, 0, 0)
+        from_layout.setSpacing(2)
+        from_label = QtWidgets.QLabel("С")
+        self.date_from_edit = QtWidgets.QDateTimeEdit()
+        self.date_from_edit.setCalendarPopup(True)
+        self.date_from_edit.setDisplayFormat("dd.MM.yyyy HH:mm")
+        self.date_from_edit.setDateTime(QtCore.QDateTime.fromString("2025-01-01 00:00:00", "yyyy-MM-dd HH:mm:ss"))
+        self.date_from_edit.dateTimeChanged.connect(self._on_filter_changed)
+        from_layout.addWidget(from_label)
+        from_layout.addWidget(self.date_from_edit)
+        filter_layout.addWidget(from_widget)
+
+        to_widget = QtWidgets.QWidget()
+        to_layout = QtWidgets.QVBoxLayout(to_widget)
+        to_layout.setContentsMargins(0, 0, 0, 0)
+        to_layout.setSpacing(2)
+        to_label = QtWidgets.QLabel("По")
+        self.date_to_edit = QtWidgets.QDateTimeEdit()
+        self.date_to_edit.setCalendarPopup(True)
+        self.date_to_edit.setDisplayFormat("dd.MM.yyyy HH:mm")
+        self.date_to_edit.setDateTime(QtCore.QDateTime.currentDateTime())
+        self.date_to_edit.dateTimeChanged.connect(self._on_filter_changed)
+        to_layout.addWidget(to_label)
+        to_layout.addWidget(self.date_to_edit)
+        filter_layout.addWidget(to_widget)
         
         filter_layout.addStretch()
         
@@ -303,7 +352,11 @@ class TournamentView(QtWidgets.QWidget):
                 buyin_filter=buyin_filter,
                 result_filter=result_filter,
                 sort_column=self.sort_column,
-                sort_direction=self.sort_direction
+                sort_direction=self.sort_direction,
+                # Фильтр дат сравнивается со строкой вида "YYYY/MM/DD HH:MM:SS" в БД,
+                # поэтому здесь формируем такую же строку
+                start_time_from=self.current_date_from.strftime("%Y/%m/%d %H:%M:%S"),
+                start_time_to=self.current_date_to.strftime("%Y/%m/%d %H:%M:%S"),
             )
         thread_manager.run_in_thread(
             widget_id=f"{id(self)}_tournaments",
@@ -351,6 +404,8 @@ class TournamentView(QtWidgets.QWidget):
         self.session_filter.blockSignals(False)
     def _on_filter_changed(self):
         self.current_page = 1
+        self.current_date_from = self.date_from_edit.dateTime().toPyDateTime()
+        self.current_date_to = self.date_to_edit.dateTime().toPyDateTime()
         self._load_tournaments_data()
     def _on_page_size_changed(self):
         self.current_page = 1

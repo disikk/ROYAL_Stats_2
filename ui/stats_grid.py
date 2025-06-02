@@ -18,6 +18,7 @@ from PyQt6.QtCharts import (
 import logging
 from typing import Dict, List, Any
 import math
+from datetime import datetime
 
 import config
 from application_service import ApplicationService
@@ -50,6 +51,7 @@ from stats import (
     IncompleteFTPercentStat,
     KOLuckStat,
     ROIAdjustedStat,
+    KOContributionStat,
 )
 
 from ui.background import thread_manager
@@ -68,7 +70,7 @@ class StatCard(QtWidgets.QFrame):
             QFrame {
                 background-color: #27272A;
                 border-radius: 8px;
-                padding: 4px 8px;
+                padding: 3px 6px;
                 border: 1px solid #3F3F46;
             }
             QFrame:hover {
@@ -78,14 +80,14 @@ class StatCard(QtWidgets.QFrame):
         """)
         
         layout = QtWidgets.QHBoxLayout(self)
-        layout.setSpacing(4)
+        layout.setSpacing(3)
         layout.setContentsMargins(0, 0, 0, 0)
         
         self.title_label = QtWidgets.QLabel(title)
         self.title_label.setStyleSheet("""
             QLabel {
                 color: #A1A1AA;
-                font-size: 12px;
+                font-size: 11px;
                 font-weight: 500;
                 background-color: transparent;
             }
@@ -99,7 +101,7 @@ class StatCard(QtWidgets.QFrame):
         self.value_label.setStyleSheet("""
             QLabel {
                 color: #FAFAFA;
-                font-size: 18px;
+                font-size: 16px;
                 font-weight: bold;
                 background-color: transparent;
             }
@@ -125,7 +127,7 @@ class SpecialStatCard(QtWidgets.QFrame):
             QFrame {
                 background-color: #27272A;
                 border-radius: 8px;
-                padding: 4px 8px;
+                padding: 3px 6px;
                 border: 1px solid #3F3F46;
             }
             QFrame:hover {
@@ -135,18 +137,18 @@ class SpecialStatCard(QtWidgets.QFrame):
         """)
         
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setSpacing(1)
+        layout.setSpacing(0)
         layout.setContentsMargins(0, 0, 0, 0)
         
         # Верхняя строка с заголовком и значением
         top_layout = QtWidgets.QHBoxLayout()
-        top_layout.setSpacing(4)
+        top_layout.setSpacing(3)
         
         self.title_label = QtWidgets.QLabel(title)
         self.title_label.setStyleSheet("""
             QLabel {
                 color: #A1A1AA;
-                font-size: 12px;
+                font-size: 11px;
                 font-weight: 500;
                 background-color: transparent;
             }
@@ -159,7 +161,7 @@ class SpecialStatCard(QtWidgets.QFrame):
         self.value_label.setStyleSheet("""
             QLabel {
                 color: #FAFAFA;
-                font-size: 18px;
+                font-size: 16px;
                 font-weight: bold;
                 background-color: transparent;
             }
@@ -215,6 +217,8 @@ class StatsGrid(QtWidgets.QWidget):
         self._cache_valid = False  # Флаг валидности кеша
         self.current_buyin_filter = None
         self.current_session_id = None
+        self.current_date_from = datetime(2025, 1, 1, 0, 0)
+        self.current_date_to = datetime.now()
         self._session_map = {}
         
         # Таймер для debounce фильтров
@@ -238,7 +242,7 @@ class StatsGrid(QtWidgets.QWidget):
         content_widget = QtWidgets.QWidget()
         content_layout = QtWidgets.QVBoxLayout(content_widget)
         content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(4)
+        content_layout.setSpacing(3)
         
         # Заголовок с панелью фильтров
         header_layout = QtWidgets.QHBoxLayout()
@@ -256,17 +260,60 @@ class StatsGrid(QtWidgets.QWidget):
 
         header_layout.addStretch()
 
-        header_layout.addWidget(QtWidgets.QLabel("Бай-ин:"))
+        # Бай-ин
+        buyin_widget = QtWidgets.QWidget()
+        buyin_layout = QtWidgets.QVBoxLayout(buyin_widget)
+        buyin_layout.setContentsMargins(0, 0, 0, 0)
+        buyin_layout.setSpacing(2)
+        buyin_label = QtWidgets.QLabel("Бай-ин")
         self.buyin_filter = QtWidgets.QComboBox()
         self.buyin_filter.setMinimumWidth(100)
         self.buyin_filter.currentTextChanged.connect(self._on_filter_changed)
-        header_layout.addWidget(self.buyin_filter)
+        buyin_layout.addWidget(buyin_label)
+        buyin_layout.addWidget(self.buyin_filter)
+        header_layout.addWidget(buyin_widget)
 
-        header_layout.addWidget(QtWidgets.QLabel("Сессия:"))
+        # Сессия
+        session_widget = QtWidgets.QWidget()
+        session_layout = QtWidgets.QVBoxLayout(session_widget)
+        session_layout.setContentsMargins(0, 0, 0, 0)
+        session_layout.setSpacing(2)
+        session_label = QtWidgets.QLabel("Сессия")
         self.session_filter = QtWidgets.QComboBox()
         self.session_filter.setMinimumWidth(140)
         self.session_filter.currentTextChanged.connect(self._on_filter_changed)
-        header_layout.addWidget(self.session_filter)
+        session_layout.addWidget(session_label)
+        session_layout.addWidget(self.session_filter)
+        header_layout.addWidget(session_widget)
+
+        # Диапазон дат
+        from_widget = QtWidgets.QWidget()
+        from_layout = QtWidgets.QVBoxLayout(from_widget)
+        from_layout.setContentsMargins(0, 0, 0, 0)
+        from_layout.setSpacing(2)
+        from_label = QtWidgets.QLabel("С")
+        self.date_from_edit = QtWidgets.QDateTimeEdit()
+        self.date_from_edit.setCalendarPopup(True)
+        self.date_from_edit.setDisplayFormat("dd.MM.yyyy HH:mm")
+        self.date_from_edit.setDateTime(QtCore.QDateTime.fromString("2025-01-01 00:00:00", "yyyy-MM-dd HH:mm:ss"))
+        self.date_from_edit.dateTimeChanged.connect(self._on_filter_changed)
+        from_layout.addWidget(from_label)
+        from_layout.addWidget(self.date_from_edit)
+        header_layout.addWidget(from_widget)
+
+        to_widget = QtWidgets.QWidget()
+        to_layout = QtWidgets.QVBoxLayout(to_widget)
+        to_layout.setContentsMargins(0, 0, 0, 0)
+        to_layout.setSpacing(2)
+        to_label = QtWidgets.QLabel("По")
+        self.date_to_edit = QtWidgets.QDateTimeEdit()
+        self.date_to_edit.setCalendarPopup(True)
+        self.date_to_edit.setDisplayFormat("dd.MM.yyyy HH:mm")
+        self.date_to_edit.setDateTime(QtCore.QDateTime.currentDateTime())
+        self.date_to_edit.dateTimeChanged.connect(self._on_filter_changed)
+        to_layout.addWidget(to_label)
+        to_layout.addWidget(self.date_to_edit)
+        header_layout.addWidget(to_widget)
 
         content_layout.addLayout(header_layout)
 
@@ -274,7 +321,7 @@ class StatsGrid(QtWidgets.QWidget):
         
         # Сетка карточек статистики
         stats_grid = QtWidgets.QGridLayout()
-        stats_grid.setSpacing(3)
+        stats_grid.setSpacing(2)
         
         # Создаем карточки для основных показателей
         self.cards = {
@@ -282,24 +329,24 @@ class StatsGrid(QtWidgets.QWidget):
             'knockouts': StatCard("Всего нокаутов", "-"),
             'avg_ko': StatCard("Среднее KO за турнир", "-"),
             'roi': StatCard("ROI", "-"),
+            'ko_contribution': SpecialStatCard("Вклад KO в ROI", "-"),
             'itm': StatCard("ITM%", "-"),
             'ft_reach': StatCard("% Достижения FT", "-"),
-            'avg_ft_stack': SpecialStatCard("Средний стек на FT", "-"),
-            'early_ft_ko': SpecialStatCard("KO в ранней FT", "-"),
-            'early_ft_bust': SpecialStatCard("Вылеты ранней FT", "-"),
+            'avg_ft_stack': SpecialStatCard("Средний стек проходки на FT", "-"),
+            'early_ft_ko': SpecialStatCard("KO в ранней FT (6-9max)", "-"),
+            'early_ft_bust': SpecialStatCard("Вылеты в ранней FT\n(6-9max)", "-"),
             'avg_place_all': StatCard("Среднее место (все)", "-"),
             'avg_place_ft': StatCard("Среднее место (FT)", "-"),
             'avg_place_no_ft': StatCard("Среднее место (не FT)", "-"),
             'pre_ft_ko': StatCard("KO до FT", "-"),
-            'incomplete_ft': StatCard("Неполные финалки", "-"),
+            'incomplete_ft': StatCard("Неполные финалки\n(<9 человек на старте)", "-"),
         }
         
-        # Размещаем карточки в сетке (4 колонки)
+        # Размещаем карточки в сетке (5 колонок)
         positions = [
-            ('tournaments', 0, 0), ('knockouts', 0, 1), ('avg_ko', 0, 2), ('roi', 0, 3),
-            ('itm', 1, 0), ('ft_reach', 1, 1), ('avg_ft_stack', 1, 2), ('early_ft_ko', 1, 3),
-            ('avg_place_all', 2, 0), ('avg_place_ft', 2, 1), ('avg_place_no_ft', 2, 2), ('early_ft_bust', 2, 3),
-            ('pre_ft_ko', 3, 0), ('incomplete_ft', 3, 1),
+            ('tournaments', 0, 0), ('roi', 0, 1), ('itm', 0, 2), ('knockouts', 0, 3), ('avg_ko', 0, 4),
+            ('ft_reach', 1, 0), ('avg_ft_stack', 1, 1), ('early_ft_ko', 1, 2), ('ko_contribution', 1, 3), ('pre_ft_ko', 1, 4),
+            ('avg_place_all', 2, 0), ('avg_place_ft', 2, 1), ('avg_place_no_ft', 2, 2), ('early_ft_bust', 2, 3), ('incomplete_ft', 2, 4),
         ]
         
         for key, row, col in positions:
@@ -311,7 +358,7 @@ class StatsGrid(QtWidgets.QWidget):
         # Разделитель
         separator = QtWidgets.QFrame()
         separator.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        separator.setStyleSheet("QFrame { background-color: #3F3F46; max-height: 1px; margin: 5px 0; }")
+        separator.setStyleSheet("QFrame { background-color: #3F3F46; max-height: 1px; margin: 3px 0; }")
         content_layout.addWidget(separator)
         
         # График распределения мест
@@ -325,9 +372,11 @@ class StatsGrid(QtWidgets.QWidget):
             }
         """)
 
-        content_layout.addWidget(self.chart_header)
+        # Заголовок и переключатель типа гистограммы в одной строке
+        chart_header_layout = QtWidgets.QHBoxLayout()
+        chart_header_layout.addWidget(self.chart_header)
+        chart_header_layout.addStretch()
 
-        # Переключатель типа гистограммы
         self.chart_selector = QtWidgets.QComboBox()
         self.chart_selector.addItems([
             "Финальный стол",
@@ -336,13 +385,14 @@ class StatsGrid(QtWidgets.QWidget):
         ])
         self.chart_selector.currentIndexChanged.connect(self._on_chart_selector_changed)
         self.chart_type = 'ft'
-        content_layout.addWidget(self.chart_selector, alignment=QtCore.Qt.AlignmentFlag.AlignLeft)
+        chart_header_layout.addWidget(self.chart_selector)
+        content_layout.addLayout(chart_header_layout)
         
         # Создаем виджет для графика
         self.chart_view = QChartView()
         self.chart_view.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        self.chart_view.setMinimumHeight(315)
-        self.chart_view.setMaximumHeight(405)
+        self.chart_view.setMinimumHeight(236)
+        self.chart_view.setMaximumHeight(304)
         content_layout.addWidget(self.chart_view)
         self.chart_view.chart_labels = []  # Список для хранения меток
         
@@ -394,6 +444,11 @@ class StatsGrid(QtWidgets.QWidget):
             'x1000': StatCard("KO x1000", "-"),
             'x10000': StatCard("KO x10000", "-"),
         }
+        
+        # Фиксируем минимальную высоту для карточек Big KO
+        for card in self.bigko_cards.values():
+            card.setMinimumHeight(40)
+            card.setMaximumHeight(40)
 
         # Добавляем все карточки Big KO в горизонтальный layout
         bigko_layout.addWidget(self.bigko_cards['x1.5'])
@@ -652,6 +707,8 @@ class StatsGrid(QtWidgets.QWidget):
         self.current_session_id = (
             self._session_map.get(session_name) if session_name and session_name != "Все" else None
         )
+        self.current_date_from = self.date_from_edit.dateTime().toPyDateTime()
+        self.current_date_to = self.date_to_edit.dateTime().toPyDateTime()
         self.invalidate_cache()
         self.reload()
             
@@ -692,10 +749,14 @@ class StatsGrid(QtWidgets.QWidget):
             # Проверяем отмену перед загрузкой турниров
             if is_cancelled_callback and is_cancelled_callback():
                 return None
-                
+
             tournaments = self.app_service.tournament_repo.get_all_tournaments(
                 session_id=self.current_session_id,
                 buyin_filter=self.current_buyin_filter,
+                # В БД дата хранится в формате "YYYY/MM/DD HH:MM:SS", поэтому
+                # формируем строки фильтра аналогично, чтобы сравнение прошло корректно
+                start_time_from=self.current_date_from.strftime("%Y/%m/%d %H:%M:%S"),
+                start_time_to=self.current_date_to.strftime("%Y/%m/%d %H:%M:%S"),
             )
             
             # Проверяем отмену после загрузки турниров
@@ -766,6 +827,9 @@ class StatsGrid(QtWidgets.QWidget):
             incomplete_ft_percent = IncompleteFTPercentStat().compute(tournaments, ft_hands, [], overall_stats).get('incomplete_ft_percent', 0)
             ko_luck_value = KOLuckStat().compute(tournaments, [], [], overall_stats).get('ko_luck', 0.0)
             roi_adj_value = ROIAdjustedStat().compute(tournaments, ft_hands, [], overall_stats).get('roi_adj', 0.0)
+            ko_contrib_res = KOContributionStat().compute(tournaments, [], [], None)
+            ko_contrib = ko_contrib_res.get('ko_contribution', 0.0)
+            ko_contrib_adj = ko_contrib_res.get('ko_contribution_adj', 0.0)
             all_places = [t.finish_place for t in tournaments if t.finish_place is not None]
             avg_all = sum(all_places) / len(all_places) if all_places else 0.0
             ft_places = [t.finish_place for t in tournaments if t.reached_final_table and t.finish_place is not None and 1 <= t.finish_place <= 9]
@@ -792,6 +856,8 @@ class StatsGrid(QtWidgets.QWidget):
                 'avg_place_no_ft': avg_no_ft,
                 'ko_luck': ko_luck_value,
                 'roi_adj': roi_adj_value,
+                'ko_contribution': ko_contrib,
+                'ko_contribution_adj': ko_contrib_adj,
             }
         thread_manager.run_in_thread(
             widget_id=str(id(self)),
@@ -827,6 +893,16 @@ class StatsGrid(QtWidgets.QWidget):
             logger.debug(f"Обновлена карточка roi: {roi_text}")
             # Применяем цвет только к тексту, а не к фону
             apply_cell_color_by_value(self.cards['roi'].value_label, roi_value)
+
+            ko_contrib = data.get('ko_contribution', 0.0)
+            ko_contrib_adj = data.get('ko_contribution_adj', 0.0)
+            self.cards['ko_contribution'].update_value(
+                f"{ko_contrib:.1f}%",
+                f"С поправкой на удачу в КО (adj) {ko_contrib_adj:.1f}%"
+            )
+            logger.debug(
+                f"Обновлена карточка ko_contribution: {ko_contrib:.1f}% / {ko_contrib_adj:.1f}%"
+            )
 
             itm_value = data['itm']
             self.cards['itm'].update_value(f"{itm_value:.1f}%")
