@@ -329,7 +329,7 @@ class StatsGrid(QtWidgets.QWidget):
             'knockouts': StatCard("Всего нокаутов", "-"),
             'avg_ko': StatCard("Среднее KO за турнир", "-"),
             'roi': StatCard("ROI", "-"),
-            'ko_contribution': SpecialStatCard("Вклад KO", "-"),
+            'ko_contribution': SpecialStatCard("Вклад KO в ROI", "-"),
             'itm': StatCard("ITM%", "-"),
             'ft_reach': StatCard("% Достижения FT", "-"),
             'avg_ft_stack': SpecialStatCard("Средний стек на FT", "-"),
@@ -898,7 +898,7 @@ class StatsGrid(QtWidgets.QWidget):
             ko_contrib_adj = data.get('ko_contribution_adj', 0.0)
             self.cards['ko_contribution'].update_value(
                 f"{ko_contrib:.1f}%",
-                f"adj {ko_contrib_adj:.1f}%"
+                f"С поправкой на удачу в КО (adj) {ko_contrib_adj:.1f}%"
             )
             logger.debug(
                 f"Обновлена карточка ko_contribution: {ko_contrib:.1f}% / {ko_contrib_adj:.1f}%"
