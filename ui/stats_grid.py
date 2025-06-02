@@ -332,21 +332,21 @@ class StatsGrid(QtWidgets.QWidget):
             'ko_contribution': SpecialStatCard("Вклад KO в ROI", "-"),
             'itm': StatCard("ITM%", "-"),
             'ft_reach': StatCard("% Достижения FT", "-"),
-            'avg_ft_stack': SpecialStatCard("Средний стек на FT", "-"),
-            'early_ft_ko': SpecialStatCard("KO в ранней FT", "-"),
-            'early_ft_bust': SpecialStatCard("Вылеты ранней FT", "-"),
+            'avg_ft_stack': SpecialStatCard("Средний стек проходки на FT", "-"),
+            'early_ft_ko': SpecialStatCard("KO в ранней FT (6-9max)", "-"),
+            'early_ft_bust': SpecialStatCard("Вылеты в ранней FT\n(6-9max)", "-"),
             'avg_place_all': StatCard("Среднее место (все)", "-"),
             'avg_place_ft': StatCard("Среднее место (FT)", "-"),
             'avg_place_no_ft': StatCard("Среднее место (не FT)", "-"),
             'pre_ft_ko': StatCard("KO до FT", "-"),
-            'incomplete_ft': StatCard("Неполные финалки", "-"),
+            'incomplete_ft': StatCard("Неполные финалки\n(<9 человек на старте)", "-"),
         }
         
         # Размещаем карточки в сетке (5 колонок)
         positions = [
-            ('tournaments', 0, 0), ('knockouts', 0, 1), ('avg_ko', 0, 2), ('roi', 0, 3), ('itm', 0, 4),
-            ('ft_reach', 1, 0), ('avg_ft_stack', 1, 1), ('early_ft_ko', 1, 2), ('avg_place_all', 1, 3), ('avg_place_ft', 1, 4),
-            ('avg_place_no_ft', 2, 0), ('early_ft_bust', 2, 1), ('pre_ft_ko', 2, 2), ('incomplete_ft', 2, 3), ('ko_contribution', 2, 4),
+            ('tournaments', 0, 0), ('roi', 0, 1), ('itm', 0, 2), ('knockouts', 0, 3), ('avg_ko', 0, 4),
+            ('ft_reach', 1, 0), ('avg_ft_stack', 1, 1), ('early_ft_ko', 1, 2), ('ko_contribution', 1, 3), ('pre_ft_ko', 1, 4),
+            ('avg_place_all', 2, 0), ('avg_place_ft', 2, 1), ('avg_place_no_ft', 2, 2), ('early_ft_bust', 2, 3), ('incomplete_ft', 2, 4),
         ]
         
         for key, row, col in positions:
