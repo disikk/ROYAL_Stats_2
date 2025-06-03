@@ -979,13 +979,8 @@ class StatsGrid(QtWidgets.QWidget):
                 self.bigko_cards['x10000'].value_label,
                 overall_stats.big_ko_x10000,
             )
-            # Обновляем текст над карточкой KO x10
-            if overall_stats.big_ko_x10 > 0:
-                per_ko = overall_stats.total_knockouts / overall_stats.big_ko_x10 if overall_stats.total_knockouts > 0 else 0
-                info_text = f"1 на {per_ko:.0f} нокаутов"
-            else:
-                info_text = "нет"
-            self.bigko_x10_info_label.setText(info_text)
+            # Текст над карточкой KO x10 больше не отображается
+            self.bigko_x10_info_label.setText("")
             logger.debug(f"Обновлены карточки Big KO: x1.5={overall_stats.big_ko_x1_5}, x2={overall_stats.big_ko_x2}, x10={overall_stats.big_ko_x10}, x100={overall_stats.big_ko_x100}, x1000={overall_stats.big_ko_x1000}, x10000={overall_stats.big_ko_x10000}")
             
             # Обновляем стат KO Luck
