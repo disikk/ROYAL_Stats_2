@@ -1128,6 +1128,10 @@ class ApplicationService:
         """Переименовывает сессию."""
         self.session_repo.update_session_name(session_id, new_name)
 
+    def delete_tournament(self, tournament_id: str):
+        """Удаляет турнир и связанные с ним данные."""
+        self.tournament_repo.delete_tournament_by_id(tournament_id)
+
 
 # Создаем синглтон экземпляр ApplicationService
 application_service = ApplicationService()
