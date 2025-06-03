@@ -1100,7 +1100,8 @@ class StatsGrid(QtWidgets.QWidget):
         stats.total_final_tables = ft_count
         stats.total_buy_in = total_buyin
         stats.total_prize = total_prize
-        stats.total_knockouts = total_ko
+        # Округляем с точностью до одной цифры для единообразия отображения
+        stats.total_knockouts = round(total_ko, 1)
         stats.avg_ko_per_tournament = total_ko / stats.total_tournaments if stats.total_tournaments else 0.0
         stats.final_table_reach_percent = ft_count / stats.total_tournaments * 100 if stats.total_tournaments else 0.0
         stats.avg_ft_initial_stack_chips = ft_chips_sum / ft_chips_count if ft_chips_count else 0.0
@@ -1123,9 +1124,9 @@ class StatsGrid(QtWidgets.QWidget):
                 if saved is None or h.hand_number < saved.hand_number:
                     first_hands[h.tournament_id] = h
         
-        stats.early_ft_ko_count = early_ko_count
+        stats.early_ft_ko_count = round(early_ko_count, 1)
         stats.early_ft_ko_per_tournament = early_ko_count / ft_count if ft_count else 0.0
-        stats.pre_ft_ko_count = pre_ft_ko_count
+        stats.pre_ft_ko_count = round(pre_ft_ko_count, 1)
         stats.incomplete_ft_count = sum(
             1 for h in first_hands.values() if h.players_count < config.FINAL_TABLE_SIZE
         )
@@ -1164,7 +1165,10 @@ class StatsGrid(QtWidgets.QWidget):
         stats.early_ft_ko_per_tournament = round(stats.early_ft_ko_per_tournament, 2)
         stats.early_ft_bust_per_tournament = round(stats.early_ft_bust_per_tournament, 2)
         stats.final_table_reach_percent = round(stats.final_table_reach_percent, 2)
-        stats.pre_ft_ko_count = round(stats.pre_ft_ko_count, 2)
+        # Финальное округление до одного знака после запятой
+        stats.pre_ft_ko_count = round(stats.pre_ft_ko_count, 1)
+        stats.total_knockouts = round(stats.total_knockouts, 1)
+        stats.early_ft_ko_count = round(stats.early_ft_ko_count, 1)
         return stats
     
     def _show_ko_luck_tooltip(self):
