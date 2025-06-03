@@ -18,6 +18,7 @@ from PyQt6.QtCharts import (
 import logging
 from typing import Dict, List, Any
 import math
+from statistics import median
 from datetime import datetime
 
 import config
@@ -791,8 +792,8 @@ class StatsGrid(QtWidgets.QWidget):
             place_dist = {i: 0 for i in range(1, 10)}
             place_dist_pre_ft = {i: 0 for i in range(10, 19)}
             place_dist_all = {i: 0 for i in range(1, 19)}
-            # Новое распределение для стеков FT
-            ft_stack_dist = self._calculate_ft_stack_distribution(tournaments)
+            # Новое распределение для стеков FT и медиана
+            ft_stack_dist, ft_stack_median = self._calculate_ft_stack_distribution(tournaments)
             
             for t in tournaments:
                 if t.finish_place is None:
@@ -846,6 +847,7 @@ class StatsGrid(QtWidgets.QWidget):
                 'place_dist_pre_ft': place_dist_pre_ft,
                 'place_dist_all': place_dist_all,
                 'ft_stack_dist': ft_stack_dist,
+                'ft_stack_median': ft_stack_median,
                 'roi': roi_value,
                 'itm': itm_value,
                 'ft_reach': ft_reach,
@@ -1059,6 +1061,7 @@ class StatsGrid(QtWidgets.QWidget):
             self.place_dist_pre_ft = data.get('place_dist_pre_ft', {})
             self.place_dist_all = data.get('place_dist_all', {})
             self.ft_stack_dist = data.get('ft_stack_dist', {})
+            self.ft_stack_median = data.get('ft_stack_median')
             self._update_chart(self._get_current_distribution())
             self.overallStatsChanged.emit(overall_stats)
             logger.debug("=== Конец reload StatsGrid ===")
@@ -1206,37 +1209,41 @@ class StatsGrid(QtWidgets.QWidget):
         self.roi_adj_tooltip.show()
     
     def _calculate_ft_stack_distribution(self, tournaments):
-        """Рассчитывает распределение стеков выхода на FT в больших блайндах."""
+        """Рассчитывает распределение стеков выхода на FT в больших блайндах
+        и медиану значений."""
         # Инициализируем словарь для распределения
         ft_stack_dist = {}
-        
+        stack_values = []
+
         # Края распределения
         ft_stack_dist["≤6"] = 0
-        
+
         # Промежуточные интервалы с шагом 2BB
         for i in range(8, 50, 2):
             ft_stack_dist[f"{i}-{i+1}"] = 0
-            
+
         ft_stack_dist["≥50"] = 0
-        
+
         # Подсчитываем распределение
         for t in tournaments:
             if t.reached_final_table and t.final_table_initial_stack_bb is not None:
                 bb = t.final_table_initial_stack_bb
-                
+                stack_values.append(bb)
+
                 if bb <= 6:
                     ft_stack_dist["≤6"] += 1
                 elif bb >= 50:
                     ft_stack_dist["≥50"] += 1
                 else:
                     # Находим подходящий интервал
-                    # Округляем вниз до четного числа
                     interval_start = int(bb // 2) * 2
                     interval_key = f"{interval_start}-{interval_start+1}"
                     if interval_key in ft_stack_dist:
                         ft_stack_dist[interval_key] += 1
-                
-        return ft_stack_dist
+
+        median_value = median(stack_values) if stack_values else None
+
+        return ft_stack_dist, median_value
         
     def _update_chart(self, place_dist=None):
         """Обновляет гистограмму распределения мест."""
@@ -1398,6 +1405,11 @@ class StatsGrid(QtWidgets.QWidget):
             )
             # Первоначальное размещение меток
             QtCore.QTimer.singleShot(100, lambda: self._add_percentage_labels(chart, place_dist, total_finishes, self.chart_type))
+            if self.chart_type == 'ft_stack':
+                self.chart_view.chart().plotAreaChanged.connect(
+                    lambda: self._update_median_line_position(chart, place_dist)
+                )
+                QtCore.QTimer.singleShot(100, lambda: self._add_median_line(chart, place_dist))
     
     def _add_percentage_labels(self, chart, place_dist, total_finishes, chart_type=None):
         """Добавляет текстовые метки с процентами над барами."""
@@ -1497,6 +1509,57 @@ class StatsGrid(QtWidgets.QWidget):
     def _update_percentage_labels_position(self, chart, place_dist, total_finishes, chart_type=None):
         """Обновляет позиции меток при изменении размера графика."""
         self._add_percentage_labels(chart, place_dist, total_finishes, chart_type)
+
+    def _add_median_line(self, chart, place_dist):
+        """Отрисовывает вертикальную линию медианного значения стеков FT."""
+        # Удаляем старую линию, если есть
+        for line in getattr(self.chart_view, 'median_lines', []):
+            chart.scene().removeItem(line)
+        self.chart_view.median_lines = []
+
+        median_value = getattr(self, 'ft_stack_median', None)
+        if median_value is None:
+            return
+
+        plot_area = chart.plotArea()
+
+        # Список категорий в порядке следования
+        categories = ["≤6"]
+        for i in range(8, 50, 2):
+            categories.append(f"{i}-{i+1}")
+        categories.append("≥50")
+
+        num_places = len(categories)
+        if num_places == 0:
+            return
+
+        bar_width = plot_area.width() / num_places
+
+        if median_value <= 6:
+            idx = categories.index("≤6")
+        elif median_value >= 50:
+            idx = categories.index("≥50")
+        else:
+            interval_start = int(median_value // 2) * 2
+            interval_key = f"{interval_start}-{interval_start+1}"
+            idx = categories.index(interval_key)
+
+        x_pos = plot_area.left() + bar_width * (idx + 0.5)
+
+        line = QtWidgets.QGraphicsLineItem(
+            x_pos, plot_area.top(), x_pos, plot_area.bottom()
+        )
+        pen = QtGui.QPen(QtGui.QColor("#FBBF24"))
+        pen.setWidth(2)
+        line.setPen(pen)
+        line.setZValue(5)
+
+        chart.scene().addItem(line)
+        self.chart_view.median_lines.append(line)
+
+    def _update_median_line_position(self, chart, place_dist):
+        """Обновляет позицию медианной линии при изменении размера графика."""
+        self._add_median_line(chart, place_dist)
 
     def _get_current_distribution(self):
         """Возвращает распределение в зависимости от выбранного типа графика."""
