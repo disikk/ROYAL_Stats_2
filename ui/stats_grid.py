@@ -382,6 +382,7 @@ class StatsGrid(QtWidgets.QWidget):
             "Финальный стол",
             "До финального стола",
             "Все места",
+            "Стек FT (BB)",
         ])
         self.chart_selector.currentIndexChanged.connect(self._on_chart_selector_changed)
         self.chart_type = 'ft'
@@ -790,6 +791,9 @@ class StatsGrid(QtWidgets.QWidget):
             place_dist = {i: 0 for i in range(1, 10)}
             place_dist_pre_ft = {i: 0 for i in range(10, 19)}
             place_dist_all = {i: 0 for i in range(1, 19)}
+            # Новое распределение для стеков FT
+            ft_stack_dist = self._calculate_ft_stack_distribution(tournaments)
+            
             for t in tournaments:
                 if t.finish_place is None:
                     continue
@@ -841,6 +845,7 @@ class StatsGrid(QtWidgets.QWidget):
                 'place_dist': place_dist,
                 'place_dist_pre_ft': place_dist_pre_ft,
                 'place_dist_all': place_dist_all,
+                'ft_stack_dist': ft_stack_dist,
                 'roi': roi_value,
                 'itm': itm_value,
                 'ft_reach': ft_reach,
@@ -1053,6 +1058,7 @@ class StatsGrid(QtWidgets.QWidget):
             self.place_dist_ft = data['place_dist']
             self.place_dist_pre_ft = data.get('place_dist_pre_ft', {})
             self.place_dist_all = data.get('place_dist_all', {})
+            self.ft_stack_dist = data.get('ft_stack_dist', {})
             self._update_chart(self._get_current_distribution())
             self.overallStatsChanged.emit(overall_stats)
             logger.debug("=== Конец reload StatsGrid ===")
@@ -1198,6 +1204,39 @@ class StatsGrid(QtWidgets.QWidget):
         tooltip_pos = QtCore.QPoint(global_pos.x() - 50, global_pos.y() - self.roi_adj_tooltip.sizeHint().height() - 5)
         self.roi_adj_tooltip.move(tooltip_pos)
         self.roi_adj_tooltip.show()
+    
+    def _calculate_ft_stack_distribution(self, tournaments):
+        """Рассчитывает распределение стеков выхода на FT в больших блайндах."""
+        # Инициализируем словарь для распределения
+        ft_stack_dist = {}
+        
+        # Края распределения
+        ft_stack_dist["≤6"] = 0
+        
+        # Промежуточные интервалы с шагом 2BB
+        for i in range(8, 50, 2):
+            ft_stack_dist[f"{i}-{i+1}"] = 0
+            
+        ft_stack_dist["≥50"] = 0
+        
+        # Подсчитываем распределение
+        for t in tournaments:
+            if t.reached_final_table and t.final_table_initial_stack_bb is not None:
+                bb = t.final_table_initial_stack_bb
+                
+                if bb <= 6:
+                    ft_stack_dist["≤6"] += 1
+                elif bb >= 50:
+                    ft_stack_dist["≥50"] += 1
+                else:
+                    # Находим подходящий интервал
+                    # Округляем вниз до четного числа
+                    interval_start = int(bb // 2) * 2
+                    interval_key = f"{interval_start}-{interval_start+1}"
+                    if interval_key in ft_stack_dist:
+                        ft_stack_dist[interval_key] += 1
+                
+        return ft_stack_dist
         
     def _update_chart(self, place_dist=None):
         """Обновляет гистограмму распределения мест."""
@@ -1241,18 +1280,38 @@ class StatsGrid(QtWidgets.QWidget):
             "#134E4A", "#0891B2", "#06B6D4", "#0EA5E9", "#3B82F6", "#6366F1",
             "#FCD34D", "#F59E0B", "#EF4444", "#DC2626", "#B91C1C", "#991B1B",
         ]
+        
+        # Цвета для распределения стеков FT - от красного (мало BB) к зеленому (много BB)
+        colors_ft_stack = [
+            "#EF4444", "#F87171", "#FB923C", "#FDBA74", "#FCD34D", "#FDE047",
+            "#FDE68A", "#FBBF24", "#A3E635", "#84CC16", "#65A30D", "#4ADE80",
+            "#34D399", "#10B981", "#14B8A6", "#0D9488", "#0F766E", "#134E4A",
+            "#0891B2", "#06B6D4", "#0EA5E9", "#3B82F6", "#6366F1",
+        ]
 
         if self.chart_type == 'ft':
             colors = colors_ft
         elif self.chart_type == 'pre_ft':
             colors = colors_pre_ft
+        elif self.chart_type == 'ft_stack':
+            colors = colors_ft_stack
         else:
             colors = colors_all
         
         # Подсчитываем общее количество финишей для расчета процентов
         total_finishes = sum(place_dist.values())
 
-        categories = sorted(place_dist.keys())
+        # Специальная сортировка для стеков FT
+        if self.chart_type == 'ft_stack':
+            # Создаем упорядоченный список категорий
+            categories = ["≤6"]
+            for i in range(8, 50, 2):
+                categories.append(f"{i}-{i+1}")
+            categories.append("≥50")
+            # Фильтруем только те, которые есть в данных
+            categories = [cat for cat in categories if cat in place_dist]
+        else:
+            categories = sorted(place_dist.keys())
 
         # Создаем отдельный QBarSet для каждого места
         for idx, place in enumerate(categories):
@@ -1278,13 +1337,19 @@ class StatsGrid(QtWidgets.QWidget):
         # Настройка оси X (категории)
         axis_x = QBarCategoryAxis()
         axis_x.append([str(c) for c in categories])
-        axis_x.setTitleText("Место")
+        if self.chart_type == 'ft_stack':
+            axis_x.setTitleText("Стек (BB)")
+        else:
+            axis_x.setTitleText("Место")
         axis_x.setLabelsColor(QtGui.QColor("#E4E4E7"))
         axis_x.setGridLineVisible(False)
         
         # Настройка оси Y (значения)
         axis_y = QValueAxis()
-        axis_y.setTitleText("Количество финишей")
+        if self.chart_type == 'ft_stack':
+            axis_y.setTitleText("Количество выходов на FT")
+        else:
+            axis_y.setTitleText("Количество финишей")
         axis_y.setLabelsColor(QtGui.QColor("#E4E4E7"))
         axis_y.setGridLineColor(QtGui.QColor("#3F3F46"))
         axis_y.setMinorGridLineVisible(False)
@@ -1421,16 +1486,20 @@ class StatsGrid(QtWidgets.QWidget):
             return getattr(self, 'place_dist_pre_ft', {})
         if self.chart_type == 'all':
             return getattr(self, 'place_dist_all', {})
+        if self.chart_type == 'ft_stack':
+            return getattr(self, 'ft_stack_dist', {})
         return getattr(self, 'place_dist_ft', {})
 
     def _on_chart_selector_changed(self, index: int):
-        types = ['ft', 'pre_ft', 'all']
+        types = ['ft', 'pre_ft', 'all', 'ft_stack']
         self.chart_type = types[index]
         if self.chart_type == 'ft':
             self.chart_header.setText("Распределение финишных мест на финальном столе")
         elif self.chart_type == 'pre_ft':
             self.chart_header.setText("Распределение мест до финального стола (10-18)")
-        else:
+        elif self.chart_type == 'all':
             self.chart_header.setText("Распределение финишных мест (1-18)")
+        else:  # ft_stack
+            self.chart_header.setText("Распределение стеков выхода на FT (в больших блайндах)")
 
         self._update_chart(self._get_current_distribution())
