@@ -1394,12 +1394,12 @@ class StatsGrid(QtWidgets.QWidget):
         if total_finishes > 0:
             # Подключаем обработчик изменения геометрии
             self.chart_view.chart().plotAreaChanged.connect(
-                lambda: self._update_percentage_labels_position(chart, place_dist, total_finishes)
+                lambda: self._update_percentage_labels_position(chart, place_dist, total_finishes, self.chart_type)
             )
             # Первоначальное размещение меток
-            QtCore.QTimer.singleShot(100, lambda: self._add_percentage_labels(chart, place_dist, total_finishes))
+            QtCore.QTimer.singleShot(100, lambda: self._add_percentage_labels(chart, place_dist, total_finishes, self.chart_type))
     
-    def _add_percentage_labels(self, chart, place_dist, total_finishes):
+    def _add_percentage_labels(self, chart, place_dist, total_finishes, chart_type=None):
         """Добавляет текстовые метки с процентами над барами."""
         # Удаляем старые метки, если есть
         for label in getattr(self.chart_view, 'chart_labels', []):
@@ -1408,7 +1408,19 @@ class StatsGrid(QtWidgets.QWidget):
         
         # Создаем новые метки
         plot_area = chart.plotArea()
-        categories = sorted(place_dist.keys())
+        
+        # Специальная сортировка для стеков FT
+        if chart_type == 'ft_stack':
+            # Создаем упорядоченный список категорий
+            categories = ["≤6"]
+            for i in range(8, 50, 2):
+                categories.append(f"{i}-{i+1}")
+            categories.append("≥50")
+            # Фильтруем только те, которые есть в данных
+            categories = [cat for cat in categories if cat in place_dist]
+        else:
+            categories = sorted(place_dist.keys())
+            
         num_places = len(categories)
         bar_width = plot_area.width() / num_places
 
@@ -1456,15 +1468,21 @@ class StatsGrid(QtWidgets.QWidget):
                 bar_top = plot_area.bottom() - (plot_area.height() * bar_height_ratio)
                 label_height = text.boundingRect().height()
 
-                inside_offset = 3
-                bar_height = plot_area.bottom() - bar_top
-
-                if bar_height >= label_height + inside_offset:
-                    # Размещаем метку внутри бара
-                    y_pos = bar_top + inside_offset
+                # Для гистограммы стеков FT всегда размещаем метки сверху баров
+                if chart_type == 'ft_stack':
+                    # Фиксированный отступ сверху бара
+                    y_pos = bar_top - label_height - 5
                 else:
-                    # Бар слишком низкий, помещаем метку сверху с отступом 12px
-                    y_pos = bar_top - label_height - 12
+                    # Для остальных гистограмм используем адаптивную логику
+                    inside_offset = 3
+                    bar_height = plot_area.bottom() - bar_top
+
+                    if bar_height >= label_height + inside_offset:
+                        # Размещаем метку внутри бара
+                        y_pos = bar_top + inside_offset
+                    else:
+                        # Бар слишком низкий, помещаем метку сверху с отступом 12px
+                        y_pos = bar_top - label_height - 12
 
                 shadow = QtWidgets.QGraphicsDropShadowEffect()
                 shadow.setBlurRadius(10)
@@ -1476,9 +1494,9 @@ class StatsGrid(QtWidgets.QWidget):
                 chart.scene().addItem(text)
                 self.chart_view.chart_labels.append(text)
     
-    def _update_percentage_labels_position(self, chart, place_dist, total_finishes):
+    def _update_percentage_labels_position(self, chart, place_dist, total_finishes, chart_type=None):
         """Обновляет позиции меток при изменении размера графика."""
-        self._add_percentage_labels(chart, place_dist, total_finishes)
+        self._add_percentage_labels(chart, place_dist, total_finishes, chart_type)
 
     def _get_current_distribution(self):
         """Возвращает распределение в зависимости от выбранного типа графика."""
