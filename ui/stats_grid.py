@@ -437,9 +437,9 @@ class StatsGrid(QtWidgets.QWidget):
         bigko_layout.setSpacing(3)
         
         self.bigko_cards = {
-            'x1.5': StatCard("KO x1.5", "-"),
-            'x2': StatCard("KO x2", "-"),
-            'x10': StatCard("KO x10", "-"),
+            'x1.5': SpecialStatCard("KO x1.5", "-"),
+            'x2': SpecialStatCard("KO x2", "-"),
+            'x10': SpecialStatCard("KO x10", "-"),
             'x100': StatCard("KO x100", "-"),
             'x1000': StatCard("KO x1000", "-"),
             'x10000': StatCard("KO x10000", "-"),
@@ -448,7 +448,6 @@ class StatsGrid(QtWidgets.QWidget):
         # Фиксируем минимальную высоту для карточек Big KO
         for card in self.bigko_cards.values():
             card.setMinimumHeight(40)
-            card.setMaximumHeight(40)
 
         # Добавляем все карточки Big KO в горизонтальный layout
         bigko_layout.addWidget(self.bigko_cards['x1.5'])
@@ -940,9 +939,26 @@ class StatsGrid(QtWidgets.QWidget):
             )
             logger.debug(f"Обновлена карточка early_ft_bust: {bust_count} / {bust_per:.2f}")
             
-            self.bigko_cards['x1.5'].update_value(str(overall_stats.big_ko_x1_5))
-            self.bigko_cards['x2'].update_value(str(overall_stats.big_ko_x2))
-            self.bigko_cards['x10'].update_value(str(overall_stats.big_ko_x10))
+            if overall_stats.big_ko_x1_5 > 0:
+                per = overall_stats.total_knockouts / overall_stats.big_ko_x1_5 if overall_stats.total_knockouts > 0 else 0
+                subtitle = f"1 на {per:.0f} нокаутов"
+            else:
+                subtitle = ""
+            self.bigko_cards['x1.5'].update_value(str(overall_stats.big_ko_x1_5), subtitle)
+
+            if overall_stats.big_ko_x2 > 0:
+                per = overall_stats.total_knockouts / overall_stats.big_ko_x2 if overall_stats.total_knockouts > 0 else 0
+                subtitle = f"1 на {per:.0f} нокаутов"
+            else:
+                subtitle = ""
+            self.bigko_cards['x2'].update_value(str(overall_stats.big_ko_x2), subtitle)
+
+            if overall_stats.big_ko_x10 > 0:
+                per = overall_stats.total_knockouts / overall_stats.big_ko_x10 if overall_stats.total_knockouts > 0 else 0
+                subtitle = f"1 на {per:.0f} нокаутов"
+            else:
+                subtitle = ""
+            self.bigko_cards['x10'].update_value(str(overall_stats.big_ko_x10), subtitle)
             self.bigko_cards['x100'].update_value(str(overall_stats.big_ko_x100))
             self.bigko_cards['x1000'].update_value(str(overall_stats.big_ko_x1000))
             self.bigko_cards['x10000'].update_value(str(overall_stats.big_ko_x10000))
@@ -965,9 +981,8 @@ class StatsGrid(QtWidgets.QWidget):
             )
             # Обновляем текст над карточкой KO x10
             if overall_stats.big_ko_x10 > 0:
-                per_tourn = overall_stats.total_tournaments / overall_stats.big_ko_x10
                 per_ko = overall_stats.total_knockouts / overall_stats.big_ko_x10 if overall_stats.total_knockouts > 0 else 0
-                info_text = f"1 на {per_tourn:.0f} турниров\n1 на {per_ko:.0f} нокаутов"
+                info_text = f"1 на {per_ko:.0f} нокаутов"
             else:
                 info_text = "нет"
             self.bigko_x10_info_label.setText(info_text)
