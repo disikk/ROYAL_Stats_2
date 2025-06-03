@@ -25,6 +25,7 @@ class Tournament:
     reached_final_table: bool = False # Достиг ли Hero финального стола 9-max
     final_table_initial_stack_chips: Optional[float] = None # Стек на старте финалки в фишках
     final_table_initial_stack_bb: Optional[float] = None # Стек на старте финалки в BB
+    final_table_start_players: Optional[int] = None # Количество игроков в первой руке финального стола
     id: Optional[int] = None # ID из БД, опционально
 
     def as_dict(self) -> dict:
@@ -43,6 +44,7 @@ class Tournament:
             "reached_final_table": self.reached_final_table,
             "final_table_initial_stack_chips": self.final_table_initial_stack_chips,
             "final_table_initial_stack_bb": self.final_table_initial_stack_bb,
+            "final_table_start_players": self.final_table_start_players,
             "id": self.id,
         }
 
@@ -67,6 +69,7 @@ class Tournament:
                     reached_final_table=bool(data.get("reached_final_table", 0)), # SQLite хранит BOOLEAN как 0/1
                     final_table_initial_stack_chips=data.get("final_table_initial_stack_chips"),
                     final_table_initial_stack_bb=data.get("final_table_initial_stack_bb"),
+                    final_table_start_players=data.get("final_table_start_players"),
                     id=data.get("id")
                 )
             else:
@@ -83,6 +86,7 @@ class Tournament:
                     reached_final_table=bool(data["reached_final_table"]) if "reached_final_table" in data.keys() else False, # SQLite хранит BOOLEAN как 0/1
                     final_table_initial_stack_chips=data["final_table_initial_stack_chips"] if "final_table_initial_stack_chips" in data.keys() else None,
                     final_table_initial_stack_bb=data["final_table_initial_stack_bb"] if "final_table_initial_stack_bb" in data.keys() else None,
+                    final_table_start_players=data["final_table_start_players"] if "final_table_start_players" in data.keys() else None,
                     id=data["id"] if "id" in data.keys() else None
                 )
         except Exception as e:

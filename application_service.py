@@ -45,6 +45,7 @@ from stats import (
     AvgFinishPlaceStat,
     AvgFinishPlaceFTStat,
     AvgFinishPlaceNoFTStat,
+    FTStackConversionStat,
 )
 
 logger = logging.getLogger('ROYAL_Stats.ApplicationService')
@@ -66,6 +67,7 @@ STAT_PLUGINS: List[BaseStat] = [
     AvgFinishPlaceStat(),
     AvgFinishPlaceFTStat(),
     AvgFinishPlaceNoFTStat(),
+    FTStackConversionStat(),
 ]
 
 def determine_file_type(file_path: str) -> Optional[str]:
@@ -529,6 +531,7 @@ class ApplicationService:
                              parsed_tournaments_data[tourney_id]['reached_final_table'] = True
                              parsed_tournaments_data[tourney_id]['final_table_initial_stack_chips'] = hh_data.get('final_table_initial_stack_chips')
                              parsed_tournaments_data[tourney_id]['final_table_initial_stack_bb'] = hh_data.get('final_table_initial_stack_bb')
+                             parsed_tournaments_data[tourney_id]['final_table_start_players'] = hh_data.get('final_table_start_players')
 
                         # Собираем данные финальных раздач
                         ft_hands_data = hh_data.get('final_table_hands_data', [])
@@ -619,6 +622,11 @@ class ApplicationService:
                     # Если стек уже сохранен в БД, не перезаписываем его
                     final_tourney_data['final_table_initial_stack_chips'] = existing_tourney.final_table_initial_stack_chips
                     final_tourney_data['final_table_initial_stack_bb'] = existing_tourney.final_table_initial_stack_bb
+                
+                # final_table_start_players - сохраняем только если это первая раздача финалки
+                if existing_tourney and existing_tourney.final_table_start_players is not None:
+                    # Если количество игроков уже сохранено в БД, не перезаписываем его
+                    final_tourney_data['final_table_start_players'] = existing_tourney.final_table_start_players
 
                 # session_id - сохраняем первый session_id, связанный с этим турниром
                 if existing_tourney and existing_tourney.session_id:

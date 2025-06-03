@@ -228,6 +228,7 @@ class HandHistoryParser(BaseParser):
             'reached_final_table': first_ft_hand_data is not None,
             'final_table_initial_stack_chips': first_ft_hand_data.hero_stack if first_ft_hand_data else None,
             'final_table_initial_stack_bb': (first_ft_hand_data.hero_stack / first_ft_hand_data.bb) if first_ft_hand_data and first_ft_hand_data.bb > 0 else None,
+            'final_table_start_players': first_ft_hand_data.players_count if first_ft_hand_data else None,
             'final_table_hands_data': final_table_data_for_db, # Список данных по рукам финалки для сохранения
         }
         

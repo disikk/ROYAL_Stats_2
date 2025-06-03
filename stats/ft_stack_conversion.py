@@ -10,12 +10,22 @@ import config
 
 
 class FTStackConversionStat(BaseStat):
-    """Примерная оценка конверсии стартового стека в ранние KO."""
+    """Эффективность конверсии стека в ранние KO на финальном столе."""
 
     name: str = "FT Stack Conversion"
     description: str = (
-        "Отношение фактических ранних KO к ожидаемым,\n"
-        "рассчитанным из медианного стека на FT"
+        "Эффективность превращения стека в нокауты на ранней стадии FT (9-6 игроков).\n"
+        "Показывает, насколько хорошо вы реализуете свой стек для выбивания соперников.\n"
+        "\n"
+        "Расчет: Фактические KO / Ожидаемые KO (исходя из доли вашего стека)\n"
+        "\n"
+        "Интерпретация:\n"
+        "• >1.0 - вы выбиваете больше, чем предполагает ваш стек (хорошо)\n"
+        "• =1.0 - вы выбиваете ровно столько, сколько ожидается\n"
+        "• <1.0 - вы выбиваете меньше ожидаемого (стек используется неэффективно)\n"
+        "\n"
+        "Пример: при значении 1.25 вы выбиваете на 25% больше соперников,\n"
+        "чем в среднем выбил бы игрок с вашим стеком"
     )
 
     def compute(
@@ -39,20 +49,42 @@ class FTStackConversionStat(BaseStat):
             count = len(ft_tours)
             early_ko_per_tournament = early_ko_count / count if count else 0.0
 
-        stacks = [
-            t.final_table_initial_stack_bb
-            for t in tournaments
-            if t.reached_final_table and t.final_table_initial_stack_bb is not None
-        ]
-        if not stacks:
+        # Собираем данные для турниров, где Hero достиг финального стола
+        ft_data = []
+        for t in tournaments:
+            if (t.reached_final_table and 
+                t.final_table_initial_stack_chips is not None and
+                t.final_table_start_players is not None):
+                ft_data.append({
+                    'stack_chips': t.final_table_initial_stack_chips,
+                    'start_players': t.final_table_start_players
+                })
+        
+        if not ft_data:
             return {"ft_stack_conversion": 0.0}
 
-        median_stack = median(stacks)
-        avg_stack = sum(stacks) / len(stacks)
+        # Рассчитываем медианный стек в фишках
+        median_stack_chips = median([d['stack_chips'] for d in ft_data])
+        
+        # Общее количество фишек на финальном столе всегда равно 18000
+        total_chips_at_ft = 18000
+        
+        # Доля стека игрока от общего количества фишек
+        stack_share = median_stack_chips / total_chips_at_ft
+        
+        # Рассчитываем среднее количество возможных KO в ранней фазе
+        # для каждого турнира и берем среднее
+        possible_early_ko_per_tournament = []
+        for d in ft_data:
+            # Ранняя фаза заканчивается при 5 игроках
+            early_phase_knockouts = max(0, d['start_players'] - 5)
+            possible_early_ko_per_tournament.append(early_phase_knockouts)
+        
+        avg_possible_early_ko = sum(possible_early_ko_per_tournament) / len(possible_early_ko_per_tournament)
+        
         # Ожидаемое число ранних KO пропорционально доле стека
-        # и количеству нокаутов в ранней стадии (с 9 до 6 игроков)
-        early_phase_knockouts = config.FINAL_TABLE_SIZE - config.EARLY_FT_MIN_PLAYERS
-        expected_ko = (median_stack / avg_stack) * early_phase_knockouts
+        expected_ko = stack_share * avg_possible_early_ko
+        
         efficiency = (
             early_ko_per_tournament / expected_ko if expected_ko > 0 else 0.0
         )

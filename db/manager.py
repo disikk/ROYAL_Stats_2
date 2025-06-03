@@ -281,6 +281,14 @@ class DatabaseManager:
                  cursor.execute(query)
                  logger.debug(f"Выполнен инициализационный запрос: {query.splitlines()[0]}...")
 
+            # Проверяем и добавляем новые колонки для существующих таблиц (миграции)
+            # Проверяем наличие колонки final_table_start_players в таблице tournaments
+            cursor.execute("PRAGMA table_info(tournaments)")
+            columns = [col[1] for col in cursor.fetchall()]
+            if 'final_table_start_players' not in columns:
+                cursor.execute("ALTER TABLE tournaments ADD COLUMN final_table_start_players INTEGER")
+                logger.info("Добавлена колонка final_table_start_players в таблицу tournaments")
+
             conn.commit()
             logger.info(f"База данных успешно инициализирована: {self._db_path}")
 

@@ -117,6 +117,10 @@ class StatCard(QtWidgets.QFrame):
         """Обновляет значение карточки."""
         self.value_label.setText(value)
         self.subtitle = subtitle
+    
+    def setTooltip(self, text: str):
+        """Устанавливает тултип для всей карточки."""
+        self.setToolTip(text)
 
 
 class SpecialStatCard(QtWidgets.QFrame):
@@ -205,6 +209,10 @@ class SpecialStatCard(QtWidgets.QFrame):
             """)
             self.subtitle_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
             self.layout().addWidget(self.subtitle_label)
+    
+    def setTooltip(self, text: str):
+        """Устанавливает тултип для всей карточки."""
+        self.setToolTip(text)
 
 
 class StatsGrid(QtWidgets.QWidget):
@@ -337,13 +345,38 @@ class StatsGrid(QtWidgets.QWidget):
             'avg_ft_stack': SpecialStatCard("Средний стек проходки на FT", "-"),
             'early_ft_ko': SpecialStatCard("KO в ранней FT (6-9max)", "-"),
             'early_ft_bust': SpecialStatCard("Вылеты в ранней FT\n(6-9max)", "-"),
-            'ft_stack_conv': StatCard("Конверсия стека в KO", "-"),
+            'ft_stack_conv': StatCard("Конверсия стека в KO\nв 6-9max", "-"),
             'avg_place_all': StatCard("Среднее место (все)", "-"),
             'avg_place_ft': StatCard("Среднее место (FT)", "-"),
             'avg_place_no_ft': StatCard("Среднее место (не FT)", "-"),
             'pre_ft_ko': StatCard("KO до FT", "-"),
             'incomplete_ft': StatCard("Неполные финалки\n(<9 человек на старте)", "-"),
         }
+        
+        # Словарь с описаниями для тултипов
+        self.stat_tooltips = {
+            'tournaments': "Общее количество сыгранных турниров в выбранном периоде",
+            'knockouts': "Суммарное количество нокаутов (выбитых игроков) за все турниры",
+            'avg_ko': "Среднее количество нокаутов за один турнир",
+            'roi': "Return On Investment - процент прибыли относительно вложенных средств.\nФормула: (Выигрыш - Бай-ин) / Бай-ин × 100%",
+            'ko_contribution': "Показывает, какую часть ROI обеспечивают нокауты.\nС поправкой (adj) - учитывает везение в размерах KO",
+            'itm': "In The Money - процент попаданий в призовые места (топ-3)",
+            'ft_reach': "Процент турниров, в которых вы достигли финального стола (9 игроков)",
+            'avg_ft_stack': "Средний размер стека при выходе на финальный стол.\nПоказывается в фишках и больших блайндах (BB)",
+            'early_ft_ko': "Количество нокаутов в ранней стадии финального стола (9-6 игроков).\nПоказывает агрессивность игры на этом этапе",
+            'early_ft_bust': "Количество вылетов в ранней стадии финального стола (места 6-9).\nПоказывает стабильность игры после выхода на FT",
+            'ft_stack_conv': "Эффективность конверсии медианного размера стека выхода на FT в нокауты на ранней стадии FT (6-9max).\n>1.0 - выбиваете больше ожидаемого\n=1.0 - выбиваете как ожидается\n<1.0 - выбиваете меньше ожидаемого",
+            'avg_place_all': "Среднее место по всем сыгранным турнирам",
+            'avg_place_ft': "Среднее место среди турниров с достижением финального стола",
+            'avg_place_no_ft': "Среднее место среди турниров без достижения финального стола",
+            'pre_ft_ko': "Количество нокаутов до выхода на финальный стол",
+            'incomplete_ft': "Процент финальных столов, которые начались с менее чем 9 игроками.\nТакие столы могут искажать статистику"
+        }
+        
+        # Устанавливаем тултипы для карточек
+        for key, card in self.cards.items():
+            if key in self.stat_tooltips:
+                card.setTooltip(self.stat_tooltips[key])
         
         # Размещаем карточки в сетке (5 колонок)
         positions = [

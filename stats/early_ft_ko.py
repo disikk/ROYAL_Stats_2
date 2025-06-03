@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 
-f"""
-Плагин для подсчёта количества и среднего KO Hero в ранней стадии финального стола
-(с {config.EARLY_FT_MIN_PLAYERS} до {config.FINAL_TABLE_SIZE} игроков).
+"""
+Плагин для подсчёта количества и среднего KO Hero в ранней стадии финального стола.
 """
 
 from typing import Dict, Any, List
@@ -12,14 +11,16 @@ import config
 import math  # Для округления
 
 class EarlyFTKOStat(BaseStat):
-    f"""Считает общее количество KO и среднее KO за турнир (достигший финалки)
-    в раздачах финального стола, где количество игроков было от
-    {config.EARLY_FT_MIN_PLAYERS} до {config.FINAL_TABLE_SIZE} включительно."""
+    """Считает общее количество KO и среднее KO за турнир (достигший финалки)
+    в раздачах финального стола в ранней стадии."""
     name: str = "Early FT KO"
-    description: str = (
-        f"Статистика KO в ранней стадии финального стола ({config.EARLY_FT_MIN_PLAYERS}-"
-        f"{config.FINAL_TABLE_SIZE} игроков)"
-    )
+    
+    @property
+    def description(self) -> str:
+        return (
+            f"Статистика KO в ранней стадии финального стола ({config.EARLY_FT_MIN_PLAYERS}-"
+            f"{config.FINAL_TABLE_SIZE} игроков)"
+        )
 
     def compute(self,
                 tournaments: List[Any], # Не используется напрямую этим плагином
