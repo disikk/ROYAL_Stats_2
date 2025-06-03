@@ -295,6 +295,10 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
                     "Успех",
                     f"База данных '{name}' успешно создана и выбрана."
                 )
+
+                # Закрываем диалог, чтобы основное окно сразу обновило статистику
+                # (MainWindow.compare db_path и вызовет refresh_all_data)
+                self.accept()
                 
             except Exception as e:
                 QtWidgets.QMessageBox.critical(
