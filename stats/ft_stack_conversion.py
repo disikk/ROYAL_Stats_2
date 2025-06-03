@@ -49,7 +49,10 @@ class FTStackConversionStat(BaseStat):
 
         median_stack = median(stacks)
         avg_stack = sum(stacks) / len(stacks)
-        expected_ko = (median_stack / avg_stack) * (config.FINAL_TABLE_SIZE - 1)
+        # Ожидаемое число ранних KO пропорционально доле стека
+        # и количеству нокаутов в ранней стадии (с 9 до 6 игроков)
+        early_phase_knockouts = config.FINAL_TABLE_SIZE - config.EARLY_FT_MIN_PLAYERS
+        expected_ko = (median_stack / avg_stack) * early_phase_knockouts
         efficiency = (
             early_ko_per_tournament / expected_ko if expected_ko > 0 else 0.0
         )
