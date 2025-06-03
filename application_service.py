@@ -302,6 +302,36 @@ class ApplicationService:
 
         logger.info(f"Создана и выбрана новая база данных: {new_db_path}")
 
+    def rename_database(self, old_path: str, new_name: str) -> str:
+        """Переименовывает файл базы данных."""
+        directory = os.path.dirname(old_path)
+        new_path = os.path.join(directory, new_name)
+        if not new_path.lower().endswith(".db"):
+            new_path += ".db"
+
+        if os.path.exists(new_path):
+            raise FileExistsError(
+                f"База данных '{os.path.basename(new_path)}' уже существует."
+            )
+
+        # Закрываем соединение перед переименованием
+        self.db.close_all_connections()
+        os.rename(old_path, new_path)
+
+        # Обновляем кеши статистики
+        if old_path in self._overall_stats_cache:
+            self._overall_stats_cache[new_path] = self._overall_stats_cache.pop(old_path)
+        if old_path in self._place_distribution_cache:
+            self._place_distribution_cache[new_path] = self._place_distribution_cache.pop(old_path)
+        if old_path in self._persistent_cache:
+            self._persistent_cache[new_path] = self._persistent_cache.pop(old_path)
+            self._save_persistent_cache()
+
+        if self.db.db_path == old_path:
+            self.switch_database(new_path, load_stats=False)
+
+        return new_path
+
     def import_files(
         self,
         paths: List[str],

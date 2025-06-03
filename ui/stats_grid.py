@@ -382,6 +382,7 @@ class StatsGrid(QtWidgets.QWidget):
             "Финальный стол",
             "До финального стола",
             "Все места",
+            "Стек FT (BB)",
         ])
         self.chart_selector.currentIndexChanged.connect(self._on_chart_selector_changed)
         self.chart_type = 'ft'
@@ -437,9 +438,9 @@ class StatsGrid(QtWidgets.QWidget):
         bigko_layout.setSpacing(3)
         
         self.bigko_cards = {
-            'x1.5': StatCard("KO x1.5", "-"),
-            'x2': StatCard("KO x2", "-"),
-            'x10': StatCard("KO x10", "-"),
+            'x1.5': SpecialStatCard("KO x1.5", "-"),
+            'x2': SpecialStatCard("KO x2", "-"),
+            'x10': SpecialStatCard("KO x10", "-"),
             'x100': StatCard("KO x100", "-"),
             'x1000': StatCard("KO x1000", "-"),
             'x10000': StatCard("KO x10000", "-"),
@@ -448,7 +449,6 @@ class StatsGrid(QtWidgets.QWidget):
         # Фиксируем минимальную высоту для карточек Big KO
         for card in self.bigko_cards.values():
             card.setMinimumHeight(40)
-            card.setMaximumHeight(40)
 
         # Добавляем все карточки Big KO в горизонтальный layout
         bigko_layout.addWidget(self.bigko_cards['x1.5'])
@@ -791,6 +791,9 @@ class StatsGrid(QtWidgets.QWidget):
             place_dist = {i: 0 for i in range(1, 10)}
             place_dist_pre_ft = {i: 0 for i in range(10, 19)}
             place_dist_all = {i: 0 for i in range(1, 19)}
+            # Новое распределение для стеков FT
+            ft_stack_dist = self._calculate_ft_stack_distribution(tournaments)
+            
             for t in tournaments:
                 if t.finish_place is None:
                     continue
@@ -842,6 +845,7 @@ class StatsGrid(QtWidgets.QWidget):
                 'place_dist': place_dist,
                 'place_dist_pre_ft': place_dist_pre_ft,
                 'place_dist_all': place_dist_all,
+                'ft_stack_dist': ft_stack_dist,
                 'roi': roi_value,
                 'itm': itm_value,
                 'ft_reach': ft_reach,
@@ -940,9 +944,26 @@ class StatsGrid(QtWidgets.QWidget):
             )
             logger.debug(f"Обновлена карточка early_ft_bust: {bust_count} / {bust_per:.2f}")
             
-            self.bigko_cards['x1.5'].update_value(str(overall_stats.big_ko_x1_5))
-            self.bigko_cards['x2'].update_value(str(overall_stats.big_ko_x2))
-            self.bigko_cards['x10'].update_value(str(overall_stats.big_ko_x10))
+            if overall_stats.big_ko_x1_5 > 0:
+                per = overall_stats.total_knockouts / overall_stats.big_ko_x1_5 if overall_stats.total_knockouts > 0 else 0
+                subtitle = f"1 на {per:.0f} нокаутов"
+            else:
+                subtitle = ""
+            self.bigko_cards['x1.5'].update_value(str(overall_stats.big_ko_x1_5), subtitle)
+
+            if overall_stats.big_ko_x2 > 0:
+                per = overall_stats.total_knockouts / overall_stats.big_ko_x2 if overall_stats.total_knockouts > 0 else 0
+                subtitle = f"1 на {per:.0f} нокаутов"
+            else:
+                subtitle = ""
+            self.bigko_cards['x2'].update_value(str(overall_stats.big_ko_x2), subtitle)
+
+            if overall_stats.big_ko_x10 > 0:
+                per = overall_stats.total_knockouts / overall_stats.big_ko_x10 if overall_stats.total_knockouts > 0 else 0
+                subtitle = f"1 на {per:.0f} нокаутов"
+            else:
+                subtitle = ""
+            self.bigko_cards['x10'].update_value(str(overall_stats.big_ko_x10), subtitle)
             self.bigko_cards['x100'].update_value(str(overall_stats.big_ko_x100))
             self.bigko_cards['x1000'].update_value(str(overall_stats.big_ko_x1000))
             self.bigko_cards['x10000'].update_value(str(overall_stats.big_ko_x10000))
@@ -963,14 +984,8 @@ class StatsGrid(QtWidgets.QWidget):
                 self.bigko_cards['x10000'].value_label,
                 overall_stats.big_ko_x10000,
             )
-            # Обновляем текст над карточкой KO x10
-            if overall_stats.big_ko_x10 > 0:
-                per_tourn = overall_stats.total_tournaments / overall_stats.big_ko_x10
-                per_ko = overall_stats.total_knockouts / overall_stats.big_ko_x10 if overall_stats.total_knockouts > 0 else 0
-                info_text = f"1 на {per_tourn:.0f} турниров\n1 на {per_ko:.0f} нокаутов"
-            else:
-                info_text = "нет"
-            self.bigko_x10_info_label.setText(info_text)
+            # Текст над карточкой KO x10 больше не отображается
+            self.bigko_x10_info_label.setText("")
             logger.debug(f"Обновлены карточки Big KO: x1.5={overall_stats.big_ko_x1_5}, x2={overall_stats.big_ko_x2}, x10={overall_stats.big_ko_x10}, x100={overall_stats.big_ko_x100}, x1000={overall_stats.big_ko_x1000}, x10000={overall_stats.big_ko_x10000}")
             
             # Обновляем стат KO Luck
@@ -1043,6 +1058,7 @@ class StatsGrid(QtWidgets.QWidget):
             self.place_dist_ft = data['place_dist']
             self.place_dist_pre_ft = data.get('place_dist_pre_ft', {})
             self.place_dist_all = data.get('place_dist_all', {})
+            self.ft_stack_dist = data.get('ft_stack_dist', {})
             self._update_chart(self._get_current_distribution())
             self.overallStatsChanged.emit(overall_stats)
             logger.debug("=== Конец reload StatsGrid ===")
@@ -1100,7 +1116,8 @@ class StatsGrid(QtWidgets.QWidget):
         stats.total_final_tables = ft_count
         stats.total_buy_in = total_buyin
         stats.total_prize = total_prize
-        stats.total_knockouts = total_ko
+        # Округляем с точностью до одной цифры для единообразия отображения
+        stats.total_knockouts = round(total_ko, 1)
         stats.avg_ko_per_tournament = total_ko / stats.total_tournaments if stats.total_tournaments else 0.0
         stats.final_table_reach_percent = ft_count / stats.total_tournaments * 100 if stats.total_tournaments else 0.0
         stats.avg_ft_initial_stack_chips = ft_chips_sum / ft_chips_count if ft_chips_count else 0.0
@@ -1123,9 +1140,9 @@ class StatsGrid(QtWidgets.QWidget):
                 if saved is None or h.hand_number < saved.hand_number:
                     first_hands[h.tournament_id] = h
         
-        stats.early_ft_ko_count = early_ko_count
+        stats.early_ft_ko_count = round(early_ko_count, 1)
         stats.early_ft_ko_per_tournament = early_ko_count / ft_count if ft_count else 0.0
-        stats.pre_ft_ko_count = pre_ft_ko_count
+        stats.pre_ft_ko_count = round(pre_ft_ko_count, 1)
         stats.incomplete_ft_count = sum(
             1 for h in first_hands.values() if h.players_count < config.FINAL_TABLE_SIZE
         )
@@ -1164,7 +1181,10 @@ class StatsGrid(QtWidgets.QWidget):
         stats.early_ft_ko_per_tournament = round(stats.early_ft_ko_per_tournament, 2)
         stats.early_ft_bust_per_tournament = round(stats.early_ft_bust_per_tournament, 2)
         stats.final_table_reach_percent = round(stats.final_table_reach_percent, 2)
-        stats.pre_ft_ko_count = round(stats.pre_ft_ko_count, 2)
+        # Финальное округление до одного знака после запятой
+        stats.pre_ft_ko_count = round(stats.pre_ft_ko_count, 1)
+        stats.total_knockouts = round(stats.total_knockouts, 1)
+        stats.early_ft_ko_count = round(stats.early_ft_ko_count, 1)
         return stats
     
     def _show_ko_luck_tooltip(self):
@@ -1184,6 +1204,39 @@ class StatsGrid(QtWidgets.QWidget):
         tooltip_pos = QtCore.QPoint(global_pos.x() - 50, global_pos.y() - self.roi_adj_tooltip.sizeHint().height() - 5)
         self.roi_adj_tooltip.move(tooltip_pos)
         self.roi_adj_tooltip.show()
+    
+    def _calculate_ft_stack_distribution(self, tournaments):
+        """Рассчитывает распределение стеков выхода на FT в больших блайндах."""
+        # Инициализируем словарь для распределения
+        ft_stack_dist = {}
+        
+        # Края распределения
+        ft_stack_dist["≤6"] = 0
+        
+        # Промежуточные интервалы с шагом 2BB
+        for i in range(8, 50, 2):
+            ft_stack_dist[f"{i}-{i+1}"] = 0
+            
+        ft_stack_dist["≥50"] = 0
+        
+        # Подсчитываем распределение
+        for t in tournaments:
+            if t.reached_final_table and t.final_table_initial_stack_bb is not None:
+                bb = t.final_table_initial_stack_bb
+                
+                if bb <= 6:
+                    ft_stack_dist["≤6"] += 1
+                elif bb >= 50:
+                    ft_stack_dist["≥50"] += 1
+                else:
+                    # Находим подходящий интервал
+                    # Округляем вниз до четного числа
+                    interval_start = int(bb // 2) * 2
+                    interval_key = f"{interval_start}-{interval_start+1}"
+                    if interval_key in ft_stack_dist:
+                        ft_stack_dist[interval_key] += 1
+                
+        return ft_stack_dist
         
     def _update_chart(self, place_dist=None):
         """Обновляет гистограмму распределения мест."""
@@ -1227,18 +1280,38 @@ class StatsGrid(QtWidgets.QWidget):
             "#134E4A", "#0891B2", "#06B6D4", "#0EA5E9", "#3B82F6", "#6366F1",
             "#FCD34D", "#F59E0B", "#EF4444", "#DC2626", "#B91C1C", "#991B1B",
         ]
+        
+        # Цвета для распределения стеков FT - от красного (мало BB) к зеленому (много BB)
+        colors_ft_stack = [
+            "#EF4444", "#F87171", "#FB923C", "#FDBA74", "#FCD34D", "#FDE047",
+            "#FDE68A", "#FBBF24", "#A3E635", "#84CC16", "#65A30D", "#4ADE80",
+            "#34D399", "#10B981", "#14B8A6", "#0D9488", "#0F766E", "#134E4A",
+            "#0891B2", "#06B6D4", "#0EA5E9", "#3B82F6", "#6366F1",
+        ]
 
         if self.chart_type == 'ft':
             colors = colors_ft
         elif self.chart_type == 'pre_ft':
             colors = colors_pre_ft
+        elif self.chart_type == 'ft_stack':
+            colors = colors_ft_stack
         else:
             colors = colors_all
         
         # Подсчитываем общее количество финишей для расчета процентов
         total_finishes = sum(place_dist.values())
 
-        categories = sorted(place_dist.keys())
+        # Специальная сортировка для стеков FT
+        if self.chart_type == 'ft_stack':
+            # Создаем упорядоченный список категорий
+            categories = ["≤6"]
+            for i in range(8, 50, 2):
+                categories.append(f"{i}-{i+1}")
+            categories.append("≥50")
+            # Фильтруем только те, которые есть в данных
+            categories = [cat for cat in categories if cat in place_dist]
+        else:
+            categories = sorted(place_dist.keys())
 
         # Создаем отдельный QBarSet для каждого места
         for idx, place in enumerate(categories):
@@ -1264,13 +1337,19 @@ class StatsGrid(QtWidgets.QWidget):
         # Настройка оси X (категории)
         axis_x = QBarCategoryAxis()
         axis_x.append([str(c) for c in categories])
-        axis_x.setTitleText("Место")
+        if self.chart_type == 'ft_stack':
+            axis_x.setTitleText("Стек (BB)")
+        else:
+            axis_x.setTitleText("Место")
         axis_x.setLabelsColor(QtGui.QColor("#E4E4E7"))
         axis_x.setGridLineVisible(False)
         
         # Настройка оси Y (значения)
         axis_y = QValueAxis()
-        axis_y.setTitleText("Количество финишей")
+        if self.chart_type == 'ft_stack':
+            axis_y.setTitleText("Количество выходов на FT")
+        else:
+            axis_y.setTitleText("Количество финишей")
         axis_y.setLabelsColor(QtGui.QColor("#E4E4E7"))
         axis_y.setGridLineColor(QtGui.QColor("#3F3F46"))
         axis_y.setMinorGridLineVisible(False)
@@ -1315,12 +1394,12 @@ class StatsGrid(QtWidgets.QWidget):
         if total_finishes > 0:
             # Подключаем обработчик изменения геометрии
             self.chart_view.chart().plotAreaChanged.connect(
-                lambda: self._update_percentage_labels_position(chart, place_dist, total_finishes)
+                lambda: self._update_percentage_labels_position(chart, place_dist, total_finishes, self.chart_type)
             )
             # Первоначальное размещение меток
-            QtCore.QTimer.singleShot(100, lambda: self._add_percentage_labels(chart, place_dist, total_finishes))
+            QtCore.QTimer.singleShot(100, lambda: self._add_percentage_labels(chart, place_dist, total_finishes, self.chart_type))
     
-    def _add_percentage_labels(self, chart, place_dist, total_finishes):
+    def _add_percentage_labels(self, chart, place_dist, total_finishes, chart_type=None):
         """Добавляет текстовые метки с процентами над барами."""
         # Удаляем старые метки, если есть
         for label in getattr(self.chart_view, 'chart_labels', []):
@@ -1329,7 +1408,19 @@ class StatsGrid(QtWidgets.QWidget):
         
         # Создаем новые метки
         plot_area = chart.plotArea()
-        categories = sorted(place_dist.keys())
+        
+        # Специальная сортировка для стеков FT
+        if chart_type == 'ft_stack':
+            # Создаем упорядоченный список категорий
+            categories = ["≤6"]
+            for i in range(8, 50, 2):
+                categories.append(f"{i}-{i+1}")
+            categories.append("≥50")
+            # Фильтруем только те, которые есть в данных
+            categories = [cat for cat in categories if cat in place_dist]
+        else:
+            categories = sorted(place_dist.keys())
+            
         num_places = len(categories)
         bar_width = plot_area.width() / num_places
 
@@ -1377,15 +1468,21 @@ class StatsGrid(QtWidgets.QWidget):
                 bar_top = plot_area.bottom() - (plot_area.height() * bar_height_ratio)
                 label_height = text.boundingRect().height()
 
-                inside_offset = 3
-                bar_height = plot_area.bottom() - bar_top
-
-                if bar_height >= label_height + inside_offset:
-                    # Размещаем метку внутри бара
-                    y_pos = bar_top + inside_offset
+                # Для гистограммы стеков FT всегда размещаем метки сверху баров
+                if chart_type == 'ft_stack':
+                    # Фиксированный отступ сверху бара
+                    y_pos = bar_top - label_height - 5
                 else:
-                    # Бар слишком низкий, помещаем метку сверху с отступом 12px
-                    y_pos = bar_top - label_height - 12
+                    # Для остальных гистограмм используем адаптивную логику
+                    inside_offset = 3
+                    bar_height = plot_area.bottom() - bar_top
+
+                    if bar_height >= label_height + inside_offset:
+                        # Размещаем метку внутри бара
+                        y_pos = bar_top + inside_offset
+                    else:
+                        # Бар слишком низкий, помещаем метку сверху с отступом 12px
+                        y_pos = bar_top - label_height - 12
 
                 shadow = QtWidgets.QGraphicsDropShadowEffect()
                 shadow.setBlurRadius(10)
@@ -1397,9 +1494,9 @@ class StatsGrid(QtWidgets.QWidget):
                 chart.scene().addItem(text)
                 self.chart_view.chart_labels.append(text)
     
-    def _update_percentage_labels_position(self, chart, place_dist, total_finishes):
+    def _update_percentage_labels_position(self, chart, place_dist, total_finishes, chart_type=None):
         """Обновляет позиции меток при изменении размера графика."""
-        self._add_percentage_labels(chart, place_dist, total_finishes)
+        self._add_percentage_labels(chart, place_dist, total_finishes, chart_type)
 
     def _get_current_distribution(self):
         """Возвращает распределение в зависимости от выбранного типа графика."""
@@ -1407,16 +1504,20 @@ class StatsGrid(QtWidgets.QWidget):
             return getattr(self, 'place_dist_pre_ft', {})
         if self.chart_type == 'all':
             return getattr(self, 'place_dist_all', {})
+        if self.chart_type == 'ft_stack':
+            return getattr(self, 'ft_stack_dist', {})
         return getattr(self, 'place_dist_ft', {})
 
     def _on_chart_selector_changed(self, index: int):
-        types = ['ft', 'pre_ft', 'all']
+        types = ['ft', 'pre_ft', 'all', 'ft_stack']
         self.chart_type = types[index]
         if self.chart_type == 'ft':
             self.chart_header.setText("Распределение финишных мест на финальном столе")
         elif self.chart_type == 'pre_ft':
             self.chart_header.setText("Распределение мест до финального стола (10-18)")
-        else:
+        elif self.chart_type == 'all':
             self.chart_header.setText("Распределение финишных мест (1-18)")
+        else:  # ft_stack
+            self.chart_header.setText("Распределение стеков выхода на FT (в больших блайндах)")
 
         self._update_chart(self._get_current_distribution())
