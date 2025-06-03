@@ -1347,9 +1347,6 @@ class StatsGrid(QtWidgets.QWidget):
         num_places = len(categories)
         bar_width = plot_area.width() / num_places
 
-        # Берем первую серию для вычисления координат столбцов
-        series = chart.series()[0] if chart.series() else None
-
         # Получаем максимальное значение по оси Y, чтобы корректно рассчитывать
         # высоту баров. Это значение соответствует диапазону, заданному для
         # оси графика, поэтому вычисленные координаты будут совпадать с
@@ -1383,32 +1380,20 @@ class StatsGrid(QtWidgets.QWidget):
                 text.setFont(QtGui.QFont("Arial", 13, QtGui.QFont.Weight.Bold))
 
                 # Вычисляем позицию
-                if series is not None:
-                    bar_top_point = chart.mapToPosition(
-                        QtCore.QPointF(idx, count), series
-                    )
-                    bar_bottom_point = chart.mapToPosition(
-                        QtCore.QPointF(idx, 0), series
-                    )
-                    x_pos = bar_top_point.x() - text.boundingRect().width() / 2
-                    bar_top = bar_top_point.y()
-                    bar_bottom = bar_bottom_point.y()
-                    bar_height = bar_bottom - bar_top
-                else:
-                    x_pos = (
-                        plot_area.left()
-                        + bar_width * (idx + 0.5)
-                        - text.boundingRect().width() / 2
-                    )
-                    bar_height_ratio = count / y_max if y_max else 0
-                    bar_top = plot_area.bottom() - (
-                        plot_area.height() * bar_height_ratio
-                    )
-                    bar_bottom = plot_area.bottom()
-                    bar_height = bar_bottom - bar_top
+                x_pos = (
+                    plot_area.left()
+                    + bar_width * (idx + 0.5)
+                    - text.boundingRect().width() / 2
+                )
+
+                # Высота столбца относительно установленного диапазона оси Y
+                bar_height_ratio = count / y_max if y_max else 0
+                bar_top = plot_area.bottom() - (plot_area.height() * bar_height_ratio)
                 label_height = text.boundingRect().height()
-                
+
                 inside_offset = 3
+                bar_height = plot_area.bottom() - bar_top
+
                 if bar_height >= label_height + inside_offset:
                     # Размещаем метку внутри бара
                     y_pos = bar_top + inside_offset
