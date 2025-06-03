@@ -635,6 +635,11 @@ class TournamentRepository:
             "roi": 0.0
         }
 
+    def delete_tournament_by_id(self, tournament_id: str):
+        """Удаляет турнир по его ID."""
+        query = "DELETE FROM tournaments WHERE tournament_id = ?"
+        self.db.execute_update(query, (tournament_id,))
+
 
 # Создаем синглтон экземпляр репозитория
 tournament_repository = TournamentRepository()
