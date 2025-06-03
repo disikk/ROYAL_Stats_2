@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
-"""
+f"""
 Плагин для подсчёта количества вылетов Hero на ранней стадии финального стола
-(места 6-9) и среднего их числа на турнир с финалкой.
+(места {config.EARLY_FT_MIN_PLAYERS}-{config.FINAL_TABLE_SIZE}) и среднего их числа на турнир с финалкой.
 """
 from typing import Dict, Any, List
 from .base import BaseStat
 from models import Tournament, OverallStats
+import config
 
 
 class EarlyFTBustStat(BaseStat):
@@ -13,7 +14,8 @@ class EarlyFTBustStat(BaseStat):
 
     name: str = "Early FT Busts"
     description: str = (
-        "Количество вылетов Hero на ранней стадии финального стола (6-9 место)"
+        f"Количество вылетов Hero на ранней стадии финального стола ({config.EARLY_FT_MIN_PLAYERS}-"
+        f"{config.FINAL_TABLE_SIZE} место)"
     )
 
     def compute(
@@ -38,7 +40,10 @@ class EarlyFTBustStat(BaseStat):
             bust_count = sum(
                 1
                 for t in ft_tournaments
-                if t.finish_place is not None and 6 <= t.finish_place <= 9
+                if (
+                    t.finish_place is not None
+                    and config.EARLY_FT_MIN_PLAYERS <= t.finish_place <= config.FINAL_TABLE_SIZE
+                )
             )
             total_final_tables = len(ft_tournaments)
             bust_per_tournament = (
