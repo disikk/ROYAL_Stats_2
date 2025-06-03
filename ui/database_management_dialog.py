@@ -91,6 +91,8 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
             }
         """)
         self.db_list.itemDoubleClicked.connect(self._on_db_double_clicked)
+        self.db_list.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.db_list.customContextMenuRequested.connect(self._show_context_menu)
         layout.addWidget(self.db_list)
         
         # Информация о выбранной БД
@@ -357,4 +359,54 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
                     self,
                     "Частичная ошибка",
                     "Не удалось удалить следующие БД:\n" + "\n".join(errors)
+                )
+
+    def _show_context_menu(self, position: QtCore.QPoint):
+        """Отображает контекстное меню для списка баз данных."""
+        selected_items = self.db_list.selectedItems()
+        if len(selected_items) != 1:
+            return
+
+        menu = QtWidgets.QMenu(self)
+        rename_action = menu.addAction("Переименовать БД")
+
+        action = menu.exec(self.db_list.viewport().mapToGlobal(position))
+        if action == rename_action:
+            self._rename_database(selected_items[0])
+
+    def _rename_database(self, item: QtWidgets.QListWidgetItem):
+        """Переименовывает выбранную базу данных."""
+        old_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
+        old_name = os.path.basename(old_path)
+
+        new_name, ok = QtWidgets.QInputDialog.getText(
+            self,
+            "Переименование БД",
+            "Введите новое имя базы данных:",
+            QtWidgets.QLineEdit.EchoMode.Normal,
+            old_name,
+        )
+
+        if ok and new_name and new_name != old_name:
+            try:
+                new_path = self.app_service.rename_database(old_path, new_name)
+                self._load_databases()
+                # Выбрать переименованную БД в списке
+                for i in range(self.db_list.count()):
+                    it = self.db_list.item(i)
+                    if it.data(QtCore.Qt.ItemDataRole.UserRole) == new_path:
+                        self.db_list.setCurrentItem(it)
+                        break
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Успех",
+                    f"База данных успешно переименована в '{os.path.basename(new_path)}'.",
+                )
+            except FileExistsError as e:
+                QtWidgets.QMessageBox.warning(self, "Ошибка", str(e))
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(
+                    self,
+                    "Ошибка",
+                    f"Не удалось переименовать базу данных:\n{e}",
                 )
