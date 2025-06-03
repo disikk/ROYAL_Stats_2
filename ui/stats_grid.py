@@ -45,6 +45,7 @@ from stats import (
     AvgFTInitialStackStat,
     EarlyFTKOStat,
     EarlyFTBustStat,
+    FTStackConversionStat,
     AvgFinishPlaceStat,
     AvgFinishPlaceFTStat,
     AvgFinishPlaceNoFTStat,
@@ -336,6 +337,7 @@ class StatsGrid(QtWidgets.QWidget):
             'avg_ft_stack': SpecialStatCard("Средний стек проходки на FT", "-"),
             'early_ft_ko': SpecialStatCard("KO в ранней FT (6-9max)", "-"),
             'early_ft_bust': SpecialStatCard("Вылеты в ранней FT\n(6-9max)", "-"),
+            'ft_stack_conv': StatCard("Конверсия стека в KO", "-"),
             'avg_place_all': StatCard("Среднее место (все)", "-"),
             'avg_place_ft': StatCard("Среднее место (FT)", "-"),
             'avg_place_no_ft': StatCard("Среднее место (не FT)", "-"),
@@ -346,8 +348,9 @@ class StatsGrid(QtWidgets.QWidget):
         # Размещаем карточки в сетке (5 колонок)
         positions = [
             ('tournaments', 0, 0), ('roi', 0, 1), ('itm', 0, 2), ('knockouts', 0, 3), ('avg_ko', 0, 4),
-            ('ft_reach', 1, 0), ('avg_ft_stack', 1, 1), ('early_ft_ko', 1, 2), ('ko_contribution', 1, 3), ('pre_ft_ko', 1, 4),
+            ('ft_reach', 1, 0), ('avg_ft_stack', 1, 1), ('early_ft_ko', 1, 2), ('ft_stack_conv', 1, 3), ('pre_ft_ko', 1, 4),
             ('avg_place_all', 2, 0), ('avg_place_ft', 2, 1), ('avg_place_no_ft', 2, 2), ('early_ft_bust', 2, 3), ('incomplete_ft', 2, 4),
+            ('ko_contribution', 3, 0),
         ]
         
         for key, row, col in positions:
@@ -822,6 +825,8 @@ class StatsGrid(QtWidgets.QWidget):
             early_res = EarlyFTKOStat().compute(tournaments, ft_hands, [], overall_stats)
             early_ko = early_res.get('early_ft_ko_count', 0)
             early_ko_per = early_res.get('early_ft_ko_per_tournament', 0.0)
+            conv_res = FTStackConversionStat().compute(tournaments, ft_hands, [], overall_stats)
+            ft_stack_conv = conv_res.get('ft_stack_conversion', 0.0)
             pre_ft_ko_res = PreFTKOStat().compute(tournaments, ft_hands, [], overall_stats)
             pre_ft_ko_count = pre_ft_ko_res.get('pre_ft_ko_count', 0.0)
             
@@ -855,6 +860,7 @@ class StatsGrid(QtWidgets.QWidget):
                 'avg_bb': avg_bb,
                 'early_ko': early_ko,
                 'early_ko_per': early_ko_per,
+                'ft_stack_conv': ft_stack_conv,
                 'pre_ft_ko_count': pre_ft_ko_count,
                 'incomplete_ft_percent': incomplete_ft_percent,
                 'avg_place_all': avg_all,
@@ -935,6 +941,10 @@ class StatsGrid(QtWidgets.QWidget):
                 f"{early_ko_per:.2f} за турнир с FT"
             )
             logger.debug(f"Обновлена карточка early_ft_ko: {early_ko_count} / {early_ko_per:.2f}")
+
+            ft_stack_conv = data.get('ft_stack_conv', 0.0)
+            self.cards['ft_stack_conv'].update_value(f"{ft_stack_conv:.2f}")
+            logger.debug(f"Обновлена карточка ft_stack_conv: {ft_stack_conv:.2f}")
 
             bust_result = EarlyFTBustStat().compute(all_tournaments, [], [], overall_stats)
             logger.debug(f"Early FT Bust result: {bust_result}")
