@@ -29,4 +29,5 @@ class PreFTKOStat(BaseStat):
         else:
             count = sum(hand.pre_ft_ko for hand in final_table_hands)
 
-        return {"pre_ft_ko_count": round(count, 2)}
+        # Для отображения в UI оставляем одну цифру после запятой.
+        return {"pre_ft_ko_count": round(count, 1)}
