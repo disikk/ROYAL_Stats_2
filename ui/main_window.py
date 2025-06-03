@@ -263,7 +263,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self
         )
         self.progress_dialog.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
-        self.progress_dialog.setAutoClose(True) # Автоматически закрывать по завершении
+        # Отключаем автоматическое закрытие, чтобы диалог не "мигал"
+        # при изменении максимального значения
+        self.progress_dialog.setAutoClose(False)
         self.progress_dialog.setMinimumDuration(0) # Показывать сразу
 
         # Подключаем сигнал прогресса
@@ -347,9 +349,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.import_thread.wait()
             self.import_thread.deleteLater()
             self.import_thread = None
-
-        # progress_dialog обычно закрывается автоматически, но принудительное
-        # закрытие выше страхует от зависания интерфейса.
+        # Диалог мы закрываем вручную, так как автоматическое закрытие
+        # отключено для предотвращения мигания.
         
         # По завершении импорта сразу обновляем UI
         self._update_toolbar_info()
