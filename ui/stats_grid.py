@@ -346,7 +346,7 @@ class StatsGrid(QtWidgets.QWidget):
             'avg_ft_stack': SpecialStatCard("Средний стек проходки на FT", "-"),
             'early_ft_ko': SpecialStatCard("KO в ранней FT (6-9max)", "-"),
             'early_ft_bust': SpecialStatCard("Вылеты в ранней FT\n(6-9max)", "-"),
-            'ft_stack_conv': StatCard("Конверсия стека в KO\nв 6-9max", "-"),
+            'ft_stack_conv': SpecialStatCard("Конверсия стека в KO\nв 6-9max", "-"),
             'ft_stack_conv_attempts': SpecialStatCard("Конверсия с учетом попыток", "-"),
             'avg_place_all': StatCard("Среднее место (все)", "-"),
             'avg_place_ft': StatCard("Среднее место (FT)", "-"),
@@ -367,7 +367,7 @@ class StatsGrid(QtWidgets.QWidget):
             'avg_ft_stack': "Средний размер стека при выходе на финальный стол.\nПоказывается в фишках и больших блайндах (BB)",
             'early_ft_ko': "Количество нокаутов в ранней стадии финального стола (9-6 игроков).\nПоказывает агрессивность игры на этом этапе",
             'early_ft_bust': "Количество вылетов в ранней стадии финального стола (места 6-9).\nПоказывает стабильность игры после выхода на FT",
-            'ft_stack_conv': "Эффективность конверсии медианного размера стека выхода на FT в нокауты на ранней стадии FT (6-9max).\n>1.0 - выбиваете больше ожидаемого\n=1.0 - выбиваете как ожидается\n<1.0 - выбиваете меньше ожидаемого",
+            'ft_stack_conv': "Эффективность конверсии медианного размера стека выхода на FT в нокауты на ранней стадии FT (6-9max).\n>1.0 - выбиваете больше ожидаемого\n=1.0 - выбиваете как ожидается\n<1.0 - выбиваете меньше ожидаемого.\nВторая строка показывает среднее число попыток сделать KO за один турнир с FT",
             'ft_stack_conv_attempts': "Эффективность конверсии стека с учетом количества попыток выбить соперников.\nУчитывает везение: если много попыток, но мало KO - возможно, это невезение.\nТакже показывает процент успешных попыток",
             'avg_place_all': "Среднее место по всем сыгранным турнирам",
             'avg_place_ft': "Среднее место среди турниров с достижением финального стола",
@@ -986,9 +986,15 @@ class StatsGrid(QtWidgets.QWidget):
             logger.debug(f"Обновлена карточка early_ft_ko: {early_ko_count} / {early_ko_per:.2f}")
 
             ft_stack_conv = data.get('ft_stack_conv', 0.0)
-            self.cards['ft_stack_conv'].update_value(f"{ft_stack_conv:.2f}")
-            logger.debug(f"Обновлена карточка ft_stack_conv: {ft_stack_conv:.2f}")
-            
+            ko_attempts_per_ft = data.get('ko_attempts_per_ft', 0.0)
+            self.cards['ft_stack_conv'].update_value(
+                f"{ft_stack_conv:.2f}",
+                f"{ko_attempts_per_ft:.1f} попыток за FT"
+            )
+            logger.debug(
+                f"Обновлена карточка ft_stack_conv: {ft_stack_conv:.2f} / {ko_attempts_per_ft:.1f} попыток"
+            )
+
             # Обновляем карточку конверсии с учетом попыток
             ft_stack_conv_attempts = data.get('ft_stack_conv_attempts', 0.0)
             ko_attempts_per_ft = data.get('ko_attempts_per_ft', 0.0)
