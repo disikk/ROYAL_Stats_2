@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS hero_final_table_hands (
     players_count INTEGER, -- Фактическое число игроков за столом
     hero_ko_this_hand REAL DEFAULT 0, -- KO, сделанные Hero в этой раздаче
     pre_ft_ko REAL DEFAULT 0, -- KO, сделанные в последней 5-max раздаче
+    hero_ko_attempts INTEGER DEFAULT 0, -- Количество попыток выбить соперников в этой раздаче
     session_id TEXT,
     is_early_final BOOLEAN DEFAULT 0, -- Флаг для стадии 9-6 игроков
     UNIQUE (tournament_id, hand_id), -- Раздача уникальна в рамках турнира

@@ -52,7 +52,7 @@ class HandData:
                  'bb', 'seats', 'contrib', 'collects', 'pots',
                  'final_stacks', 'all_in_players',
                  'hero_stack', 'players_count', 'hero_ko_this_hand', 'pre_ft_ko',
-                 'is_early_final', 'timestamp', 'players', 'eliminated_players')
+                 'hero_ko_attempts', 'is_early_final', 'timestamp', 'players', 'eliminated_players')
 
     def __init__(self, hand_id: str, hand_number: int, tournament_id: str, table_size: int, bb: float, seats: Dict[str, int], timestamp: str = None):
         self.hand_id = hand_id
@@ -70,6 +70,7 @@ class HandData:
         self.players_count = len(seats)
         self.hero_ko_this_hand = 0 # KO Hero в этой раздаче
         self.pre_ft_ko = 0.0
+        self.hero_ko_attempts = 0  # Попытки КО Hero в этой раздаче
         self.is_early_final = False # Флаг ранней стадии финалки
         self.timestamp = timestamp  # Время начала раздачи
         self.players = list(seats.keys())  # Список игроков за столом в этой раздаче
@@ -216,6 +217,7 @@ class HandHistoryParser(BaseParser):
                         'players_count': hand_data.players_count,
                         'hero_ko_this_hand': hand_data.hero_ko_this_hand,
                         'pre_ft_ko': hand_data.pre_ft_ko,
+                        'hero_ko_attempts': hand_data.hero_ko_attempts,
                         'is_early_final': hand_data.is_early_final,
                         # session_id будет добавлен в ApplicationService
                     }
@@ -343,7 +345,7 @@ class HandHistoryParser(BaseParser):
                     if 'blind' in pre_line.lower():
                         preflop_blinds[pl] = preflop_blinds.get(pl, 0) + amount
 
-        contrib_act, collects = self._parse_actions_and_collects(lines[idx:], preflop_blinds)
+        contrib_act, collects, detailed_actions = self._parse_actions_and_collects(lines[idx:], preflop_blinds, seats)
 
         # объединяем
         contrib = contrib_act.copy()  # Start with a copy to avoid modifying contrib_act
@@ -426,19 +428,31 @@ class HandHistoryParser(BaseParser):
         if hand_data.contrib:  # Строим банки только если были вклады
             hand_data.pots = self._build_pots(hand_data.contrib)
             self._assign_winners(hand_data.pots, hand_data.collects)
+        
+        # Подсчитываем попытки КО
+        hand_data.hero_ko_attempts = self._count_ko_attempts_in_hand(hand_data, detailed_actions)
             
         return hand_data
         
-    def _parse_actions_and_collects(self, lines: List[str], preflop_blinds: Dict[str, int] = None) -> Tuple[Dict[str, int], Dict[str, int]]:
+    def _parse_actions_and_collects(self, lines: List[str], preflop_blinds: Dict[str, int] = None, seats: Dict[str, int] = None) -> Tuple[Dict[str, int], Dict[str, int], Dict[str, List[Tuple[str, str, int, Dict[str, int]]]]]:
         """
         Парсит действия и сборы из части раздачи, начиная с *** HOLE CARDS ***.
         
         ВАЖНО: preflop_blinds содержит ТОЛЬКО блайнды (не анте!)
         Анте уже учтены в preflop_contrib в вызывающем методе.
+        
+        Returns:
+            contrib: вклады игроков
+            collects: выигрыши игроков
+            detailed_actions: словарь с детальными действиями каждого игрока
         """
         contrib: Dict[str, int] = {}
         street_contrib: Dict[str, int] = {}  # Вклады на текущей улице
         collects: Dict[str, int] = {}
+        detailed_actions: Dict[str, List[Tuple[str, str, int, Dict[str, int]]]] = {}  # player -> [(street, action, amount, street_stacks)]
+        
+        # Стеки игроков для отслеживания на каждой улице
+        current_stacks = seats.copy() if seats else {}
         
         # На префлопе игроки с блайндами уже имеют вклады
         if preflop_blinds:
@@ -467,10 +481,19 @@ class HandHistoryParser(BaseParser):
                 act = m_action.group('action')
                 amt_str = m_action.group(3) if len(m_action.groups()) > 2 else None
 
+                # Обновляем текущие стеки после вкладов
+                action_amount = 0
+                street_stacks_snapshot = current_stacks.copy()
+                
                 if act in ('posts', 'bets', 'calls', 'all-in'):
                     amt = CHIP(amt_str) if amt_str else 0
+                    action_amount = amt
                     contrib[pl] = contrib.get(pl, 0) + amt
                     street_contrib[pl] = street_contrib.get(pl, 0) + amt
+                    # Обновляем стек
+                    if pl in current_stacks:
+                        current_stacks[pl] = max(0, current_stacks[pl] - amt)
+                        
                 elif act == 'raises':
                     amt = CHIP(amt_str) if amt_str else 0
                     # Пример: "d16ad03f: raises 2,846 to 3,146"
@@ -482,6 +505,7 @@ class HandHistoryParser(BaseParser):
                         already_on_street = street_contrib.get(pl, 0)
                         # Сколько нужно доставить
                         to_add = total_to - already_on_street
+                        action_amount = total_to  # Для попыток КО важен общий размер ставки
                         
                         if to_add < 0:
                             logger.warning(f"Negative raise amount in {current_street}: {pl} raises to {total_to}, but already has {already_on_street}")
@@ -491,10 +515,19 @@ class HandHistoryParser(BaseParser):
                         
                         contrib[pl] = contrib.get(pl, 0) + to_add
                         street_contrib[pl] = total_to
+                        # Обновляем стек
+                        if pl in current_stacks:
+                            current_stacks[pl] = max(0, current_stacks[pl] - to_add)
                         
                         # Логируем только значительные рейзы для отладки  
                         if to_add > 100:
                             logger.debug(f"{current_street}: {pl} raises to {total_to} (was {already_on_street}, adds {to_add})")
+                
+                # Записываем детальное действие (не записываем posts)
+                if act != 'posts':
+                    if pl not in detailed_actions:
+                        detailed_actions[pl] = []
+                    detailed_actions[pl].append((current_street, act, action_amount, street_stacks_snapshot))
             
             # Uncalled bet
             m_unc = RE_UNCALLED.match(line)
@@ -515,7 +548,10 @@ class HandHistoryParser(BaseParser):
                 pl, amt_str = m_collected.groups()
                 collects[NAME(pl)] = collects.get(NAME(pl), 0) + CHIP(amt_str)
         
-        return contrib, collects
+        # Добавляем исходные строки для анализа авто олл-инов
+        detailed_actions['raw_lines'] = lines
+        
+        return contrib, collects, detailed_actions
 
     def _build_pots(self, contrib: Dict[str, int]) -> List[Pot]:
         """Строит структуру банков (главный и сайд-поты) из вкладов игроков."""
@@ -614,3 +650,105 @@ class HandHistoryParser(BaseParser):
         
         logger.debug(f"Total KO in hand: {ko_count}\n")
         return ko_count
+    
+    def _count_ko_attempts_in_hand(self, hand: HandData, detailed_actions: Dict[str, List[Tuple[str, str, int, Dict[str, int]]]]) -> int:
+        """
+        Подсчитывает количество попыток КО со стороны Hero в данной раздаче.
+        
+        Правила:
+        1. Hero должен покрывать стек оппонента
+        2. Hero инициирует с бетом/рейзом >= стека оппонента = попытка
+        3. Оппонент олл-ин + Hero коллирует/рейзит = попытка
+        4. Оппонент олл-ин + Hero фолдит = НЕ попытка
+        5. Авто олл-ины (стек <= анте) + Hero не фолдит = попытка
+        """
+        if config.HERO_NAME not in hand.seats:
+            return 0
+        
+        ko_attempts = 0
+        hero_stack = hand.seats[config.HERO_NAME]
+        
+        # Проверяем каждого оппонента, который пошел all-in
+        for opponent in hand.all_in_players:
+            if opponent == config.HERO_NAME:
+                continue
+            
+            opp_stack = hand.seats.get(opponent, 0)
+            
+            # Hero должен покрывать стек оппонента в начале раздачи
+            if hero_stack < opp_stack:
+                continue
+            
+            # Проверяем действия по улицам
+            attempt_found = False
+            
+            # Получаем действия Hero и оппонента
+            hero_actions = detailed_actions.get(config.HERO_NAME, [])
+            opp_actions = detailed_actions.get(opponent, [])
+            
+            # Случай 1: Hero инициирует с бетом/рейзом >= стека оппонента
+            for street, action, amount, street_stacks in hero_actions:
+                if action in ('bets', 'raises', 'all-in'):
+                    # Проверяем стек оппонента на этой улице
+                    opp_street_stack = street_stacks.get(opponent, 0)
+                    if opp_street_stack > 0 and amount >= opp_street_stack:
+                        attempt_found = True
+                        logger.debug(f"KO attempt: Hero {action} {amount} >= {opponent}'s stack {opp_street_stack}")
+                        break
+            
+            if attempt_found:
+                ko_attempts += 1
+                continue
+            
+            # Случай 2: Оппонент all-in + Hero не фолдит
+            opp_went_allin = any(action == 'all-in' for _, action, _, _ in opp_actions)
+            
+            if opp_went_allin:
+                # Проверяем, что Hero не сфолдил после олл-ина оппонента
+                hero_folded_after = False
+                
+                # Находим момент олл-ина оппонента
+                allin_index = -1
+                for i, (street, action, _, _) in enumerate(opp_actions):
+                    if action == 'all-in':
+                        allin_index = i
+                        allin_street = street
+                        break
+                
+                # Проверяем действия Hero после олл-ина
+                if allin_index >= 0:
+                    for street, action, _, _ in hero_actions:
+                        # Действие должно быть на той же или следующей улице
+                        if street >= allin_street:
+                            if action == 'folds':
+                                hero_folded_after = True
+                                break
+                            elif action in ('calls', 'raises', 'all-in'):
+                                attempt_found = True
+                                logger.debug(f"KO attempt: Hero {action} after {opponent}'s all-in")
+                                break
+                
+                if attempt_found and not hero_folded_after:
+                    ko_attempts += 1
+                    continue
+            
+            # Случай 3: Авто олл-ины
+            if opponent in hand.contrib and hand.contrib[opponent] > 0:
+                # Проверяем, что это был авто олл-ин (стек <= анте)
+                ante_amount = 0
+                for line in detailed_actions.get('raw_lines', []):
+                    if f"{opponent}: posts the ante" in line:
+                        m = re.search(r'ante (\d+)', line)
+                        if m:
+                            ante_amount = int(m.group(1))
+                            break
+                
+                if ante_amount > 0 and opp_stack <= ante_amount:
+                    # Это авто олл-ин, проверяем что Hero не сфолдил
+                    hero_folded = any(action == 'folds' for _, action, _, _ in hero_actions)
+                    if not hero_folded:
+                        ko_attempts += 1
+                        logger.debug(f"KO attempt: Auto all-in by {opponent}, Hero didn't fold")
+        
+        logger.debug(f"Total KO attempts in hand: {ko_attempts}")
+        return ko_attempts

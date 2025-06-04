@@ -39,15 +39,32 @@ class FTStackConversionStat(BaseStat):
         if not tournaments and not overall_stats:
             return {"ft_stack_conversion": 0.0}
 
-        if overall_stats and hasattr(overall_stats, "early_ft_ko_per_tournament"):
-            early_ko_per_tournament = overall_stats.early_ft_ko_per_tournament
-        else:
-            ft_tours = [t for t in tournaments if t.reached_final_table]
+        # Для конверсии стека учитываем только KO, сделанные непосредственно на
+        # ранней стадии финального стола. KO из предпоследней 5-max раздачи
+        # (pre_ft_ko) исключаем из подсчёта, т.к. они искажают показатель.
+
+        ft_tours = [t for t in tournaments if t.reached_final_table]
+
+        if final_table_hands:
             early_ko_count = sum(
-                h.hero_ko_this_hand for h in final_table_hands if h.is_early_final
+                h.hero_ko_this_hand
+                for h in final_table_hands
+                if h.is_early_final
             )
-            count = len(ft_tours)
-            early_ko_per_tournament = early_ko_count / count if count else 0.0
+            pre_ft_total = sum(h.pre_ft_ko for h in final_table_hands)
+            early_ko_count -= pre_ft_total
+        elif overall_stats and hasattr(overall_stats, "early_ft_ko_count"):
+            # Фоллбэк на агрегированные данные, если список рук не передан
+            pre_ft_ko = getattr(overall_stats, "pre_ft_ko_count", 0.0)
+            early_ko_count = overall_stats.early_ft_ko_count - pre_ft_ko
+        else:
+            early_ko_count = 0.0
+
+        count = len(ft_tours)
+        if not count and overall_stats and hasattr(overall_stats, "total_final_tables"):
+            count = overall_stats.total_final_tables
+
+        early_ko_per_tournament = early_ko_count / count if count else 0.0
 
         # Собираем данные для турниров, где Hero достиг финального стола
         ft_data = []
