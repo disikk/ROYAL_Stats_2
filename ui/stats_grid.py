@@ -46,6 +46,7 @@ from stats import (
     EarlyFTKOStat,
     EarlyFTBustStat,
     FTStackConversionStat,
+    FTStackConversionAttemptsStat,
     AvgFinishPlaceStat,
     AvgFinishPlaceFTStat,
     AvgFinishPlaceNoFTStat,
@@ -349,7 +350,7 @@ class StatsGrid(QtWidgets.QWidget):
             'avg_ft_stack': SpecialStatCard("Средний стек проходки на FT", "-"),
             'early_ft_ko': SpecialStatCard("KO в ранней FT (6-9max)", "-"),
             'early_ft_bust': SpecialStatCard("Вылеты в ранней FT\n(6-9max)", "-"),
-            'ft_stack_conv': StatCard("Конверсия стека в KO\nв 6-9max", "-"),
+            'ft_stack_conv': SpecialStatCard("Конверсия стека в KO\nв 6-9max", "-"),
             'avg_place_all': StatCard("Среднее место (все)", "-"),
             'avg_place_ft': StatCard("Среднее место (FT)", "-"),
             'avg_place_no_ft': StatCard("Среднее место (не FT)", "-"),
@@ -369,7 +370,7 @@ class StatsGrid(QtWidgets.QWidget):
             'avg_ft_stack': "Средний размер стека при выходе на финальный стол.\nПоказывается в фишках и больших блайндах (BB)",
             'early_ft_ko': "Количество нокаутов в ранней стадии финального стола (9-6 игроков).\nПоказывает агрессивность игры на этом этапе",
             'early_ft_bust': "Количество вылетов в ранней стадии финального стола (места 6-9).\nПоказывает стабильность игры после выхода на FT",
-            'ft_stack_conv': "Эффективность конверсии медианного размера стека выхода на FT в нокауты на ранней стадии FT (6-9max).\n>1.0 - выбиваете больше ожидаемого\n=1.0 - выбиваете как ожидается\n<1.0 - выбиваете меньше ожидаемого",
+            'ft_stack_conv': "Эффективность конверсии медианного размера стека выхода на FT в нокауты на ранней стадии FT (6-9max).\nВо второй строке \u2014 среднее число попыток нокаута на турнир с FT.\n>1.0 - выбиваете больше ожидаемого\n=1.0 - выбиваете как ожидается\n<1.0 - выбиваете меньше ожидаемого",
             'avg_place_all': "Среднее место по всем сыгранным турнирам",
             'avg_place_ft': "Среднее место среди турниров с достижением финального стола",
             'avg_place_no_ft': "Среднее место среди турниров без достижения финального стола",
@@ -875,6 +876,8 @@ class StatsGrid(QtWidgets.QWidget):
             early_ko_per = early_res.get('early_ft_ko_per_tournament', 0.0)
             conv_res = FTStackConversionStat().compute(tournaments, ft_hands, [], overall_stats)
             ft_stack_conv = conv_res.get('ft_stack_conversion', 0.0)
+            attempts_res = FTStackConversionAttemptsStat().compute(tournaments, ft_hands, [], overall_stats)
+            avg_attempts = attempts_res.get('avg_ko_attempts_per_ft', 0.0)
             pre_ft_ko_res = PreFTKOStat().compute(tournaments, ft_hands, [], overall_stats)
             pre_ft_ko_count = pre_ft_ko_res.get('pre_ft_ko_count', 0.0)
             
@@ -908,6 +911,7 @@ class StatsGrid(QtWidgets.QWidget):
                 'avg_bb': avg_bb,
                 'early_ko': early_ko,
                 'early_ko_per': early_ko_per,
+                'avg_ko_attempts_per_ft': avg_attempts,
                 'ft_stack_conv': ft_stack_conv,
                 'pre_ft_ko_count': pre_ft_ko_count,
                 'incomplete_ft_percent': incomplete_ft_percent,
@@ -991,8 +995,14 @@ class StatsGrid(QtWidgets.QWidget):
             logger.debug(f"Обновлена карточка early_ft_ko: {early_ko_count} / {early_ko_per:.2f}")
 
             ft_stack_conv = data.get('ft_stack_conv', 0.0)
-            self.cards['ft_stack_conv'].update_value(f"{ft_stack_conv:.2f}")
-            logger.debug(f"Обновлена карточка ft_stack_conv: {ft_stack_conv:.2f}")
+            avg_attempts = data.get('avg_ko_attempts_per_ft', 0.0)
+            self.cards['ft_stack_conv'].update_value(
+                f"{ft_stack_conv:.2f}",
+                f"{avg_attempts:.2f} попыток за турнир с FT"
+            )
+            logger.debug(
+                f"Обновлена карточка ft_stack_conv: {ft_stack_conv:.2f} / {avg_attempts:.2f}"
+            )
             
 
             bust_result = EarlyFTBustStat().compute(all_tournaments, [], [], overall_stats)
