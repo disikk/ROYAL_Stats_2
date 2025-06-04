@@ -235,7 +235,11 @@ class StatsGrid(QtWidgets.QWidget):
         self._filter_timer = QtCore.QTimer()
         self._filter_timer.setSingleShot(True)
         self._filter_timer.timeout.connect(self._apply_filters)
-        
+
+        # Настройки гистограммы стеков FT
+        self.ft_stack_step = 2  # шаг интервалов в BB
+        self._current_tournaments = []  # сохраненные турниры для перерасчета
+
         self._init_ui()
         
     def _init_ui(self):
@@ -413,6 +417,15 @@ class StatsGrid(QtWidgets.QWidget):
         chart_header_layout = QtWidgets.QHBoxLayout()
         chart_header_layout.addWidget(self.chart_header)
         chart_header_layout.addStretch()
+
+        # Выбор плотности баров для гистограммы стеков FT
+        self.ft_stack_density_selector = QtWidgets.QComboBox()
+        self.ft_stack_density_selector.addItems(["2 BB", "5 BB", "10 BB"])
+        self.ft_stack_density_selector.currentIndexChanged.connect(
+            self._on_density_selector_changed
+        )
+        self.ft_stack_density_selector.setVisible(False)
+        chart_header_layout.addWidget(self.ft_stack_density_selector)
 
         self.chart_selector = QtWidgets.QComboBox()
         self.chart_selector.addItems([
@@ -829,7 +842,9 @@ class StatsGrid(QtWidgets.QWidget):
             place_dist_pre_ft = {i: 0 for i in range(10, 19)}
             place_dist_all = {i: 0 for i in range(1, 19)}
             # Новое распределение для стеков FT и медиана
-            ft_stack_dist, ft_stack_median = self._calculate_ft_stack_distribution(tournaments)
+            ft_stack_dist, ft_stack_median = self._calculate_ft_stack_distribution(
+                tournaments, step=self.ft_stack_step
+            )
             
             for t in tournaments:
                 if t.finish_place is None:
@@ -1104,8 +1119,12 @@ class StatsGrid(QtWidgets.QWidget):
             self.place_dist_ft = data['place_dist']
             self.place_dist_pre_ft = data.get('place_dist_pre_ft', {})
             self.place_dist_all = data.get('place_dist_all', {})
-            self.ft_stack_dist = data.get('ft_stack_dist', {})
-            self.ft_stack_median = data.get('ft_stack_median')
+
+            # Сохраняем турниры для возможного перерасчета распределения стеков
+            self._current_tournaments = all_tournaments
+            self.ft_stack_dist, self.ft_stack_median = self._calculate_ft_stack_distribution(
+                self._current_tournaments, step=self.ft_stack_step
+            )
             self._update_chart(self._get_current_distribution())
             self.overallStatsChanged.emit(overall_stats)
             logger.debug("=== Конец reload StatsGrid ===")
@@ -1252,9 +1271,13 @@ class StatsGrid(QtWidgets.QWidget):
         self.roi_adj_tooltip.move(tooltip_pos)
         self.roi_adj_tooltip.show()
     
-    def _calculate_ft_stack_distribution(self, tournaments):
+    def _calculate_ft_stack_distribution(self, tournaments, step: int = 2):
         """Рассчитывает распределение стеков выхода на FT в больших блайндах
-        и медиану значений."""
+        и медиану значений.
+
+        :param tournaments: список турниров
+        :param step: величина интервала для баров
+        """
         # Инициализируем словарь для распределения
         ft_stack_dist = {}
         stack_values = []
@@ -1262,9 +1285,10 @@ class StatsGrid(QtWidgets.QWidget):
         # Края распределения
         ft_stack_dist["≤6"] = 0
 
-        # Промежуточные интервалы с шагом 2BB
-        for i in range(8, 50, 2):
-            ft_stack_dist[f"{i}-{i+1}"] = 0
+        # Промежуточные интервалы с заданным шагом
+        for i in range(8, 50, step):
+            end = min(i + step - 1, 49)
+            ft_stack_dist[f"{i}-{end}"] = 0
 
         ft_stack_dist["≥50"] = 0
 
@@ -1280,8 +1304,10 @@ class StatsGrid(QtWidgets.QWidget):
                     ft_stack_dist["≥50"] += 1
                 else:
                     # Находим подходящий интервал
-                    interval_start = int(bb // 2) * 2
-                    interval_key = f"{interval_start}-{interval_start+1}"
+                    interval_start = ((int((bb - 8) / step)) * step) + 8
+                    interval_start = max(8, interval_start)
+                    interval_end = min(interval_start + step - 1, 49)
+                    interval_key = f"{interval_start}-{interval_end}"
                     if interval_key in ft_stack_dist:
                         ft_stack_dist[interval_key] += 1
 
@@ -1375,12 +1401,12 @@ class StatsGrid(QtWidgets.QWidget):
 
         # Специальная сортировка для стеков FT
         if self.chart_type == 'ft_stack':
-            # Создаем упорядоченный список категорий
+            step = self.ft_stack_step
             categories = ["≤6"]
-            for i in range(8, 50, 2):
-                categories.append(f"{i}-{i+1}")
+            for i in range(8, 50, step):
+                end = min(i + step - 1, 49)
+                categories.append(f"{i}-{end}")
             categories.append("≥50")
-            # Фильтруем только те, которые есть в данных
             categories = [cat for cat in categories if cat in place_dist]
         else:
             categories = sorted(place_dist.keys())
@@ -1488,12 +1514,12 @@ class StatsGrid(QtWidgets.QWidget):
         
         # Специальная сортировка для стеков FT
         if chart_type == 'ft_stack':
-            # Создаем упорядоченный список категорий
+            step = self.ft_stack_step
             categories = ["≤6"]
-            for i in range(8, 50, 2):
-                categories.append(f"{i}-{i+1}")
+            for i in range(8, 50, step):
+                end = min(i + step - 1, 49)
+                categories.append(f"{i}-{end}")
             categories.append("≥50")
-            # Фильтруем только те, которые есть в данных
             categories = [cat for cat in categories if cat in place_dist]
         else:
             categories = sorted(place_dist.keys())
@@ -1589,9 +1615,11 @@ class StatsGrid(QtWidgets.QWidget):
         plot_area = chart.plotArea()
 
         # Список категорий в порядке следования
+        step = self.ft_stack_step
         categories = ["≤6"]
-        for i in range(8, 50, 2):
-            categories.append(f"{i}-{i+1}")
+        for i in range(8, 50, step):
+            end = min(i + step - 1, 49)
+            categories.append(f"{i}-{end}")
         categories.append("≥50")
 
         num_places = len(categories)
@@ -1605,8 +1633,10 @@ class StatsGrid(QtWidgets.QWidget):
         elif median_value >= 50:
             idx = categories.index("≥50")
         else:
-            interval_start = int(median_value // 2) * 2
-            interval_key = f"{interval_start}-{interval_start+1}"
+            interval_start = ((int((median_value - 8) / step)) * step) + 8
+            interval_start = max(8, interval_start)
+            interval_end = min(interval_start + step - 1, 49)
+            interval_key = f"{interval_start}-{interval_end}"
             idx = categories.index(interval_key)
 
         x_pos = plot_area.left() + bar_width * (idx + 0.5)
@@ -1645,7 +1675,21 @@ class StatsGrid(QtWidgets.QWidget):
             self.chart_header.setText("Распределение мест до финального стола (10-18)")
         elif self.chart_type == 'all':
             self.chart_header.setText("Распределение финишных мест (1-18)")
+            self.ft_stack_density_selector.setVisible(False)
         else:  # ft_stack
             self.chart_header.setText("Распределение стеков выхода на FT (в больших блайндах)")
+            self.ft_stack_density_selector.setVisible(True)
 
         self._update_chart(self._get_current_distribution())
+
+    def _on_density_selector_changed(self, index: int):
+        """Меняет шаг интервалов гистограммы стеков FT."""
+        steps = [2, 5, 10]
+        self.ft_stack_step = steps[index]
+        if self._current_tournaments:
+            self.ft_stack_dist, self.ft_stack_median = self._calculate_ft_stack_distribution(
+                self._current_tournaments, step=self.ft_stack_step
+            )
+        if self.chart_type == 'ft_stack':
+            self._update_chart(self._get_current_distribution())
+
