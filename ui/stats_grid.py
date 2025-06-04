@@ -1431,12 +1431,8 @@ class StatsGrid(QtWidgets.QWidget):
         chart.setBackgroundBrush(QtGui.QBrush(QtGui.QColor("#18181B")))
         chart.legend().setVisible(False)
         
-        # Создаем серию баров (обычную для ROI, стековую для остальных)
-        if self.chart_type == 'ft_stack_roi':
-            from PyQt6.QtCharts import QBarSeries
-            series = QBarSeries()
-        else:
-            series = QStackedBarSeries()
+        # Создаем серию стековых баров
+        series = QStackedBarSeries()
 
         # Цветовые палитры для разных типов гистограмм
         colors_ft = [
@@ -1488,53 +1484,21 @@ class StatsGrid(QtWidgets.QWidget):
         else:
             categories = sorted(place_dist.keys())
 
-        # Создаем QBarSet
-        if self.chart_type == 'ft_stack_roi':
-            # Для ROI графика создаем отдельный QBarSet для каждого значения с разным цветом
-            for idx, cat in enumerate(categories):
-                roi_value = place_dist.get(cat, 0)
-                bar_set = QBarSet("")
-                
-                # Добавляем значения: ноль для всех категорий кроме текущей
-                for i, c in enumerate(categories):
-                    if i == idx:
-                        bar_set.append(roi_value)
-                    else:
-                        bar_set.append(0)
-                
-                # Устанавливаем цвет в зависимости от значения ROI
-                if roi_value < -50:
-                    color = QtGui.QColor("#991B1B")  # Темно-красный
-                elif roi_value < -20:
-                    color = QtGui.QColor("#DC2626")  # Красный
-                elif roi_value < 0:
-                    color = QtGui.QColor("#EF4444")  # Светло-красный
-                elif roi_value < 20:
-                    color = QtGui.QColor("#FCD34D")  # Желтый
-                elif roi_value < 50:
-                    color = QtGui.QColor("#84CC16")  # Светло-зеленый
+        # Создаем отдельный QBarSet для каждого места (для всех графиков)
+        for idx, place in enumerate(categories):
+            bar_set = QBarSet("")
+
+            for cat in categories:
+                if cat == place:
+                    bar_set.append(place_dist.get(cat, 0))
                 else:
-                    color = QtGui.QColor("#10B981")  # Зеленый
-                
-                color.setAlpha(int(255 * 0.75))
-                bar_set.setColor(color)
-                series.append(bar_set)
-        else:
-            # Создаем отдельный QBarSet для каждого места (для стековых графиков)
-            for idx, place in enumerate(categories):
-                bar_set = QBarSet("")
+                    bar_set.append(0)
 
-                for cat in categories:
-                    if cat == place:
-                        bar_set.append(place_dist.get(cat, 0))
-                    else:
-                        bar_set.append(0)
+            color = QtGui.QColor(colors[idx % len(colors)])
+            color.setAlpha(int(255 * 0.65))
+            bar_set.setColor(color)
 
-                color = QtGui.QColor(colors[idx % len(colors)])
-                color.setAlpha(int(255 * 0.65))
-                bar_set.setColor(color)
-
-                series.append(bar_set)
+            series.append(bar_set)
         
         # Устанавливаем ширину баров
         series.setBarWidth(0.8)
@@ -1570,14 +1534,44 @@ class StatsGrid(QtWidgets.QWidget):
             if roi_values:
                 min_roi = min(roi_values)
                 max_roi = max(roi_values)
-                # Добавляем небольшой отступ для лучшей визуализации
-                padding = (max_roi - min_roi) * 0.1 if max_roi != min_roi else 10
-                axis_y.setRange(min_roi - padding, max_roi + padding)
-                # Устанавливаем формат с одним знаком после запятой для ROI
-                axis_y.setLabelFormat("%.1f")
+                
+                # Функция для поиска красивого шага
+                def _nice_step_roi(value_range: float) -> float:
+                    if value_range == 0:
+                        return 10
+                    raw_step = value_range / 10
+                    magnitude = 10 ** int(math.floor(math.log10(abs(raw_step))))
+                    for m in (1, 2, 2.5, 5, 10):
+                        step = m * magnitude
+                        if abs(raw_step) <= step:
+                            break
+                    return step
+                
+                # Расширяем диапазон с учетом красивых шагов
+                value_range = max_roi - min_roi
+                if value_range > 0:
+                    step = _nice_step_roi(value_range)
+                    # Округляем границы до ближайших кратных шагу
+                    min_val = math.floor(min_roi / step) * step
+                    max_val = math.ceil(max_roi / step) * step
+                    # Добавляем небольшой отступ
+                    min_val -= step * 0.5
+                    max_val += step * 0.5
+                else:
+                    # Если все значения одинаковые
+                    step = 10
+                    min_val = min_roi - step
+                    max_val = max_roi + step
+                
+                axis_y.setRange(min_val, max_val)
+                # Устанавливаем количество меток
+                tick_count = int((max_val - min_val) / step) + 1
+                axis_y.setTickCount(min(tick_count, 11))  # Максимум 11 меток
+                axis_y.setLabelFormat("%.0f")
             else:
                 axis_y.setRange(-100, 100)
-                axis_y.setLabelFormat("%.1f")
+                axis_y.setTickCount(11)
+                axis_y.setLabelFormat("%.0f")
         else:
             max_count = max(place_dist.values()) if place_dist.values() else 1
 
@@ -1681,7 +1675,7 @@ class StatsGrid(QtWidgets.QWidget):
             if count > 0 or (chart_type == 'ft_stack_roi' and count != 0):
                 # Для ROI графика показываем значение ROI, для остальных - проценты
                 if chart_type == 'ft_stack_roi':
-                    text = QtWidgets.QGraphicsTextItem(f"{count:.1f}%")
+                    text = QtWidgets.QGraphicsTextItem(f"{count:.0f}%")
                 else:
                     percentage = (count / total_finishes) * 100
                     text = QtWidgets.QGraphicsTextItem(f"{percentage:.1f}%")
@@ -1728,14 +1722,13 @@ class StatsGrid(QtWidgets.QWidget):
                     # Фиксированный отступ сверху бара
                     y_pos = bar_top - label_height - 5
                 elif chart_type == 'ft_stack_roi':
-                    # Для ROI графика позиционируем метки в зависимости от знака
-                    if count >= 0:
-                        # Положительные значения - метка сверху
-                        y_pos = bar_top - label_height - 5
+                    # Для ROI графика размещаем метки с учетом направления бара
+                    if count < 0:
+                        # Для отрицательных значений добавляем больший отступ
+                        y_pos = bar_top - label_height - 20
                     else:
-                        # Отрицательные значения - метка снизу от нулевой линии
-                        # bar_top в этом случае будет выше нулевой линии
-                        y_pos = bar_top + 5
+                        # Для положительных значений стандартный отступ
+                        y_pos = bar_top - label_height - 5
                 else:
                     # Для остальных гистограмм используем адаптивную логику
                     inside_offset = 3
