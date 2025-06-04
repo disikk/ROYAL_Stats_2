@@ -961,11 +961,6 @@ class ApplicationService:
         stats.incomplete_ft_count = sum(
             1 for h in first_ft_hands.values() if h.players_count < config.FINAL_TABLE_SIZE
         )
-        stats.incomplete_ft_percent = (
-            int(round(stats.incomplete_ft_count / stats.total_final_tables * 100))
-            if stats.total_final_tables > 0
-            else 0
-        )
 
         # KO в последней 5-max раздаче перед финальным столом
         stats.pre_ft_ko_count = sum(hand.pre_ft_ko for hand in all_ft_hands)
@@ -1013,7 +1008,6 @@ class ApplicationService:
         stats.early_ft_bust_per_tournament = round(stats.early_ft_bust_per_tournament, 2)
         stats.final_table_reach_percent = round(stats.final_table_reach_percent, 2)
         stats.pre_ft_ko_count = round(stats.pre_ft_ko_count, 2)
-        stats.incomplete_ft_percent = int(stats.incomplete_ft_percent)
 
         logger.info(f"Итоговая статистика: tournaments={stats.total_tournaments}, knockouts={stats.total_knockouts}, prize={stats.total_prize}, buyin={stats.total_buy_in}")
         return stats
