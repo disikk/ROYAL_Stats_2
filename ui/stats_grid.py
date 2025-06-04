@@ -354,7 +354,6 @@ class StatsGrid(QtWidgets.QWidget):
             'avg_place_ft': StatCard("Среднее место (FT)", "-"),
             'avg_place_no_ft': StatCard("Среднее место (не FT)", "-"),
             'pre_ft_ko': StatCard("KO до FT", "-"),
-            'incomplete_ft': StatCard("Неполные финалки\n(<9 человек на старте)", "-"),
         }
         
         # Словарь с описаниями для тултипов
@@ -373,8 +372,7 @@ class StatsGrid(QtWidgets.QWidget):
             'avg_place_all': "Среднее место по всем сыгранным турнирам",
             'avg_place_ft': "Среднее место среди турниров с достижением финального стола",
             'avg_place_no_ft': "Среднее место среди турниров без достижения финального стола",
-            'pre_ft_ko': "Количество нокаутов до выхода на финальный стол",
-            'incomplete_ft': "Процент финальных столов, которые начались с менее чем 9 игроками.\nТакие столы могут искажать статистику"
+            'pre_ft_ko': "Количество нокаутов до выхода на финальный стол"
         }
         
         # Устанавливаем тултипы для карточек
@@ -386,7 +384,7 @@ class StatsGrid(QtWidgets.QWidget):
         positions = [
             ('tournaments', 0, 0), ('roi', 0, 1), ('itm', 0, 2), ('knockouts', 0, 3), ('avg_ko', 0, 4),
             ('ft_reach', 1, 0), ('avg_ft_stack', 1, 1), ('early_ft_ko', 1, 2), ('ft_stack_conv', 1, 3), ('pre_ft_ko', 1, 4),
-            ('avg_place_all', 2, 0), ('avg_place_ft', 2, 1), ('avg_place_no_ft', 2, 2), ('early_ft_bust', 2, 3), ('incomplete_ft', 2, 4),
+            ('avg_place_all', 2, 0), ('avg_place_ft', 2, 1), ('avg_place_no_ft', 2, 2), ('early_ft_bust', 2, 3),
             ('ko_contribution', 3, 0),
         ]
         
@@ -880,8 +878,6 @@ class StatsGrid(QtWidgets.QWidget):
             
             if is_cancelled_callback and is_cancelled_callback():
                 return None
-                
-            incomplete_ft_percent = IncompleteFTPercentStat().compute(tournaments, ft_hands, [], overall_stats).get('incomplete_ft_percent', 0)
             ko_luck_value = KOLuckStat().compute(tournaments, [], [], overall_stats).get('ko_luck', 0.0)
             roi_adj_value = ROIAdjustedStat().compute(tournaments, ft_hands, [], overall_stats).get('roi_adj', 0.0)
             ko_contrib_res = KOContributionStat().compute(tournaments, [], [], None)
@@ -910,7 +906,6 @@ class StatsGrid(QtWidgets.QWidget):
                 'early_ko_per': early_ko_per,
                 'ft_stack_conv': ft_stack_conv,
                 'pre_ft_ko_count': pre_ft_ko_count,
-                'incomplete_ft_percent': incomplete_ft_percent,
                 'avg_place_all': avg_all,
                 'avg_place_ft': avg_ft,
                 'avg_place_no_ft': avg_no_ft,
@@ -1111,9 +1106,6 @@ class StatsGrid(QtWidgets.QWidget):
             self.cards['pre_ft_ko'].update_value(f"{pre_ft_ko_count:.1f}")
             logger.debug(f"Обновлена карточка pre_ft_ko: {pre_ft_ko_count:.1f}")
 
-            incomplete_percent = data.get('incomplete_ft_percent', 0)
-            self.cards['incomplete_ft'].update_value(f"{incomplete_percent}%")
-            logger.debug(f"Обновлена карточка incomplete_ft: {incomplete_percent}%")
             
 
             self.place_dist_ft = data['place_dist']
@@ -1211,11 +1203,6 @@ class StatsGrid(QtWidgets.QWidget):
         stats.pre_ft_ko_count = round(pre_ft_ko_count, 1)
         stats.incomplete_ft_count = sum(
             1 for h in first_hands.values() if h.players_count < config.FINAL_TABLE_SIZE
-        )
-        stats.incomplete_ft_percent = (
-            int(round(stats.incomplete_ft_count / stats.total_final_tables * 100))
-            if stats.total_final_tables
-            else 0
         )
         all_places = [t.finish_place for t in tournaments if t.finish_place is not None]
         stats.avg_finish_place = sum(all_places) / len(all_places) if all_places else 0.0
