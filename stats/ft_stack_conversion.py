@@ -43,8 +43,9 @@ class FTStackConversionStat(BaseStat):
             early_ko_per_tournament = overall_stats.early_ft_ko_per_tournament
         else:
             ft_tours = [t for t in tournaments if t.reached_final_table]
+            # Исключаем pre_ft_ko из подсчета, чтобы считать только КО в ранней FT фазе
             early_ko_count = sum(
-                h.hero_ko_this_hand for h in final_table_hands if h.is_early_final
+                h.hero_ko_this_hand - h.pre_ft_ko for h in final_table_hands if h.is_early_final
             )
             count = len(ft_tours)
             early_ko_per_tournament = early_ko_count / count if count else 0.0
