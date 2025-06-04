@@ -1283,7 +1283,7 @@ class StatsGrid(QtWidgets.QWidget):
         stack_values = []
 
         # Края распределения
-        ft_stack_dist["≤6"] = 0
+        ft_stack_dist["≤7"] = 0
 
         # Промежуточные интервалы с заданным шагом
         for i in range(8, 50, step):
@@ -1298,8 +1298,8 @@ class StatsGrid(QtWidgets.QWidget):
                 bb = t.final_table_initial_stack_bb
                 stack_values.append(bb)
 
-                if bb <= 6:
-                    ft_stack_dist["≤6"] += 1
+                if bb <= 7:
+                    ft_stack_dist["≤7"] += 1
                 elif bb >= 50:
                     ft_stack_dist["≥50"] += 1
                 else:
@@ -1402,7 +1402,7 @@ class StatsGrid(QtWidgets.QWidget):
         # Специальная сортировка для стеков FT
         if self.chart_type == 'ft_stack':
             step = self.ft_stack_step
-            categories = ["≤6"]
+            categories = ["≤7"]
             for i in range(8, 50, step):
                 end = min(i + step - 1, 49)
                 categories.append(f"{i}-{end}")
@@ -1515,7 +1515,7 @@ class StatsGrid(QtWidgets.QWidget):
         # Специальная сортировка для стеков FT
         if chart_type == 'ft_stack':
             step = self.ft_stack_step
-            categories = ["≤6"]
+            categories = ["≤7"]
             for i in range(8, 50, step):
                 end = min(i + step - 1, 49)
                 categories.append(f"{i}-{end}")
@@ -1616,7 +1616,7 @@ class StatsGrid(QtWidgets.QWidget):
 
         # Список категорий в порядке следования
         step = self.ft_stack_step
-        categories = ["≤6"]
+        categories = ["≤7"]
         for i in range(8, 50, step):
             end = min(i + step - 1, 49)
             categories.append(f"{i}-{end}")
@@ -1628,8 +1628,8 @@ class StatsGrid(QtWidgets.QWidget):
 
         bar_width = plot_area.width() / num_places
 
-        if median_value <= 6:
-            idx = categories.index("≤6")
+        if median_value <= 7:
+            idx = categories.index("≤7")
         elif median_value >= 50:
             idx = categories.index("≥50")
         else:
