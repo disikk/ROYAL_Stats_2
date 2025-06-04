@@ -46,7 +46,6 @@ from stats import (
     EarlyFTKOStat,
     EarlyFTBustStat,
     FTStackConversionStat,
-    FTStackConversionAttemptsStat,
     AvgFinishPlaceStat,
     AvgFinishPlaceFTStat,
     AvgFinishPlaceNoFTStat,
@@ -347,7 +346,6 @@ class StatsGrid(QtWidgets.QWidget):
             'early_ft_ko': SpecialStatCard("KO в ранней FT (6-9max)", "-"),
             'early_ft_bust': SpecialStatCard("Вылеты в ранней FT\n(6-9max)", "-"),
             'ft_stack_conv': StatCard("Конверсия стека в KO\nв 6-9max", "-"),
-            'ft_stack_conv_attempts': SpecialStatCard("Конверсия с учетом попыток", "-"),
             'avg_place_all': StatCard("Среднее место (все)", "-"),
             'avg_place_ft': StatCard("Среднее место (FT)", "-"),
             'avg_place_no_ft': StatCard("Среднее место (не FT)", "-"),
@@ -368,7 +366,6 @@ class StatsGrid(QtWidgets.QWidget):
             'early_ft_ko': "Количество нокаутов в ранней стадии финального стола (9-6 игроков).\nПоказывает агрессивность игры на этом этапе",
             'early_ft_bust': "Количество вылетов в ранней стадии финального стола (места 6-9).\nПоказывает стабильность игры после выхода на FT",
             'ft_stack_conv': "Эффективность конверсии медианного размера стека выхода на FT в нокауты на ранней стадии FT (6-9max).\n>1.0 - выбиваете больше ожидаемого\n=1.0 - выбиваете как ожидается\n<1.0 - выбиваете меньше ожидаемого",
-            'ft_stack_conv_attempts': "Эффективность конверсии стека с учетом количества попыток выбить соперников.\nУчитывает везение: если много попыток, но мало KO - возможно, это невезение.\nТакже показывает процент успешных попыток",
             'avg_place_all': "Среднее место по всем сыгранным турнирам",
             'avg_place_ft': "Среднее место среди турниров с достижением финального стола",
             'avg_place_no_ft': "Среднее место среди турниров без достижения финального стола",
@@ -386,7 +383,7 @@ class StatsGrid(QtWidgets.QWidget):
             ('tournaments', 0, 0), ('roi', 0, 1), ('itm', 0, 2), ('knockouts', 0, 3), ('avg_ko', 0, 4),
             ('ft_reach', 1, 0), ('avg_ft_stack', 1, 1), ('early_ft_ko', 1, 2), ('ft_stack_conv', 1, 3), ('pre_ft_ko', 1, 4),
             ('avg_place_all', 2, 0), ('avg_place_ft', 2, 1), ('avg_place_no_ft', 2, 2), ('early_ft_bust', 2, 3), ('incomplete_ft', 2, 4),
-            ('ko_contribution', 3, 0), ('ft_stack_conv_attempts', 3, 1),
+            ('ko_contribution', 3, 0),
         ]
         
         for key, row, col in positions:
@@ -863,10 +860,6 @@ class StatsGrid(QtWidgets.QWidget):
             early_ko_per = early_res.get('early_ft_ko_per_tournament', 0.0)
             conv_res = FTStackConversionStat().compute(tournaments, ft_hands, [], overall_stats)
             ft_stack_conv = conv_res.get('ft_stack_conversion', 0.0)
-            conv_attempts_res = FTStackConversionAttemptsStat().compute(tournaments, ft_hands, [], overall_stats)
-            ft_stack_conv_attempts = conv_attempts_res.get('ft_stack_conversion_attempts', 0.0)
-            ko_attempts_per_ft = conv_attempts_res.get('avg_ko_attempts_per_ft', 0.0)
-            ko_attempts_success_rate = conv_attempts_res.get('ko_attempts_success_rate', 0.0)
             pre_ft_ko_res = PreFTKOStat().compute(tournaments, ft_hands, [], overall_stats)
             pre_ft_ko_count = pre_ft_ko_res.get('pre_ft_ko_count', 0.0)
             
@@ -901,9 +894,6 @@ class StatsGrid(QtWidgets.QWidget):
                 'early_ko': early_ko,
                 'early_ko_per': early_ko_per,
                 'ft_stack_conv': ft_stack_conv,
-                'ft_stack_conv_attempts': ft_stack_conv_attempts,
-                'ko_attempts_per_ft': ko_attempts_per_ft,
-                'ko_attempts_success_rate': ko_attempts_success_rate,
                 'pre_ft_ko_count': pre_ft_ko_count,
                 'incomplete_ft_percent': incomplete_ft_percent,
                 'avg_place_all': avg_all,
@@ -989,15 +979,6 @@ class StatsGrid(QtWidgets.QWidget):
             self.cards['ft_stack_conv'].update_value(f"{ft_stack_conv:.2f}")
             logger.debug(f"Обновлена карточка ft_stack_conv: {ft_stack_conv:.2f}")
             
-            # Обновляем карточку конверсии с учетом попыток
-            ft_stack_conv_attempts = data.get('ft_stack_conv_attempts', 0.0)
-            ko_attempts_per_ft = data.get('ko_attempts_per_ft', 0.0)
-            ko_attempts_success_rate = data.get('ko_attempts_success_rate', 0.0)
-            self.cards['ft_stack_conv_attempts'].update_value(
-                f"{ft_stack_conv_attempts:.2f}",
-                f"{ko_attempts_per_ft:.1f} попыток за FT, успех {ko_attempts_success_rate:.1f}%"
-            )
-            logger.debug(f"Обновлена карточка ft_stack_conv_attempts: {ft_stack_conv_attempts:.2f} ({ko_attempts_per_ft:.1f} попыток, {ko_attempts_success_rate:.1f}% успех)")
 
             bust_result = EarlyFTBustStat().compute(all_tournaments, [], [], overall_stats)
             logger.debug(f"Early FT Bust result: {bust_result}")
