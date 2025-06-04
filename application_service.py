@@ -46,7 +46,6 @@ from stats import (
     AvgFinishPlaceFTStat,
     AvgFinishPlaceNoFTStat,
     FTStackConversionStat,
-    FTStackConversionAttemptsStat,
 )
 
 logger = logging.getLogger('ROYAL_Stats.ApplicationService')
@@ -69,7 +68,6 @@ STAT_PLUGINS: List[BaseStat] = [
     AvgFinishPlaceFTStat(),
     AvgFinishPlaceNoFTStat(),
     FTStackConversionStat(),
-    FTStackConversionAttemptsStat(),
 ]
 
 def determine_file_type(file_path: str) -> Optional[str]:
