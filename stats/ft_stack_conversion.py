@@ -47,10 +47,12 @@ class FTStackConversionStat(BaseStat):
 
         if final_table_hands:
             early_ko_count = sum(
-                h.hero_ko_this_hand - h.pre_ft_ko
+                h.hero_ko_this_hand
                 for h in final_table_hands
                 if h.is_early_final
             )
+            pre_ft_total = sum(h.pre_ft_ko for h in final_table_hands)
+            early_ko_count -= pre_ft_total
         elif overall_stats and hasattr(overall_stats, "early_ft_ko_count"):
             # Фоллбэк на агрегированные данные, если список рук не передан
             pre_ft_ko = getattr(overall_stats, "pre_ft_ko_count", 0.0)
