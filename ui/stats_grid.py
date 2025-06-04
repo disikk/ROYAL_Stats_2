@@ -1327,7 +1327,10 @@ class StatsGrid(QtWidgets.QWidget):
         :param step: величина интервала для баров
         :returns: (словарь интервалов со средним ROI, медиана стеков)
         """
-        # Инициализируем словари для хранения данных ROI по интервалам
+        # Инициализируем словари для хранения сумм прибыли и бай-инов
+        # для каждого интервала. Такой подход позволяет получить средний ROI
+        # с учетом размера бай-ина, а не простым средним арифметическим
+        # значений отдельных турниров.
         roi_by_interval = {}
         stack_values = []
         
@@ -1340,7 +1343,10 @@ class StatsGrid(QtWidgets.QWidget):
         
         # Инициализируем словари для каждого интервала
         for key in interval_keys:
-            roi_by_interval[key] = []
+            roi_by_interval[key] = {
+                'profit_sum': 0.0,
+                'buyin_sum': 0.0,
+            }
         
         # Собираем данные по турнирам
         for t in tournaments:
@@ -1348,32 +1354,33 @@ class StatsGrid(QtWidgets.QWidget):
                 bb = t.final_table_initial_stack_bb
                 stack_values.append(bb)
                 
-                # Рассчитываем ROI для турнира
-                if t.buyin and t.buyin > 0:
-                    roi = ((t.payout - t.buyin) / t.buyin * 100) if t.payout else -100
-                else:
-                    continue  # Пропускаем турниры без бай-ина
+                # Вычисляем прибыль и учитываем бай-ин. Если бай-ин отсутствует,
+                # такой турнир пропускаем, так как ROI для него некорректен.
+                if not t.buyin or t.buyin <= 0:
+                    continue
+                profit = (t.payout - t.buyin) if t.payout else -t.buyin
                 
                 # Определяем интервал
                 if bb <= 7:
-                    roi_by_interval["≤7"].append(roi)
+                    roi_key = "≤7"
                 elif bb >= 50:
-                    roi_by_interval["≥50"].append(roi)
+                    roi_key = "≥50"
                 else:
                     # Находим подходящий интервал
                     interval_start = ((int((bb - 8) / step)) * step) + 8
                     interval_start = max(8, interval_start)
                     interval_end = min(interval_start + step - 1, 49)
-                    interval_key = f"{interval_start}-{interval_end}"
-                    if interval_key in roi_by_interval:
-                        roi_by_interval[interval_key].append(roi)
+                    roi_key = f"{interval_start}-{interval_end}"
+                if roi_key in roi_by_interval:
+                    roi_by_interval[roi_key]['profit_sum'] += profit
+                    roi_by_interval[roi_key]['buyin_sum'] += t.buyin
         
         # Рассчитываем средний ROI для каждого интервала
         avg_roi_by_interval = {}
         for key in interval_keys:
-            roi_list = roi_by_interval[key]
-            if roi_list:
-                avg_roi_by_interval[key] = sum(roi_list) / len(roi_list)
+            data = roi_by_interval[key]
+            if data['buyin_sum'] > 0:
+                avg_roi_by_interval[key] = (data['profit_sum'] / data['buyin_sum']) * 100
             else:
                 avg_roi_by_interval[key] = 0
         
