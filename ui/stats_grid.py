@@ -1288,12 +1288,33 @@ class StatsGrid(QtWidgets.QWidget):
         median_value = median(stack_values) if stack_values else None
 
         return ft_stack_dist, median_value
-        
+
+    def _clear_chart_overlays(self):
+        """Удаляет вспомогательные элементы (метки и медианную линию) с графика."""
+        current_chart = self.chart_view.chart()
+        if not current_chart:
+            return
+        for label in getattr(self.chart_view, "chart_labels", []):
+            try:
+                current_chart.scene().removeItem(label)
+            except Exception:
+                pass
+        self.chart_view.chart_labels = []
+        for line in getattr(self.chart_view, "median_lines", []):
+            try:
+                current_chart.scene().removeItem(line)
+            except Exception:
+                pass
+        self.chart_view.median_lines = []
+
     def _update_chart(self, place_dist=None):
         """Обновляет гистограмму распределения мест."""
         if place_dist is None:
             place_dist = self._get_current_distribution()
-        
+
+        # Удаляем элементы предыдущего графика, если они есть
+        self._clear_chart_overlays()
+
         # Проверяем, есть ли данные
         if not place_dist or all(count == 0 for count in place_dist.values()):
             logger.warning("Нет данных для построения гистограммы распределения мест")
