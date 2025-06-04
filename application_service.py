@@ -45,6 +45,7 @@ from stats import (
     AvgFinishPlaceStat,
     AvgFinishPlaceFTStat,
     AvgFinishPlaceNoFTStat,
+    FTStackConversionStat,
 )
 
 logger = logging.getLogger('ROYAL_Stats.ApplicationService')
@@ -66,6 +67,7 @@ STAT_PLUGINS: List[BaseStat] = [
     AvgFinishPlaceStat(),
     AvgFinishPlaceFTStat(),
     AvgFinishPlaceNoFTStat(),
+    FTStackConversionStat(),
 ]
 
 def determine_file_type(file_path: str) -> Optional[str]:
@@ -529,6 +531,7 @@ class ApplicationService:
                              parsed_tournaments_data[tourney_id]['reached_final_table'] = True
                              parsed_tournaments_data[tourney_id]['final_table_initial_stack_chips'] = hh_data.get('final_table_initial_stack_chips')
                              parsed_tournaments_data[tourney_id]['final_table_initial_stack_bb'] = hh_data.get('final_table_initial_stack_bb')
+                             parsed_tournaments_data[tourney_id]['final_table_start_players'] = hh_data.get('final_table_start_players')
 
                         # Собираем данные финальных раздач
                         ft_hands_data = hh_data.get('final_table_hands_data', [])
@@ -619,6 +622,11 @@ class ApplicationService:
                     # Если стек уже сохранен в БД, не перезаписываем его
                     final_tourney_data['final_table_initial_stack_chips'] = existing_tourney.final_table_initial_stack_chips
                     final_tourney_data['final_table_initial_stack_bb'] = existing_tourney.final_table_initial_stack_bb
+                
+                # final_table_start_players - сохраняем только если это первая раздача финалки
+                if existing_tourney and existing_tourney.final_table_start_players is not None:
+                    # Если количество игроков уже сохранено в БД, не перезаписываем его
+                    final_tourney_data['final_table_start_players'] = existing_tourney.final_table_start_players
 
                 # session_id - сохраняем первый session_id, связанный с этим турниром
                 if existing_tourney and existing_tourney.session_id:
@@ -953,11 +961,6 @@ class ApplicationService:
         stats.incomplete_ft_count = sum(
             1 for h in first_ft_hands.values() if h.players_count < config.FINAL_TABLE_SIZE
         )
-        stats.incomplete_ft_percent = (
-            int(round(stats.incomplete_ft_count / stats.total_final_tables * 100))
-            if stats.total_final_tables > 0
-            else 0
-        )
 
         # KO в последней 5-max раздаче перед финальным столом
         stats.pre_ft_ko_count = sum(hand.pre_ft_ko for hand in all_ft_hands)
@@ -1005,7 +1008,6 @@ class ApplicationService:
         stats.early_ft_bust_per_tournament = round(stats.early_ft_bust_per_tournament, 2)
         stats.final_table_reach_percent = round(stats.final_table_reach_percent, 2)
         stats.pre_ft_ko_count = round(stats.pre_ft_ko_count, 2)
-        stats.incomplete_ft_percent = int(stats.incomplete_ft_percent)
 
         logger.info(f"Итоговая статистика: tournaments={stats.total_tournaments}, knockouts={stats.total_knockouts}, prize={stats.total_prize}, buyin={stats.total_buy_in}")
         return stats
@@ -1119,6 +1121,10 @@ class ApplicationService:
     def rename_session(self, session_id: str, new_name: str):
         """Переименовывает сессию."""
         self.session_repo.update_session_name(session_id, new_name)
+
+    def delete_tournament(self, tournament_id: str):
+        """Удаляет турнир и связанные с ним данные."""
+        self.tournament_repo.delete_tournament_by_id(tournament_id)
 
 
 # Создаем синглтон экземпляр ApplicationService

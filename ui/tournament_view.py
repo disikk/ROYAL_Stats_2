@@ -503,7 +503,7 @@ class TournamentView(QtWidgets.QWidget):
             self.table.setItem(row, 7, profit_item)
 
     def _show_context_menu(self, position):
-        """Контекстное меню для копирования ID турнира."""
+        """Контекстное меню для действий над турниром."""
         item = self.table.itemAt(position)
         if not item:
             return
@@ -511,6 +511,8 @@ class TournamentView(QtWidgets.QWidget):
         menu = QtWidgets.QMenu(self)
         copy_action = menu.addAction("Копировать ID турнира")
         copy_action.triggered.connect(lambda: self._copy_tournament_id(row))
+        delete_action = menu.addAction(QtGui.QIcon.fromTheme("edit-delete"), "Удалить турнир")
+        delete_action.triggered.connect(lambda: self._delete_tournament(row))
         menu.exec(self.table.viewport().mapToGlobal(position))
 
     def _copy_tournament_id(self, row: int):
@@ -518,3 +520,59 @@ class TournamentView(QtWidgets.QWidget):
         if 0 <= row < len(self.tournaments):
             t_id = self.tournaments[row].tournament_id
             QtWidgets.QApplication.clipboard().setText(t_id)
+
+    def _delete_tournament(self, row: int):
+        """Удаляет выбранный турнир."""
+        if row < 0 or row >= len(self.tournaments):
+            return
+        tournament = self.tournaments[row]
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            "Подтверждение удаления",
+            (
+                f"Вы уверены, что хотите удалить турнир '{tournament.tournament_id}'?\n\n"
+                "Будут удалены все связанные руки финального стола.\n\n"
+                "Это действие необратимо!"
+            ),
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No,
+        )
+        if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+            self.show_loading_overlay()
+            self.loading_label.setText("Удаление турнира...")
+
+            def delete_tournament(is_cancelled_callback=None):
+                self.app_service.delete_tournament(tournament.tournament_id)
+                self.app_service._update_all_statistics(None)
+                return tournament.tournament_id
+
+            thread_manager.run_in_thread(
+                widget_id=f"{id(self)}_delete_tournament",
+                fn=delete_tournament,
+                callback=self._on_delete_finished,
+                error_callback=self._on_delete_error,
+                owner=self,
+            )
+
+    def _on_delete_finished(self, tournament_id: str):
+        """Вызывается при успешном удалении турнира."""
+        self.hide_loading_overlay()
+        self.invalidate_cache()
+        self.reload()
+        QtWidgets.QMessageBox.information(
+            self,
+            "Успех",
+            f"Турнир '{tournament_id}' успешно удален."
+        )
+        main_window = self.window()
+        if hasattr(main_window, 'refresh_all_data'):
+            main_window.refresh_all_data()
+
+    def _on_delete_error(self, error):
+        """Вызывается при ошибке удаления турнира."""
+        self.hide_loading_overlay()
+        QtWidgets.QMessageBox.critical(
+            self,
+            "Ошибка",
+            f"Не удалось удалить турнир:\n{str(error)}"
+        )

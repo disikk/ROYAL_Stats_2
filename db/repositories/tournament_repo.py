@@ -52,8 +52,9 @@ class TournamentRepository:
             INSERT INTO tournaments (
                 tournament_id, tournament_name, start_time, buyin, payout,
                 finish_place, ko_count, session_id, reached_final_table,
-                final_table_initial_stack_chips, final_table_initial_stack_bb
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                final_table_initial_stack_chips, final_table_initial_stack_bb,
+                final_table_start_players
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(tournament_id)
             DO UPDATE SET
                 tournament_name = COALESCE(excluded.tournament_name, tournaments.tournament_name),
@@ -65,7 +66,8 @@ class TournamentRepository:
                 session_id = COALESCE(tournaments.session_id, excluded.session_id), -- Сохраняем первый session_id, если новый не установлен
                 reached_final_table = tournaments.reached_final_table OR excluded.reached_final_table, -- Флаг становится TRUE если хоть раз был TRUE
                 final_table_initial_stack_chips = COALESCE(excluded.final_table_initial_stack_chips, tournaments.final_table_initial_stack_chips),
-                final_table_initial_stack_bb = COALESCE(excluded.final_table_initial_stack_bb, tournaments.final_table_initial_stack_bb)
+                final_table_initial_stack_bb = COALESCE(excluded.final_table_initial_stack_bb, tournaments.final_table_initial_stack_bb),
+                final_table_start_players = COALESCE(excluded.final_table_start_players, tournaments.final_table_start_players)
         """
 
         params = (
@@ -80,6 +82,7 @@ class TournamentRepository:
             tournament.reached_final_table,
             tournament.final_table_initial_stack_chips,
             tournament.final_table_initial_stack_bb,
+            tournament.final_table_start_players,
         )
 
         self.db.execute_update(query, params)
@@ -93,7 +96,8 @@ class TournamentRepository:
             SELECT
                 id, tournament_id, tournament_name, start_time, buyin, payout,
                 finish_place, ko_count, session_id, reached_final_table,
-                final_table_initial_stack_chips, final_table_initial_stack_bb
+                final_table_initial_stack_chips, final_table_initial_stack_bb,
+                final_table_start_players
             FROM tournaments
             WHERE tournament_id=?
         """
@@ -118,7 +122,8 @@ class TournamentRepository:
             SELECT
                 id, tournament_id, tournament_name, start_time, buyin, payout,
                 finish_place, ko_count, session_id, reached_final_table,
-                final_table_initial_stack_chips, final_table_initial_stack_bb
+                final_table_initial_stack_chips, final_table_initial_stack_bb,
+                final_table_start_players
             FROM tournaments
         """
         conditions = []
@@ -482,7 +487,8 @@ class TournamentRepository:
             SELECT
                 id, tournament_id, tournament_name, start_time, buyin, payout,
                 finish_place, ko_count, session_id, reached_final_table,
-                final_table_initial_stack_chips, final_table_initial_stack_bb
+                final_table_initial_stack_chips, final_table_initial_stack_bb,
+                final_table_start_players
             FROM tournaments
         """
         count_query = "SELECT COUNT(*) FROM tournaments"
@@ -628,6 +634,11 @@ class TournamentRepository:
             "itm_percent": 0.0,
             "roi": 0.0
         }
+
+    def delete_tournament_by_id(self, tournament_id: str):
+        """Удаляет турнир по его ID."""
+        query = "DELETE FROM tournaments WHERE tournament_id = ?"
+        self.db.execute_update(query, (tournament_id,))
 
 
 # Создаем синглтон экземпляр репозитория

@@ -35,8 +35,8 @@ class FinalTableHandRepository:
             INSERT INTO hero_final_table_hands (
                 tournament_id, hand_id, hand_number, table_size, bb,
                 hero_stack, players_count, hero_ko_this_hand, pre_ft_ko,
-                session_id, is_early_final
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                hero_ko_attempts, session_id, is_early_final
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(tournament_id, hand_id) DO NOTHING
         """
         params = (
@@ -49,6 +49,7 @@ class FinalTableHandRepository:
             hand.players_count,
             hand.hero_ko_this_hand,
             hand.pre_ft_ko,
+            hand.hero_ko_attempts,
             hand.session_id,
             hand.is_early_final,
         )
@@ -66,7 +67,7 @@ class FinalTableHandRepository:
             SELECT
                 id, tournament_id, hand_id, hand_number, table_size, bb,
                 hero_stack, players_count, hero_ko_this_hand, pre_ft_ko,
-                session_id, is_early_final
+                hero_ko_attempts, session_id, is_early_final
             FROM hero_final_table_hands
             WHERE tournament_id = ?
             ORDER BY hand_number ASC
@@ -82,7 +83,7 @@ class FinalTableHandRepository:
             SELECT
                 id, tournament_id, hand_id, hand_number, table_size, bb,
                 hero_stack, players_count, hero_ko_this_hand, pre_ft_ko,
-                session_id, is_early_final
+                hero_ko_attempts, session_id, is_early_final
             FROM hero_final_table_hands
             WHERE session_id = ?
             ORDER BY hand_number ASC
@@ -98,7 +99,7 @@ class FinalTableHandRepository:
             SELECT
                 id, tournament_id, hand_id, hand_number, table_size, bb,
                 hero_stack, players_count, hero_ko_this_hand, pre_ft_ko,
-                session_id, is_early_final
+                hero_ko_attempts, session_id, is_early_final
             FROM hero_final_table_hands
             ORDER BY hand_number ASC -- Порядок важен для определения первой руки
          """
@@ -115,7 +116,7 @@ class FinalTableHandRepository:
             SELECT
                 id, tournament_id, hand_id, hand_number, table_size, bb,
                 hero_stack, players_count, hero_ko_this_hand, pre_ft_ko,
-                session_id, is_early_final
+                hero_ko_attempts, session_id, is_early_final
             FROM hero_final_table_hands
             WHERE is_early_final = 1
         """
@@ -144,7 +145,7 @@ class FinalTableHandRepository:
             SELECT
                 id, tournament_id, hand_id, hand_number, table_size, bb,
                 hero_stack, players_count, hero_ko_this_hand, pre_ft_ko,
-                session_id, is_early_final
+                hero_ko_attempts, session_id, is_early_final
             FROM hero_final_table_hands
             WHERE 1=1
         """
@@ -175,7 +176,7 @@ class FinalTableHandRepository:
             SELECT
                 id, tournament_id, hand_id, hand_number, table_size, bb,
                 hero_stack, players_count, hero_ko_this_hand, pre_ft_ko,
-                session_id, is_early_final
+                hero_ko_attempts, session_id, is_early_final
             FROM hero_final_table_hands
              WHERE tournament_id = ? AND table_size = ? -- Ищем именно 9-max стол
              ORDER BY hand_number ASC
