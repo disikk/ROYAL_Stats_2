@@ -196,20 +196,26 @@ class SpecialStatCard(QtWidgets.QFrame):
     def update_value(self, value: str, subtitle: str = ""):
         """Обновляет значение и подзаголовок карточки."""
         self.value_label.setText(value)
-        if self.subtitle_label and subtitle:
-            self.subtitle_label.setText(subtitle)
-        elif subtitle and not self.subtitle_label:
-            self.subtitle_label = QtWidgets.QLabel(subtitle)
-            self.subtitle_label.setStyleSheet("""
-                QLabel {
-                    color: #71717A;
-                    font-size: 11px;
-                    background-color: transparent;
-                    margin-top: 0px;
-                }
-            """)
-            self.subtitle_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
-            self.layout().addWidget(self.subtitle_label)
+        if subtitle:
+            if self.subtitle_label:
+                self.subtitle_label.setText(subtitle)
+            else:
+                self.subtitle_label = QtWidgets.QLabel(subtitle)
+                self.subtitle_label.setStyleSheet("""
+                    QLabel {
+                        color: #71717A;
+                        font-size: 11px;
+                        background-color: transparent;
+                        margin-top: 0px;
+                    }
+                """)
+                self.subtitle_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+                self.layout().addWidget(self.subtitle_label)
+        else:
+            if self.subtitle_label:
+                self.layout().removeWidget(self.subtitle_label)
+                self.subtitle_label.deleteLater()
+                self.subtitle_label = None
     
     def setTooltip(self, text: str):
         """Устанавливает тултип для всей карточки."""
