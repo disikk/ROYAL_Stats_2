@@ -672,6 +672,10 @@ class HandHistoryParser(BaseParser):
         hero_actions = detailed_actions.get(config.HERO_NAME, [])
         hero_folded = any(action == 'folds' for _, action, _, _ in hero_actions)
         
+        # Если Hero сфолдил, не может быть попыток
+        if hero_folded:
+            return 0
+        
         # Проверяем каждого оппонента, который пошел all-in
         for opponent in hand.all_in_players:
             if opponent == config.HERO_NAME:
@@ -681,10 +685,6 @@ class HandHistoryParser(BaseParser):
 
             # Hero должен покрывать стек оппонента в начале раздачи
             if hero_stack < opp_stack:
-                continue
-
-            opp_actions = detailed_actions.get(opponent, [])
-            if hero_folded:
                 continue
 
             # Проверяем авто олл-ины
@@ -708,22 +708,20 @@ class HandHistoryParser(BaseParser):
                 logger.debug(
                     f"Hand #{hand.hand_number}: Auto all-in KO attempt by {opponent}"
                 )
-            # Обычные олл-ины считаем в основном цикле ниже
         
-        # Теперь анализируем действия Hero для подсчета попыток
-        # Находим все пуши/олл-ины Hero
+        # Анализируем действия Hero для подсчета попыток
         hero_all_in_actions = []
         for street, action, amount, street_stacks in hero_actions:
             if action == 'all-in' or (action in ('bets', 'raises') and amount >= hero_stack * 0.9):
                 hero_all_in_actions.append((street, action, amount, street_stacks))
         
+        ko_attempts_counted = set()
         # Если Hero делал олл-ин
         if hero_all_in_actions:
             # Берем первый олл-ин Hero
             street, action, amount, street_stacks = hero_all_in_actions[0]
             
-            # Считаем попытки за всех оппонентов, которых Hero покрывает
-            # и которые либо еще не действовали, либо уже в олл-ине
+            # Считаем попытки за всех оппонентов с меньшим стеком
             for opp_name, opp_stack in hand.seats.items():
                 if opp_name == config.HERO_NAME:
                     continue
@@ -731,20 +729,16 @@ class HandHistoryParser(BaseParser):
                 if hero_stack < opp_stack:
                     continue
                 
-                # Проверяем, сфолдил ли оппонент до пуша Hero
-                opp_folded_before_hero = False
+                # Проверяем, сфолдил ли оппонент
                 opp_actions = detailed_actions.get(opp_name, [])
-                for opp_street, opp_action, _, _ in opp_actions:
-                    if opp_action == 'folds':
-                        # Если фолд был до пуша Hero, не считаем попытку
-                        # Это сложно определить точно без индексов действий
-                        opp_folded_before_hero = True
-                        break
+                opp_folded = any(action == 'folds' for _, action, _, _ in opp_actions)
                 
-                if not opp_folded_before_hero:
-                    # Либо оппонент в олл-ине, либо еще не действовал после пуша Hero
-                    if opp_name in hand.all_in_players or hand.contrib.get(opp_name, 0) > 0:
+                if not opp_folded:
+                    # Если оппонент не сфолдил - это попытка
+                    # (он либо уже в олл-ине, либо может заколлировать)
+                    if opp_name not in ko_attempts_counted:
                         ko_attempts += 1
+                        ko_attempts_counted.add(opp_name)
                         logger.debug(
                             f"Hand #{hand.hand_number}: KO attempt for {opp_name} (Hero all-in)"
                         )
@@ -763,7 +757,7 @@ class HandHistoryParser(BaseParser):
                 hero_contrib = hand.contrib.get(config.HERO_NAME, 0)
                 opp_contrib = hand.contrib.get(opponent, 0)
                 
-                if opp_contrib > 0 and hero_contrib >= opp_contrib and not hero_folded:
+                if opp_contrib > 0 and hero_contrib >= opp_contrib:
                     ko_attempts += 1
                     logger.debug(
                         f"Hand #{hand.hand_number}: KO attempt for {opponent} (Hero called/raised)"
