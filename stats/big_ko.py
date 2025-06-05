@@ -66,8 +66,9 @@ class BigKOStat(BaseStat):
                             result[key] += count
                         remains -= count * value
                         if m >= 10:
-                            logger.info(f"Турнир {getattr(t, 'tournament_id', '?')}: {count} x {key} KO (ko_sum={ko_sum}, buyin={buyin_val})")
-            logger.info(f"Big KO расчет: обработано {tournaments_processed} турниров, {tournaments_with_ko} с KO суммой")
+                            pass
+                            #logger.info(f"Турнир {getattr(t, 'tournament_id', '?')}: {count} x {key} KO (ko_sum={ko_sum}, buyin={buyin_val})")
+            #logger.info(f"Big KO расчет: обработано {tournaments_processed} турниров, {tournaments_with_ko} с KO суммой")
         return result
 
     @staticmethod
