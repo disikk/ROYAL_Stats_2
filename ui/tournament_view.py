@@ -310,7 +310,6 @@ class TournamentView(QtWidgets.QWidget):
         
     def reload(self, show_overlay: bool = True):
         """Перезагружает данные из ApplicationService."""
-        logger.debug("Перезагрузка TournamentView...")
         self._show_overlay = show_overlay
         if show_overlay:
             self.show_loading_overlay()

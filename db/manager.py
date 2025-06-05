@@ -38,7 +38,6 @@ class ThreadLocalConnection:
         """
         self.db_path = db_path
         self.local = threading.local()
-        logger.debug(f"ThreadLocalConnection initialized for {db_path}")
 
     def get_connection(self) -> sqlite3.Connection:
         """
@@ -62,7 +61,6 @@ class ThreadLocalConnection:
                 self.local.connection.row_factory = sqlite3.Row # Добавляем Row Factory
                 self.local.cursor = self.local.connection.cursor()
                 current_thread = threading.current_thread()
-                logger.debug(f"Создано новое соединение для потока {current_thread.name} (id: {current_thread.ident}) к {self.db_path}")
             except Exception as e:
                  logger.error(f"Не удалось создать соединение для потока {threading.current_thread().ident} к {self.db_path}: {e}")
                  self.local.connection = None
@@ -95,7 +93,6 @@ class ThreadLocalConnection:
                 self.local.connection = None
                 self.local.cursor = None
                 current_thread = threading.current_thread()
-                logger.debug(f"Соединение закрыто для потока {current_thread.name} (id: {current_thread.ident})")
             except Exception as e:
                 logger.warning(f"Ошибка при закрытии соединения в потоке {threading.current_thread().ident}: {str(e)}")
 
@@ -117,7 +114,6 @@ class DatabaseManager:
 
         # Убеждаемся, что папка для БД существует
         os.makedirs(config.DEFAULT_DB_DIR, exist_ok=True)
-        logger.debug(f"DatabaseManager initialized, default DB path: {self._db_path}")
 
     @property
     def db_path(self) -> str:
@@ -136,9 +132,6 @@ class DatabaseManager:
             self._conn_manager = None # Сбрасываем менеджер соединений
             self._is_initialized = False # Сбрасываем флаг инициализации
             config.set_db_path(new_db_path) # Сохраняем новый путь в конфиг
-            logger.debug(f"Новый путь к БД установлен: {self._db_path}")
-        else:
-             logger.debug(f"Путь к БД не изменился: {new_db_path}")
 
 
     def get_connection(self) -> sqlite3.Connection:
@@ -149,12 +142,10 @@ class DatabaseManager:
         if self._conn_manager is None:
             # Создаем менеджер соединений при первом запросе
             self._conn_manager = ThreadLocalConnection(self._db_path)
-            logger.debug(f"ThreadLocalConnection создан для {self._db_path}")
 
         conn = self._conn_manager.get_connection()
         
         # Добавить отладку
-        logger.debug(f"get_connection вызван из потока {threading.current_thread().name} (id: {threading.current_thread().ident})")
 
         if not self._is_initialized:
              # При первом получении соединения для нового пути к БД,
@@ -208,11 +199,6 @@ class DatabaseManager:
     def execute_update(self, query: str, params=None) -> int:
         """Выполняет INSERT, UPDATE, DELETE запрос и возвращает кол-во измененных строк."""
         try:
-            logger.debug(f"=== ОТЛАДКА execute_update ===")
-            logger.debug(f"Query: {query[:100]}...")  # Первые 100 символов запроса
-            logger.debug(f"Params count: {len(params) if params else 0}")
-            if params and len(params) > 0:
-                logger.debug(f"First few params: {params[:3]}...")  # Первые 3 параметра
             
             conn = self.get_connection()
             cursor = conn.cursor()
@@ -222,7 +208,6 @@ class DatabaseManager:
                 cursor.execute(query, params)
             conn.commit()
             
-            logger.debug(f"Rowcount после выполнения: {cursor.rowcount}")
             return cursor.rowcount
         except Exception as e:
             conn = self.get_connection() # Получаем соединение для текущего потока, чтобы откатить
@@ -253,7 +238,6 @@ class DatabaseManager:
                         if os.path.isfile(full_path):
                             db_files.append(full_path)
                 
-                logger.debug(f"Найдено {len(db_files)} баз данных в {config.DEFAULT_DB_DIR}")
             else:
                 logger.warning(f"Директория {config.DEFAULT_DB_DIR} не существует или не является директорией")
                 # Создаем директорию, если она не существует
@@ -274,12 +258,10 @@ class DatabaseManager:
             # Создаем все таблицы
             for query in db.schema.CREATE_TABLES_QUERIES:
                 cursor.execute(query)
-                logger.debug(f"Выполнен запрос создания таблицы: {query.splitlines()[0]}...")
 
             # Вставляем начальные данные (overall_stats, places_distribution)
             for query in db.schema.INITIALIZATION_QUERIES:
                  cursor.execute(query)
-                 logger.debug(f"Выполнен инициализационный запрос: {query.splitlines()[0]}...")
 
             # Проверяем и добавляем новые колонки для существующих таблиц (миграции)
             # Проверяем наличие колонки final_table_start_players в таблице tournaments
