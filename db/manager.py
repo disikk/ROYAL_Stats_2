@@ -18,11 +18,6 @@ import db.schema # Импортируем схему для создания т�
 # Настройка логирования
 logger = logging.getLogger('ROYAL_Stats.Database')
 logger.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
 
 class ThreadLocalConnection:
     """

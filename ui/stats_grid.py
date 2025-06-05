@@ -340,8 +340,6 @@ class StatsGrid(QtWidgets.QWidget):
         header_layout.addWidget(to_widget)
 
         content_layout.addLayout(header_layout)
-
-        self._update_filters()
         
         # Сетка карточек статистики
         stats_grid = QtWidgets.QGridLayout()
