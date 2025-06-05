@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import os
+
+# Абсолютный путь до директории проекта, где расположен этот файл
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 """Application configuration for ROYAL Stats."""
 
 
@@ -10,7 +13,7 @@ APP_VERSION = "0.1.0" # Начальная версия для новой раз
 
 # Текущий путь к БД (по умолчанию, можно менять в интерфейсе)
 # Все базы храним в подпапке `databases` для удобства.
-DEFAULT_DB_DIR = "databases"
+DEFAULT_DB_DIR = os.path.join(BASE_DIR, "databases")
 # Создаём каталог, если его ещё нет
 os.makedirs(DEFAULT_DB_DIR, exist_ok=True)
 
