@@ -626,8 +626,10 @@ class HandHistoryParser(BaseParser):
 
             if config.HERO_NAME in last_pot.winners:
                 ko_count += 1
-                logger.info(
-                    f"*** KO! {config.HERO_NAME} knocked out {knocked_out_player} ***")
+                # Подробный лог сохраняем только в режиме DEBUG
+                logger.debug(
+                    f"*** KO! {config.HERO_NAME} knocked out {knocked_out_player} ***"
+                )
             else:
                 # Логируем кто выбил, если не Hero
                 pass
@@ -729,7 +731,8 @@ class HandHistoryParser(BaseParser):
                     if is_auto_allin:
                         ko_attempts += 1
 
-        logger.info(
+        # Подробный лог оставляем только для режима DEBUG
+        logger.debug(
             f"Hand #{hand.hand_number}: KO attempts counted = {ko_attempts}"
         )
         return ko_attempts

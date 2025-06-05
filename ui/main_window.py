@@ -329,7 +329,7 @@ class MainWindow(QtWidgets.QMainWindow):
     @QtCore.pyqtSlot()
     def _import_finished(self):
         """Вызывается по завершении потока импорта."""
-        logger.info("Поток импорта завершен.")
+        logger.debug("Поток импорта завершен.")
         # Без гарантированного закрытия прогресс-диалога иногда возникал
         # сценарий, когда диалог оставался открытым из-за ошибки в потоке
         # импорта и блокировал главный цикл событий. Поэтому дополнительно
@@ -433,7 +433,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     @QtCore.pyqtSlot()
     def _on_refresh_finished(self):
-        logger.info("Асинхронное обновление данных завершено")
+        logger.debug("Асинхронное обновление данных завершено")
         self._update_toolbar_info()
         self.invalidate_all_caches()
         self.refresh_all_views(force_all=True)
