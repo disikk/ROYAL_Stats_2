@@ -228,7 +228,8 @@ class StatsGrid(QtWidgets.QWidget):
         self._cache_valid = False  # Флаг валидности кеша
         self.current_buyin_filter = None
         self.current_session_id = None
-        self.current_date_from = datetime(2025, 1, 1, 0, 0)
+        # По умолчанию показываем статистику начиная с 1 января 2024 года
+        self.current_date_from = datetime(2024, 1, 1, 0, 0)
         self.current_date_to = datetime.now()
         self._session_map = {}
         
@@ -311,7 +312,8 @@ class StatsGrid(QtWidgets.QWidget):
         self.date_from_edit = QtWidgets.QDateTimeEdit()
         self.date_from_edit.setCalendarPopup(True)
         self.date_from_edit.setDisplayFormat("dd.MM.yyyy HH:mm")
-        self.date_from_edit.setDateTime(QtCore.QDateTime.fromString("2025-01-01 00:00:00", "yyyy-MM-dd HH:mm:ss"))
+        # Значение по умолчанию — начало 2024 года
+        self.date_from_edit.setDateTime(QtCore.QDateTime.fromString("2024-01-01 00:00:00", "yyyy-MM-dd HH:mm:ss"))
         self.date_from_edit.dateTimeChanged.connect(self._on_filter_changed)
         from_layout.addWidget(from_label)
         from_layout.addWidget(self.date_from_edit)
