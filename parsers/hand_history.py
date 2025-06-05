@@ -122,13 +122,11 @@ class HandHistoryParser(BaseParser):
             m_tid_fn = re.search(r"Tournament #(\d+)", filename)
             if m_tid_fn:
                 self._tournament_id = m_tid_fn.group(1)
-                logger.debug(f"Турнир ID из имени файла: {self._tournament_id}")
                 
         if not self._tournament_id:
             logger.warning(f"Не удалось извлечь Tournament ID из файла HH: {filename}. Файл пропущен.")
             return {'tournament_id': None} # Пропускаем файл без ID
             
-        logger.debug(f"Начат парсинг HH для турнира {self._tournament_id}, файл: {filename}")
         
         # Обрабатываем раздачи в хронологическом порядке (от первой к последней)
         # Поскольку в файле они идут в ОБРАТНОМ порядке, мы обрабатываем chunks в обратном порядке
@@ -170,9 +168,6 @@ class HandHistoryParser(BaseParser):
 
                             self._final_table_hands.append(hand_data)
                             first_ft_hand_data = hand_data
-                            logger.debug(
-                                f"Найдена первая раздача финального стола ({hand_data.table_size}-max, BB={hand_data.bb}) в турнире {self._tournament_id}. Раздача #{hand_data.hand_number}. Стек Hero: {hand_data.hero_stack}"
-                            )
 
                             if 6 <= actual_players_count <= config.FINAL_TABLE_SIZE:
                                 hand_data.is_early_final = True
@@ -234,7 +229,6 @@ class HandHistoryParser(BaseParser):
             'final_table_hands_data': final_table_data_for_db, # Список данных по рукам финалки для сохранения
         }
         
-        logger.debug(f"Парсинг HH завершен для {self._tournament_id}. Финалка: {result['reached_final_table']}, Рук на финалке: {len(self._final_table_hands)}")
         
         return result
 
@@ -244,7 +238,6 @@ class HandHistoryParser(BaseParser):
         self._start_time = None
         self._hands = []
         self._final_table_hands = []
-        logger.debug("Состояние парсера HH сброшено.")
 
     def _split_file_into_hand_chunks(self, lines: List[str]) -> List[List[str]]:
         """
@@ -392,7 +385,6 @@ class HandHistoryParser(BaseParser):
             # Если стек <= обязательной ставки - это авто-олл-ин
             if forced_bet > 0 and stack <= forced_bet:
                 auto_all_ins.add(pl)
-                logger.debug(f"Auto all-in: {pl} with stack {stack} <= forced bet {forced_bet}")
         
         # Добавляем обычные all-in
         for pl in seats:
@@ -520,9 +512,7 @@ class HandHistoryParser(BaseParser):
                         if pl in current_stacks:
                             current_stacks[pl] = max(0, current_stacks[pl] - to_add)
                         
-                        # Логируем только значительные рейзы для отладки  
-                        if to_add > 100:
-                            logger.debug(f"{current_street}: {pl} raises to {total_to} (was {already_on_street}, adds {to_add})")
+                        # Можно логировать значительные рейзы при необходимости
                 
                 # Записываем детальное действие (не записываем posts)
                 if act != 'posts':
@@ -606,15 +596,11 @@ class HandHistoryParser(BaseParser):
             return 0
 
         ko_count = 0
-        logger.debug(f"\n=== KO Analysis for hand {hand.hand_id} ===")
         
         # Дополнительная проверка: если нет выбывших, нет и KO
         if not hand.eliminated_players:
-            logger.debug("No eliminated players in this hand")
             return 0
             
-        logger.debug(f"Eliminated: {hand.eliminated_players}")
-        logger.debug(f"All-in players: {hand.all_in_players}")
         
         # Показываем математику стеков для выбывших
         for pl in hand.eliminated_players:
@@ -622,7 +608,6 @@ class HandHistoryParser(BaseParser):
             put_in = hand.contrib.get(pl, 0)
             got_back = hand.collects.get(pl, 0)
             final = hand.final_stacks.get(pl, 0)
-            logger.debug(f"  {pl}: started {initial}, put in {put_in}, collected {got_back}, final {final}")
         
         # Проходим по всем выбывшим игрокам
         for knocked_out_player in hand.eliminated_players:
@@ -643,14 +628,10 @@ class HandHistoryParser(BaseParser):
                 ko_count += 1
                 logger.info(
                     f"*** KO! {config.HERO_NAME} knocked out {knocked_out_player} ***")
-                logger.debug(
-                    f"  Last pot size {last_pot.size} (winners: {last_pot.winners})")
             else:
                 # Логируем кто выбил, если не Hero
-                logger.debug(
-                    f"  {knocked_out_player} eliminated but knocked out by: {last_pot.winners}")
+                pass
         
-        logger.debug(f"Total KO in hand: {ko_count}\n")
         return ko_count
     
     def _count_ko_attempts_in_hand(self, hand: HandData, detailed_actions: Dict[str, List[Tuple[str, str, int, Dict[str, int], int]]]) -> int:
@@ -703,9 +684,6 @@ class HandHistoryParser(BaseParser):
 
                 if not fold_before:
                     ko_attempts += 1
-                    logger.debug(
-                        f"Hand #{hand.hand_number}: KO attempt for {opp_name} (Hero all-in)"
-                    )
         else:
             # Hero не делал олл-ин, учитываем олл-ины оппонентов, которые он коллировал/рейзил
             for opponent in hand.all_in_players:
@@ -731,9 +709,6 @@ class HandHistoryParser(BaseParser):
 
                 if hero_acted_after:
                     ko_attempts += 1
-                    logger.debug(
-                        f"Hand #{hand.hand_number}: KO attempt for {opponent} (Hero called/raised)"
-                    )
 
                 else:
                     # Проверка авто олл-инов, если действий после не было
@@ -753,9 +728,6 @@ class HandHistoryParser(BaseParser):
                     is_auto_allin = forced_bet > 0 and opp_stack <= forced_bet
                     if is_auto_allin:
                         ko_attempts += 1
-                        logger.debug(
-                            f"Hand #{hand.hand_number}: Auto all-in KO attempt by {opponent}"
-                        )
 
         logger.info(
             f"Hand #{hand.hand_number}: KO attempts counted = {ko_attempts}"

@@ -85,7 +85,6 @@ class TournamentSummaryParser(BaseParser):
                     if m_buyin_title.group(2):
                         fee_str = m_buyin_title.group(2).replace(',', '.')
                         buyin += float(fee_str)
-                    logger.debug(f"Бай-ин из заголовка (приоритетный метод): {buyin}")
                 except (ValueError, IndexError, AttributeError) as e:
                     logger.warning(f"Не удалось распарсить бай-ин из заголовка: {e} в файле {filename}")
 
@@ -126,7 +125,6 @@ class TournamentSummaryParser(BaseParser):
                     buyin = float(main_buyin_str)
                     if fee_str:
                         buyin += float(fee_str.replace(',', '.'))
-                    logger.debug(f"Бай-ин из строки Buy-in: {buyin}")
                 except ValueError:
                     logger.warning(f"Не удалось распарсить бай-ин из строки Buy-in: в файле {filename}")
 
@@ -145,6 +143,5 @@ class TournamentSummaryParser(BaseParser):
             "finish_place": finish_place,
         }
 
-        logger.debug(f"Парсинг TS завершен для {tournament_id}. Данные: {result}")
 
         return result
