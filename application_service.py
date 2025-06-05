@@ -137,6 +137,8 @@ class ApplicationService:
 
         # Файл для сохранения кеша между перезапусками
         self._cache_file = config.STATS_CACHE_FILE
+        # Создаём папку для файла кеша, если её ещё нет
+        os.makedirs(os.path.dirname(self._cache_file), exist_ok=True)
         self._persistent_cache = self._load_persistent_cache()
         
         # Блокировка для предотвращения параллельного пересчета статистики
@@ -200,6 +202,9 @@ class ApplicationService:
                 return result
             except Exception as e:
                 logger.warning(f"Не удалось загрузить кеш статистики: {e}")
+        else:
+            # Если файла нет, убеждаемся, что директория существует
+            os.makedirs(os.path.dirname(self._cache_file), exist_ok=True)
         return {}
 
     def _save_persistent_cache(self) -> None:
@@ -212,6 +217,7 @@ class ApplicationService:
                 "place_distribution": entry.get("place_distribution", {i: 0 for i in range(1, 10)}),
             }
         try:
+            os.makedirs(os.path.dirname(self._cache_file), exist_ok=True)
             with open(self._cache_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception as e:
