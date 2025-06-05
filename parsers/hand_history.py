@@ -714,7 +714,9 @@ class HandHistoryParser(BaseParser):
             if is_auto_allin:
                 attempt_found = True
                 logger.debug(
-                    f"KO attempt: Auto all-in by {opponent} (stack {opp_stack} <= forced bet {forced_bet}), Hero didn't fold")
+                    f"Hand #{hand.hand_number}: KO attempt - auto all-in by {opponent} "
+                    f"(stack {opp_stack} <= forced bet {forced_bet}), Hero didn't fold"
+                )
 
             # Сценарий 2: Hero делает действие >= стека оппонента
             if not attempt_found:
@@ -724,7 +726,9 @@ class HandHistoryParser(BaseParser):
                         if check_stack > 0 and amount >= check_stack:
                             attempt_found = True
                             logger.debug(
-                                f"KO attempt: Hero {action} {amount} >= {opponent}'s stack {check_stack}")
+                                f"Hand #{hand.hand_number}: KO attempt - Hero {action} {amount} "
+                                f">= {opponent}'s stack {check_stack}"
+                            )
                             break
 
             # Сценарий 3: Оппонент идет all-in, Hero отвечает коллом/рейзом
@@ -740,17 +744,21 @@ class HandHistoryParser(BaseParser):
                         if h_idx > allin_index and h_act in ('calls', 'raises', 'all-in'):
                             attempt_found = True
                             logger.debug(
-                                f"KO attempt: Hero {h_act} after {opponent}'s all-in")
+                                f"Hand #{hand.hand_number}: KO attempt - Hero {h_act} after {opponent}'s all-in"
+                            )
                             break
 
             # Сценарий 4: Мультивей пот – Hero вложил >= стека оппонента
             if not attempt_found and hero_contrib >= opp_stack:
                 attempt_found = True
                 logger.debug(
-                    f"KO attempt: Hero contrib {hero_contrib} >= {opponent}'s stack {opp_stack} in multiway pot")
+                    f"Hand #{hand.hand_number}: KO attempt - Hero contrib {hero_contrib} >= {opponent}'s stack {opp_stack} in multiway pot"
+                )
 
             if attempt_found:
                 ko_attempts += 1
         
-        logger.debug(f"Total KO attempts in hand: {ko_attempts}")
+        logger.info(
+            f"Hand #{hand.hand_number}: KO attempts counted = {ko_attempts}"
+        )
         return ko_attempts
