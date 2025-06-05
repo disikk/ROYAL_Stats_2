@@ -175,7 +175,8 @@ class DatabaseManager:
             # механизм отслеживания и принудительного закрытия соединений
             # в других потоках, что усложнит ThreadLocalConnection.
             # Для данного приложения, закрытия в основном потоке должно быть достаточно.
-            logger.info("Попытка закрыть все потоко-локальные соединения.")
+            # Это скорее отладочный вывод, оставляем его только в режиме DEBUG
+            logger.debug("Попытка закрыть все потоко-локальные соединения.")
 
 
     def execute_query(self, query: str, params=None) -> List[sqlite3.Row]:
@@ -269,14 +270,15 @@ class DatabaseManager:
             columns = [col[1] for col in cursor.fetchall()]
             if 'final_table_start_players' not in columns:
                 cursor.execute("ALTER TABLE tournaments ADD COLUMN final_table_start_players INTEGER")
-                logger.info("Добавлена колонка final_table_start_players в таблицу tournaments")
+                # Отладочная информация о миграции схемы
+                logger.debug("Добавлена колонка final_table_start_players в таблицу tournaments")
             
             # Проверяем наличие колонки hero_ko_attempts в таблице hero_final_table_hands
             cursor.execute("PRAGMA table_info(hero_final_table_hands)")
             columns = [col[1] for col in cursor.fetchall()]
             if 'hero_ko_attempts' not in columns:
                 cursor.execute("ALTER TABLE hero_final_table_hands ADD COLUMN hero_ko_attempts INTEGER DEFAULT 0")
-                logger.info("Добавлена колонка hero_ko_attempts в таблицу hero_final_table_hands")
+                logger.debug("Добавлена колонка hero_ko_attempts в таблицу hero_final_table_hands")
 
             conn.commit()
             logger.info(f"База данных успешно инициализирована: {self._db_path}")
