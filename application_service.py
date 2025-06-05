@@ -145,6 +145,9 @@ class ApplicationService:
 
         self.hh_parser = HandHistoryParser()
         self.ts_parser = TournamentSummaryParser()
+
+        # Загружаем кэш или создаём его при инициализации сервиса
+        self.ensure_overall_stats_cached()
         
     @property
     def tournament_repo(self):
