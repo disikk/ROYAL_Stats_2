@@ -418,7 +418,7 @@ def apply_bigko_x10_color(label: QtWidgets.QLabel, total_tournaments: int, x10_c
     color = "#A1A1AA"
 
     if x10_count <= 0 or total_tournaments <= 0:
-        color = "#EF4444"  # Red when there were no x10 knockouts
+        color = "#FAFAFA"  # Default white when there were no x10 knockouts
     else:
         # Интервал может быть дробным. Приводим его к целому, чтобы не
         # возникало «дыр» между граничными значениями диапазонов.
