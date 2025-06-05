@@ -449,7 +449,7 @@ class HandHistoryParser(BaseParser):
         contrib: Dict[str, int] = {}
         street_contrib: Dict[str, int] = {}  # Вклады на текущей улице
         collects: Dict[str, int] = {}
-        detailed_actions: Dict[str, List[Tuple[str, str, int, Dict[str, int]]]] = {}  # player -> [(street, action, amount, street_stacks)]
+        detailed_actions: Dict[str, List[Tuple[str, str, int, Dict[str, int], int]]] = {}  # player -> [(street, action, amount, street_stacks, order)]
         
         # Стеки игроков для отслеживания на каждой улице
         current_stacks = seats.copy() if seats else {}
@@ -460,6 +460,7 @@ class HandHistoryParser(BaseParser):
         
         idx = 0
         current_street = 'PREFLOP'
+        action_index = 0  # Порядковый номер действия для определения очередности
         
         while idx < len(lines) and not lines[idx].strip().startswith(('*** SHOWDOWN', '*** SUMMARY')):
             line = lines[idx].strip()
@@ -527,7 +528,8 @@ class HandHistoryParser(BaseParser):
                 if act != 'posts':
                     if pl not in detailed_actions:
                         detailed_actions[pl] = []
-                    detailed_actions[pl].append((current_street, act, action_amount, street_stacks_snapshot))
+                    detailed_actions[pl].append((current_street, act, action_amount, street_stacks_snapshot, action_index))
+                    action_index += 1
             
             # Uncalled bet
             m_unc = RE_UNCALLED.match(line)
@@ -651,7 +653,7 @@ class HandHistoryParser(BaseParser):
         logger.debug(f"Total KO in hand: {ko_count}\n")
         return ko_count
     
-    def _count_ko_attempts_in_hand(self, hand: HandData, detailed_actions: Dict[str, List[Tuple[str, str, int, Dict[str, int]]]]) -> int:
+    def _count_ko_attempts_in_hand(self, hand: HandData, detailed_actions: Dict[str, List[Tuple[str, str, int, Dict[str, int], int]]]) -> int:
         """
         Подсчитывает количество попыток КО со стороны Hero в данной раздаче.
         
@@ -667,102 +669,94 @@ class HandHistoryParser(BaseParser):
         
         ko_attempts = 0
         hero_stack = hand.seats[config.HERO_NAME]
-        
+
         # Получаем действия Hero один раз
         hero_actions = detailed_actions.get(config.HERO_NAME, [])
-        hero_folded = any(action == 'folds' for _, action, _, _ in hero_actions)
+        hero_folded = any(action == 'folds' for _, action, _, _, _ in hero_actions)
         
         # Если Hero сфолдил, не может быть попыток
         if hero_folded:
             return 0
         
-        # Проверяем каждого оппонента, который пошел all-in
-        for opponent in hand.all_in_players:
-            if opponent == config.HERO_NAME:
-                continue
-
-            opp_stack = hand.seats.get(opponent, 0)
-
-            # Hero должен покрывать стек оппонента в начале раздачи
-            if hero_stack < opp_stack:
-                continue
-
-            # Проверяем авто олл-ины
-            ante_amount = 0
-            blind_amount = 0
-            for line in detailed_actions.get('raw_lines', []):
-                if f"{opponent}: posts the ante" in line:
-                    m = re.search(r'ante (\d+)', line)
-                    if m:
-                        ante_amount = int(m.group(1))
-                elif f"{opponent}: posts small blind" in line or f"{opponent}: posts big blind" in line:
-                    m = re.search(r'blind (\d+)', line)
-                    if m:
-                        blind_amount = int(m.group(1))
-
-            forced_bet = ante_amount + blind_amount
-            is_auto_allin = forced_bet > 0 and opp_stack <= forced_bet
-
-            if is_auto_allin:
-                ko_attempts += 1
-                logger.debug(
-                    f"Hand #{hand.hand_number}: Auto all-in KO attempt by {opponent}"
-                )
-        
-        # Анализируем действия Hero для подсчета попыток
-        hero_all_in_actions = []
-        for street, action, amount, street_stacks in hero_actions:
+        # Определяем порядок действий Hero
+        hero_all_in_index = None
+        for street, action, amount, _, idx in hero_actions:
             if action == 'all-in' or (action in ('bets', 'raises') and amount >= hero_stack * 0.9):
-                hero_all_in_actions.append((street, action, amount, street_stacks))
-        
-        ko_attempts_counted = set()
-        # Если Hero делал олл-ин
-        if hero_all_in_actions:
-            # Берем первый олл-ин Hero
-            street, action, amount, street_stacks = hero_all_in_actions[0]
-            
-            # Считаем попытки за всех оппонентов с меньшим стеком
+                hero_all_in_index = idx
+                break
+
+        if hero_all_in_index is not None:
+            # Hero пошел олл-ин/пуш
             for opp_name, opp_stack in hand.seats.items():
                 if opp_name == config.HERO_NAME:
                     continue
-                    
                 if hero_stack < opp_stack:
                     continue
-                
-                # Проверяем, сфолдил ли оппонент
+
                 opp_actions = detailed_actions.get(opp_name, [])
-                opp_folded = any(action == 'folds' for _, action, _, _ in opp_actions)
-                
-                if not opp_folded:
-                    # Если оппонент не сфолдил - это попытка
-                    # (он либо уже в олл-ине, либо может заколлировать)
-                    if opp_name not in ko_attempts_counted:
-                        ko_attempts += 1
-                        ko_attempts_counted.add(opp_name)
-                        logger.debug(
-                            f"Hand #{hand.hand_number}: KO attempt for {opp_name} (Hero all-in)"
-                        )
-        
-        # Если Hero не делал олл-ин, но коллировал/рейзил олл-ины оппонентов
+                fold_before = False
+                for st, act, amt, _, a_idx in opp_actions:
+                    if act == 'folds':
+                        if a_idx < hero_all_in_index:
+                            fold_before = True
+                        break
+
+                if not fold_before:
+                    ko_attempts += 1
+                    logger.debug(
+                        f"Hand #{hand.hand_number}: KO attempt for {opp_name} (Hero all-in)"
+                    )
         else:
+            # Hero не делал олл-ин, учитываем олл-ины оппонентов, которые он коллировал/рейзил
             for opponent in hand.all_in_players:
                 if opponent == config.HERO_NAME:
                     continue
-                    
+
                 opp_stack = hand.seats.get(opponent, 0)
                 if hero_stack < opp_stack:
                     continue
-                
-                # Проверяем, что Hero участвовал в поте с этим игроком
-                hero_contrib = hand.contrib.get(config.HERO_NAME, 0)
-                opp_contrib = hand.contrib.get(opponent, 0)
-                
-                if opp_contrib > 0 and hero_contrib >= opp_contrib:
+
+                opp_actions = detailed_actions.get(opponent, [])
+                all_in_idx = None
+                for st, act, amt, _, a_idx in opp_actions:
+                    if act == 'all-in':
+                        all_in_idx = a_idx
+                        break
+
+                hero_acted_after = False
+                for st, act, amt, _, h_idx in hero_actions:
+                    if h_idx > (all_in_idx if all_in_idx is not None else -1) and act in ('calls', 'raises', 'bets', 'all-in'):
+                        hero_acted_after = True
+                        break
+
+                if hero_acted_after:
                     ko_attempts += 1
                     logger.debug(
                         f"Hand #{hand.hand_number}: KO attempt for {opponent} (Hero called/raised)"
                     )
-        
+
+                else:
+                    # Проверка авто олл-инов, если действий после не было
+                    ante_amount = 0
+                    blind_amount = 0
+                    for line in detailed_actions.get('raw_lines', []):
+                        if f"{opponent}: posts the ante" in line:
+                            m = re.search(r'ante (\d+)', line)
+                            if m:
+                                ante_amount = int(m.group(1))
+                        elif f"{opponent}: posts small blind" in line or f"{opponent}: posts big blind" in line:
+                            m = re.search(r'blind (\d+)', line)
+                            if m:
+                                blind_amount = int(m.group(1))
+
+                    forced_bet = ante_amount + blind_amount
+                    is_auto_allin = forced_bet > 0 and opp_stack <= forced_bet
+                    if is_auto_allin:
+                        ko_attempts += 1
+                        logger.debug(
+                            f"Hand #{hand.hand_number}: Auto all-in KO attempt by {opponent}"
+                        )
+
         logger.info(
             f"Hand #{hand.hand_number}: KO attempts counted = {ko_attempts}"
         )
