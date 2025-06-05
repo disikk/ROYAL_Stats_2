@@ -801,7 +801,18 @@ class StatsGrid(QtWidgets.QWidget):
         self.current_session_id = (
             self._session_map.get(session_name) if session_name and session_name != "Все" else None
         )
-        
+
+        cache_key = (
+            self.current_buyin_filter,
+            self.current_session_id,
+            self.current_date_from,
+            self.current_date_to,
+        )
+        if self._cache_valid and cache_key in self._data_cache:
+            logger.debug("Используем кешированные данные StatsGrid")
+            self._on_data_loaded(self._data_cache[cache_key])
+            return
+
         def load_data(is_cancelled_callback=None):
             # Проверяем отмену перед загрузкой турниров
             if is_cancelled_callback and is_cancelled_callback():
@@ -904,7 +915,7 @@ class StatsGrid(QtWidgets.QWidget):
             avg_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
             no_ft_places = [t.finish_place for t in tournaments if not t.reached_final_table and t.finish_place is not None]
             avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
-            return {
+            result = {
                 'overall_stats': overall_stats,
                 'all_tournaments': tournaments,
                 'place_dist': place_dist,
@@ -930,6 +941,9 @@ class StatsGrid(QtWidgets.QWidget):
                 'ko_contribution': ko_contrib,
                 'ko_contribution_adj': ko_contrib_adj,
             }
+            self._data_cache[cache_key] = result
+            self._cache_valid = True
+            return result
         thread_manager.run_in_thread(
             widget_id=str(id(self)),
             fn=load_data,
