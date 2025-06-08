@@ -1,0 +1,418 @@
+# -*- coding: utf-8 -*-
+import os
+import logging
+import json
+import hashlib
+import threading
+from typing import List, Dict, Any, Optional, Callable, Type # Added Type
+from datetime import datetime
+import math
+import re
+
+import config # For STATS_CACHE_FILE, DEBUG, FINAL_TABLE_SIZE
+# from db.manager import database_manager # This will be passed in
+from db.repositories import (
+    TournamentRepository,
+    SessionRepository,
+    OverallStatsRepository,
+    PlaceDistributionRepository,
+    FinalTableHandRepository
+)
+from models import Tournament, Session, OverallStats, FinalTableHand # Ensure OverallStats, Session, FinalTableHand are imported
+from stats import BaseStat, BigKOStat # For direct call in _calculate_overall_stats
+
+logger = logging.getLogger('ROYAL_Stats.StatisticsService')
+
+class StatisticsService:
+    def __init__(self,
+                 db_manager_instance: Any, # db.manager.database_manager
+                 tournament_repo: TournamentRepository,
+                 session_repo: SessionRepository,
+                 overall_stats_repo: OverallStatsRepository,
+                 place_dist_repo: PlaceDistributionRepository,
+                 ft_hand_repo: FinalTableHandRepository,
+                 stat_plugins: List[Type[BaseStat]], # STAT_PLUGINS will be passed here
+                 config_cache_file: str, # Path to config.STATS_CACHE_FILE
+                 app_config_obj: Any = None): # For config.DEBUG if needed (e.g. config module)
+        self.db = db_manager_instance
+        self.tournament_repo = tournament_repo
+        self.session_repo = session_repo
+        self.overall_stats_repo = overall_stats_repo
+        self.place_dist_repo = place_dist_repo
+        self.ft_hand_repo = ft_hand_repo
+        self.stat_plugins = stat_plugins # Store the plugins
+
+        self._overall_stats_cache: Dict[str, OverallStats] = {} # OverallStats model
+        self._place_distribution_cache: Dict[str, Dict[int, int]] = {}
+
+        self._cache_file = config_cache_file
+        cache_dir = os.path.dirname(self._cache_file)
+        if cache_dir: # Make directory if _cache_file includes a path
+            os.makedirs(cache_dir, exist_ok=True)
+
+        self._persistent_cache = self._load_persistent_cache()
+
+        self._stats_update_lock = threading.Lock()
+        self._is_updating_stats = False
+
+        self.app_config = app_config_obj # To access things like DEBUG if needed for logger
+
+        # Logger setup
+        # Use global 'config' directly as it's imported. app_config_obj might be for other specific app settings.
+        if hasattr(config, 'DEBUG'):
+            logger.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
+        else:
+            logger.setLevel(logging.INFO) # Default
+        logger.info("StatisticsService instance initialized")
+
+    # --- Cache Management Methods ---
+    def _compute_db_checksum(self, path: str) -> str:
+        """Возвращает MD5-хеш файла БД."""
+        try:
+            hasher = hashlib.md5()
+            with open(path, "rb") as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    hasher.update(chunk)
+            return hasher.hexdigest()
+        except Exception:
+            return ""
+
+    def _load_persistent_cache(self) -> Dict[str, Dict[str, Any]]:
+        """Загружает кеш статистики из файла."""
+        if os.path.exists(self._cache_file):
+            try:
+                with open(self._cache_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                result = {}
+                for db_path, entry in data.items():
+                    stats = OverallStats.from_dict(entry.get("overall_stats", {}))
+                    distribution = {int(k): int(v) for k, v in entry.get("place_distribution", {}).items()}
+                    result[db_path] = {
+                        "checksum": entry.get("checksum", ""),
+                        "overall_stats": stats,
+                        "place_distribution": distribution,
+                    }
+                return result
+            except Exception as e:
+                logger.warning(f"Не удалось загрузить кеш статистики: {e}")
+        else: # If cache file doesn't exist, ensure directory is there for future save.
+            cache_dir = os.path.dirname(self._cache_file)
+            if cache_dir:
+                 os.makedirs(cache_dir, exist_ok=True)
+        return {}
+
+    def _save_persistent_cache(self) -> None:
+        """Сохраняет кеш статистики в файл."""
+        data = {}
+        for db_path, entry in self._persistent_cache.items():
+            overall_stats_entry = entry.get("overall_stats")
+            place_dist_entry = entry.get("place_distribution")
+            data[db_path] = {
+                "checksum": entry.get("checksum", ""),
+                "overall_stats": overall_stats_entry.as_dict() if hasattr(overall_stats_entry, 'as_dict') else overall_stats_entry,
+                "place_distribution": place_dist_entry,
+            }
+        try:
+            cache_dir = os.path.dirname(self._cache_file)
+            if cache_dir: # Ensure directory exists before writing
+                 os.makedirs(cache_dir, exist_ok=True)
+            with open(self._cache_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"Не удалось сохранить кеш статистики: {e}")
+
+    def ensure_overall_stats_cached(self, progress_callback: Optional[Callable]=None) -> None:
+        """Гарантирует наличие кешированных статистик для текущей БД."""
+        db_path = self.db.db_path
+        if db_path in self._overall_stats_cache and db_path in self._place_distribution_cache:
+            return
+
+        with self._stats_update_lock:
+            if self._is_updating_stats:
+                logger.debug("Пересчет статистики уже идет, пропускаем")
+                return
+            self._is_updating_stats = True
+
+        try:
+            checksum = self._compute_db_checksum(db_path)
+            cached = self._persistent_cache.get(db_path)
+            if cached and cached.get("checksum") == checksum:
+                # Ensure that what we retrieve from cache is an OverallStats instance
+                cached_stats = cached.get("overall_stats")
+                if isinstance(cached_stats, dict): # If it was stored as dict (e.g. from older cache)
+                    self._overall_stats_cache[db_path] = OverallStats.from_dict(cached_stats)
+                else: # Assume it's already an OverallStats instance
+                    self._overall_stats_cache[db_path] = cached_stats
+                self._place_distribution_cache[db_path] = cached.get("place_distribution", {i: 0 for i in range(1, 10)})
+                logger.debug("Используется сохранённый кэш статистики")
+                return
+            logger.debug("Кэш не найден или устарел, пересчёт статистики")
+
+            count_result = self.db.execute_query("SELECT COUNT(*) AS c FROM tournaments")
+            tournaments_num = count_result[0][0] if count_result and count_result[0] else 0
+
+            if tournaments_num > 0:
+                existing_stats = self.overall_stats_repo.get_overall_stats()
+                if existing_stats and existing_stats.total_tournaments > 0:
+                    logger.debug("Используется существующая статистика из БД")
+                    self._overall_stats_cache[db_path] = existing_stats
+                    distribution = self.place_dist_repo.get_distribution()
+                    self._place_distribution_cache[db_path] = distribution
+                    # Persist this to cache file as well
+                    self._persistent_cache[db_path] = {
+                        "checksum": checksum, # Recompute checksum for current state if using DB data
+                        "overall_stats": existing_stats,
+                        "place_distribution": distribution,
+                    }
+                    self._save_persistent_cache()
+                    return
+                else:
+                    logger.debug("Статистика отсутствует, запускаем пересчет")
+                    self._update_all_statistics(session_id=None, progress_callback=progress_callback) # Pass None for global
+            else:
+                self.overall_stats_repo.update_overall_stats(OverallStats())
+
+            # After potential _update_all_statistics or if DB was empty
+            stats_after_update = self.overall_stats_repo.get_overall_stats() # Fetch potentially updated/new stats
+            dist_after_update = self.place_dist_repo.get_distribution()    # Fetch potentially updated/new dist
+            self._overall_stats_cache[db_path] = stats_after_update
+            self._place_distribution_cache[db_path] = dist_after_update
+            self._persistent_cache[db_path] = { # Update persistent cache with the latest
+                "checksum": self._compute_db_checksum(db_path), # Recompute checksum
+                "overall_stats": stats_after_update,
+                "place_distribution": dist_after_update,
+            }
+            self._save_persistent_cache()
+
+        finally:
+            with self._stats_update_lock:
+                self._is_updating_stats = False
+
+    # --- Statistics Calculation Methods ---
+    def _update_all_statistics(self, session_id: Optional[str] = None, progress_callback: Optional[Callable]=None) -> None:
+        all_tournaments = self.tournament_repo.get_all_tournaments()
+        all_final_tournaments = [
+            t for t in all_tournaments
+            if t.reached_final_table and t.finish_place is not None and 1 <= t.finish_place <= 9
+        ]
+        sessions_to_update = self.session_repo.get_all_sessions()
+
+        total_steps = 1 + len(all_final_tournaments) + len(all_tournaments) + len(sessions_to_update)
+        current_step = 0
+
+        try:
+            if progress_callback:
+                progress_callback(current_step, total_steps, "Обновление общей статистики...")
+            overall_stats_obj = self._calculate_overall_stats()
+            if overall_stats_obj:
+                self.overall_stats_repo.update_overall_stats(overall_stats_obj)
+                self._overall_stats_cache[self.db.db_path] = overall_stats_obj
+            logger.debug("Общая статистика обновлена успешно.")
+            current_step += 1
+            if progress_callback:
+                progress_callback(current_step, total_steps, "Общая статистика обновлена")
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении overall_stats: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+
+        try:
+            new_distribution: Dict[int, int] = {i: 0 for i in range(1, 10)} # Ensure type
+            for tourney in all_final_tournaments:
+                if tourney.finish_place is not None: # ensure not None
+                    new_distribution[tourney.finish_place] += 1
+                current_step += 1
+                if progress_callback and callable(progress_callback):
+                    progress_callback(current_step, total_steps, f"Обновлено мест: {current_step-1}/{len(all_final_tournaments)}")
+            self.place_dist_repo.update_distribution(new_distribution)
+            logger.debug(f"Распределение мест обновлено для {len(all_final_tournaments)} турниров.")
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении place_distribution: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+
+        try:
+            for tournament in all_tournaments:
+                tournament_ft_hands = self.ft_hand_repo.get_hands_by_tournament(tournament.tournament_id)
+                total_ko = sum(hand.hero_ko_this_hand for hand in tournament_ft_hands)
+                tournament.ko_count = total_ko
+                self.tournament_repo.add_or_update_tournament(tournament)
+                current_step += 1
+                if progress_callback:
+                    progress_callback(current_step, total_steps, f"Обновлено турниров (KO): {current_step - 1 - len(all_final_tournaments)}/{len(all_tournaments)}")
+            logger.debug(f"KO count обновлен для {len(all_tournaments)} турниров.")
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении ko_count: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+
+        try:
+            for session_obj in sessions_to_update:
+                try:
+                    self._calculate_and_update_session_stats(session_obj.session_id)
+                except Exception as e:
+                    logger.error(f"Ошибка при обновлении сессии {session_obj.session_id}: {e}")
+                current_step += 1
+                if progress_callback:
+                    progress_callback(current_step, total_steps, f"Обновлено сессий: {current_step - 1 - len(all_final_tournaments) - len(all_tournaments)}/{len(sessions_to_update)}")
+            logger.debug(f"Статистика обновлена для {len(sessions_to_update)} сессий.")
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении session stats: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+
+        if progress_callback:
+            progress_callback(total_steps, total_steps, "Статистика обновлена")
+
+        logger.info("Обновление всей статистики завершено (с учетом возможных ошибок).")
+
+        checksum = self._compute_db_checksum(self.db.db_path)
+        current_stats_val = self._overall_stats_cache.get(self.db.db_path, OverallStats())
+        current_dist_val = self.place_dist_repo.get_distribution()
+        self._place_distribution_cache[self.db.db_path] = current_dist_val
+        self._persistent_cache[self.db.db_path] = {
+            "checksum": checksum,
+            "overall_stats": current_stats_val,
+            "place_distribution": current_dist_val,
+        }
+        self._save_persistent_cache()
+
+    def _calculate_overall_stats(self) -> OverallStats:
+        all_tournaments = self.tournament_repo.get_all_tournaments()
+        all_ft_hands = self.ft_hand_repo.get_all_hands()
+        logger.debug(f"_calculate_overall_stats: Загружено {len(all_tournaments)} турниров")
+        logger.debug(f"_calculate_overall_stats: Загружено {len(all_ft_hands)} рук финального стола")
+
+        stats_obj = OverallStats()
+
+        stats_obj.total_tournaments = len(all_tournaments)
+        final_table_tournaments = [t for t in all_tournaments if t.reached_final_table]
+        stats_obj.total_final_tables = len(final_table_tournaments)
+        stats_obj.total_buy_in = sum(t.buyin for t in all_tournaments if t.buyin is not None)
+        stats_obj.total_prize = sum(t.payout if t.payout is not None else 0 for t in all_tournaments)
+
+        all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
+        stats_obj.avg_finish_place = sum(all_places) / len(all_places) if all_places else 0.0
+
+        ft_places = [t.finish_place for t in final_table_tournaments if t.finish_place is not None and 1 <= t.finish_place <= 9]
+        stats_obj.avg_finish_place_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
+
+        stats_obj.total_knockouts = sum(hand.hero_ko_this_hand for hand in all_ft_hands)
+        logger.debug(f"Рассчитано total_knockouts: {stats_obj.total_knockouts}")
+
+        stats_obj.avg_ko_per_tournament = stats_obj.total_knockouts / stats_obj.total_tournaments if stats_obj.total_tournaments > 0 else 0.0
+        stats_obj.final_table_reach_percent = (stats_obj.total_final_tables / stats_obj.total_tournaments * 100) if stats_obj.total_tournaments > 0 else 0.0
+
+        ft_initial_stacks_chips = [t.final_table_initial_stack_chips for t in final_table_tournaments if t.final_table_initial_stack_chips is not None]
+        stats_obj.avg_ft_initial_stack_chips = sum(ft_initial_stacks_chips) / len(ft_initial_stacks_chips) if ft_initial_stacks_chips else 0.0
+
+        ft_initial_stacks_bb = [t.final_table_initial_stack_bb for t in final_table_tournaments if t.final_table_initial_stack_bb is not None]
+        stats_obj.avg_ft_initial_stack_bb = sum(ft_initial_stacks_bb) / len(ft_initial_stacks_bb) if ft_initial_stacks_bb else 0.0
+
+        early_ft_hands = [hand for hand in all_ft_hands if hand.is_early_final]
+        stats_obj.early_ft_ko_count = sum(hand.hero_ko_this_hand for hand in early_ft_hands)
+        stats_obj.early_ft_ko_per_tournament = stats_obj.early_ft_ko_count / stats_obj.total_final_tables if stats_obj.total_final_tables > 0 else 0.0
+        stats_obj.early_ft_bust_count = sum(1 for t in final_table_tournaments if t.finish_place is not None and 6 <= t.finish_place <= 9)
+        stats_obj.early_ft_bust_per_tournament = (stats_obj.early_ft_bust_count / stats_obj.total_final_tables if stats_obj.total_final_tables > 0 else 0.0)
+
+        first_ft_hands: Dict[str, FinalTableHand] = {}
+        # Use global 'config' for FINAL_TABLE_SIZE as it's imported
+        for hand in all_ft_hands:
+            if hand.table_size == config.FINAL_TABLE_SIZE:
+                saved = first_ft_hands.get(hand.tournament_id)
+                if saved is None or hand.hand_number < saved.hand_number:
+                    first_ft_hands[hand.tournament_id] = hand
+        stats_obj.incomplete_ft_count = sum(1 for h in first_ft_hands.values() if h.players_count < config.FINAL_TABLE_SIZE)
+
+        stats_obj.pre_ft_ko_count = sum(hand.pre_ft_ko for hand in all_ft_hands)
+
+        big_ko_results = BigKOStat().compute(all_tournaments, all_ft_hands, [], None)
+        stats_obj.big_ko_x1_5 = big_ko_results.get("x1.5", 0)
+        stats_obj.big_ko_x2 = big_ko_results.get("x2", 0)
+        stats_obj.big_ko_x10 = big_ko_results.get("x10", 0)
+        stats_obj.big_ko_x100 = big_ko_results.get("x100", 0)
+        stats_obj.big_ko_x1000 = big_ko_results.get("x1000", 0)
+        stats_obj.big_ko_x10000 = big_ko_results.get("x10000", 0)
+
+        no_ft_places = [t.finish_place for t in all_tournaments if not t.reached_final_table and t.finish_place is not None]
+        stats_obj.avg_finish_place_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
+
+        # Rounding
+        stats_obj.avg_finish_place = round(stats_obj.avg_finish_place, 2)
+        stats_obj.avg_finish_place_ft = round(stats_obj.avg_finish_place_ft, 2)
+        stats_obj.avg_ko_per_tournament = round(stats_obj.avg_ko_per_tournament, 2)
+        stats_obj.avg_ft_initial_stack_chips = round(stats_obj.avg_ft_initial_stack_chips, 2)
+        stats_obj.avg_ft_initial_stack_bb = round(stats_obj.avg_ft_initial_stack_bb, 2)
+        stats_obj.early_ft_ko_per_tournament = round(stats_obj.early_ft_ko_per_tournament, 2)
+        stats_obj.early_ft_bust_per_tournament = round(stats_obj.early_ft_bust_per_tournament, 2)
+        stats_obj.final_table_reach_percent = round(stats_obj.final_table_reach_percent, 2)
+        stats_obj.pre_ft_ko_count = round(stats_obj.pre_ft_ko_count, 2)
+        stats_obj.avg_finish_place_no_ft = round(stats_obj.avg_finish_place_no_ft, 2)
+
+        logger.debug(f"Итоговая статистика: tournaments={stats_obj.total_tournaments}, knockouts={stats_obj.total_knockouts}, prize={stats_obj.total_prize}, buyin={stats_obj.total_buy_in}")
+        return stats_obj
+
+    def _calculate_and_update_session_stats(self, session_id: str) -> None:
+        session_obj = self.session_repo.get_session_by_id(session_id)
+        if not session_obj:
+            logger.warning(f"Сессия с ID {session_id} не найдена для обновления статистики.")
+            return
+
+        tournaments_in_session = self.tournament_repo.get_all_tournaments(session_id=session_id)
+        ft_hands_in_session = self.ft_hand_repo.get_hands_by_session(session_id=session_id)
+
+        session_obj.tournaments_count = len(tournaments_in_session)
+        session_obj.knockouts_count = sum(hand.hero_ko_this_hand for hand in ft_hands_in_session)
+
+        all_places_session = [t.finish_place for t in tournaments_in_session if t.finish_place is not None]
+        session_obj.avg_finish_place = sum(all_places_session) / len(all_places_session) if all_places_session else 0.0
+        session_obj.total_prize = sum(t.payout for t in tournaments_in_session if t.payout is not None)
+        session_obj.total_buy_in = sum(t.buyin for t in tournaments_in_session if t.buyin is not None)
+
+        session_obj.avg_finish_place = round(session_obj.avg_finish_place, 2)
+        session_obj.total_prize = round(session_obj.total_prize, 2)
+        session_obj.total_buy_in = round(session_obj.total_buy_in, 2)
+
+        self.session_repo.update_session_stats(session_obj)
+
+    # --- Statistics Getter Methods ---
+    def get_overall_stats(self) -> Optional[OverallStats]:
+        self.ensure_overall_stats_cached()
+        return self._overall_stats_cache.get(self.db.db_path, None) # Return None if not found, or default OverallStats()
+
+    def get_place_distribution(self) -> Dict[int, int]:
+        self.ensure_overall_stats_cached()
+        return self._place_distribution_cache.get(
+            self.db.db_path,
+            {}, # Return empty dict if not found
+        )
+
+    def get_place_distribution_pre_ft(self) -> Dict[int, int]:
+        tournaments = self.tournament_repo.get_all_tournaments()
+        distribution: Dict[int, int] = {i: 0 for i in range(10, 19)} # Ensure type
+        for tourney in tournaments:
+            if tourney.finish_place is not None and 10 <= tourney.finish_place <= 18:
+                distribution[tourney.finish_place] += 1
+        return distribution
+
+    def get_place_distribution_overall(self) -> Dict[int, int]:
+        tournaments = self.tournament_repo.get_all_tournaments()
+        distribution: Dict[int, int] = {i: 0 for i in range(1, 19)} # Ensure type
+        for tourney in tournaments:
+            if tourney.finish_place is not None and 1 <= tourney.finish_place <= 18:
+                distribution[tourney.finish_place] += 1
+        return distribution
+
+    def get_session_stats(self, session_id: str) -> Optional[Session]:
+        return self.session_repo.get_session_by_id(session_id)
+
+    def get_place_distribution_for_session(self, session_id: str) -> tuple[Dict[int, int], int]:
+         tournaments_in_session = self.tournament_repo.get_all_tournaments(session_id=session_id)
+         distribution: Dict[int, int] = {i: 0 for i in range(1, 10)} # Ensure type
+         total_final_tables_in_session = 0
+         for tourney in tournaments_in_session:
+              if tourney.reached_final_table:
+                   total_final_tables_in_session += 1
+                   if tourney.finish_place is not None and 1 <= tourney.finish_place <= 9:
+                        distribution[tourney.finish_place] += 1
+         return distribution, total_final_tables_in_session
