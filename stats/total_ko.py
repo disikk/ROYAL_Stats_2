@@ -2,41 +2,47 @@
 
 """
 Плагин для подсчёта общего количества нокаутов, совершённых Hero.
-Обновлен для работы с OverallStats.
+Автономный плагин для работы с сырыми данными.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from .base import BaseStat
-from models import OverallStats # Импортируем модель OverallStats
+from models import Tournament, FinalTableHand, Session
 
 class TotalKOStat(BaseStat):
     name = "Total KO"
     description = "Общее количество сделанных Hero нокаутов"
 
     def compute(self,
-                tournaments: List[Any], # Не используется напрямую этим плагином
-                final_table_hands: List[Any], # Не используется напрямую этим плагином
-                sessions: List[Any], # Не используется напрямую этим плагином
-                overall_stats: OverallStats, # Используем overall_stats для получения общей суммы
+                tournaments: Optional[List[Tournament]] = None,
+                final_table_hands: Optional[List[FinalTableHand]] = None,
+                sessions: Optional[List[Session]] = None,
+                overall_stats: Optional[Any] = None,
                 **kwargs: Any
                ) -> Dict[str, Any]:
         """
-        Получает общее количество KO из OverallStats.
+        Подсчитывает общее количество нокаутов Hero.
 
         Args:
-            overall_stats: Объект OverallStats с уже посчитанной общей суммой KO.
-            **kwargs: Дополнительные параметры.
+            tournaments: Список турниров (не используется напрямую)
+            final_table_hands: Список рук финального стола с информацией о KO
+            sessions: Список сессий (не используется)
+            **kwargs: Дополнительные параметры:
+                - precomputed_stats: Dict с предварительно рассчитанным total_knockouts
 
         Returns:
-            Словарь с ключом 'total_ko'.
+            Словарь с ключом 'total_ko' - общее количество нокаутов
         """
-        if not tournaments and not overall_stats:
-            return {"total_ko": 0}
-
-        # Общее количество KO уже хранится в OverallStats, рассчитанное ApplicationService.
-        # Плагин просто извлекает это значение.
-
-        # Если overall_stats не передан или нет нужного поля, возвращаем 0
-        total_ko = overall_stats.total_knockouts if overall_stats and hasattr(overall_stats, 'total_knockouts') else 0
-
+        # Проверяем наличие предварительно рассчитанного значения
+        final_table_hands = final_table_hands or []
+        precomputed_stats = kwargs.get('precomputed_stats', {})
+        
+        if 'total_knockouts' in precomputed_stats:
+            # Используем предварительно рассчитанное значение
+            total_ko = precomputed_stats['total_knockouts']
+        else:
+            # Рассчитываем из сырых данных
+            # Суммируем все KO из рук финального стола
+            total_ko = sum(hand.hero_ko_this_hand for hand in final_table_hands)
+        
         return {"total_ko": total_ko}

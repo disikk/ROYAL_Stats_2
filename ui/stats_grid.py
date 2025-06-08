@@ -877,7 +877,7 @@ class StatsGrid(QtWidgets.QWidget):
                     place_dist_all[t.finish_place] += 1
 
             # Вычисляем статистики с проверками отмены
-            roi_value = ROIStat().compute([], [], [], overall_stats).get('roi', 0.0)
+            roi_value = ROIStat().compute(tournaments, [], [], overall_stats).get('roi', 0.0)
             if is_cancelled_callback and is_cancelled_callback():
                 return None
                 
@@ -1233,7 +1233,7 @@ class StatsGrid(QtWidgets.QWidget):
             if not t.reached_final_table and t.finish_place is not None
         ]
         stats.avg_finish_place_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
-        bigko = BigKOStat().compute(tournaments, ft_hands, [], None)
+        bigko = BigKOStat().compute(tournaments, ft_hands, [])
         stats.big_ko_x1_5 = bigko.get("x1.5", 0)
         stats.big_ko_x2 = bigko.get("x2", 0)
         stats.big_ko_x10 = bigko.get("x10", 0)

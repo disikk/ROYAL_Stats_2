@@ -640,6 +640,100 @@ class TournamentRepository:
         query = "DELETE FROM tournaments WHERE tournament_id = ?"
         self.db.execute_update(query, (tournament_id,))
 
+    def get_all_finish_places(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> List[int]:
+        """
+        Возвращает список всех finish_place для расчета среднего места.
+        Опционально фильтрует по сессии или бай-ину.
+        """
+        query = "SELECT finish_place FROM tournaments WHERE finish_place IS NOT NULL"
+        conditions = []
+        params = []
+
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+
+        if conditions:
+            query += " AND " + " AND ".join(conditions)
+
+        results = self.db.execute_query(query, params)
+        return [row[0] for row in results if row[0] is not None]
+
+    def get_final_table_finish_places(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> List[int]:
+        """
+        Возвращает список finish_place только для турниров с финальным столом.
+        Опционально фильтрует по сессии или бай-ину.
+        """
+        query = """
+            SELECT finish_place 
+            FROM tournaments 
+            WHERE reached_final_table = 1 
+                AND finish_place IS NOT NULL 
+                AND finish_place BETWEEN 1 AND 9
+        """
+        conditions = []
+        params = []
+
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+
+        if conditions:
+            query += " AND " + " AND ".join(conditions)
+
+        results = self.db.execute_query(query, params)
+        return [row[0] for row in results if row[0] is not None]
+
+    def get_final_table_initial_stacks(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> Dict[str, List[float]]:
+        """
+        Возвращает словарь {'chips': [...], 'bb': [...]} со стеками на старте финалки.
+        Опционально фильтрует по сессии или бай-ину.
+        """
+        query = """
+            SELECT 
+                final_table_initial_stack_chips,
+                final_table_initial_stack_bb
+            FROM tournaments
+            WHERE reached_final_table = 1
+                AND final_table_initial_stack_chips IS NOT NULL
+                AND final_table_initial_stack_bb IS NOT NULL
+        """
+        conditions = []
+        params = []
+
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+
+        if conditions:
+            query += " AND " + " AND ".join(conditions)
+
+        results = self.db.execute_query(query, params)
+        
+        stacks = {
+            'chips': [],
+            'bb': []
+        }
+        
+        for row in results:
+            if row[0] is not None and row[1] is not None:
+                stacks['chips'].append(row[0])
+                stacks['bb'].append(row[1])
+        
+        return stacks
+
 
 # Создаем синглтон экземпляр репозитория
 tournament_repository = TournamentRepository()

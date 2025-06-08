@@ -186,3 +186,58 @@ class FinalTableHandRepository:
          if result:
              return FinalTableHand.from_dict(dict(result[0]))
          return None
+    
+    def get_ko_counts_for_tournaments(self, tournament_ids: List[str]) -> dict[str, float]:
+        """
+        Эффективно получает суммарное количество KO для списка турниров одним запросом.
+        Возвращает словарь {tournament_id: total_ko}.
+        """
+        if not tournament_ids:
+            return {}
+        
+        placeholders = ','.join(['?' for _ in tournament_ids])
+        query = f"""
+            SELECT tournament_id, SUM(hero_ko_this_hand) as total_ko
+            FROM hero_final_table_hands
+            WHERE tournament_id IN ({placeholders})
+            GROUP BY tournament_id
+        """
+        
+        results = self.db.execute_query(query, tournament_ids)
+        return {row[0]: row[1] if row[1] is not None else 0.0 for row in results}
+    
+    def get_early_ft_ko_count(self, tournament_ids: Optional[List[str]] = None) -> float:
+        """
+        Получает общее количество KO в ранней стадии финального стола.
+        Оптимизирован для инкрементального обновления с возможностью фильтрации по турнирам.
+        """
+        query = """
+            SELECT SUM(hero_ko_this_hand) 
+            FROM hero_final_table_hands 
+            WHERE is_early_final = 1
+        """
+        params = []
+        
+        if tournament_ids:
+            placeholders = ','.join(['?' for _ in tournament_ids])
+            query += f" AND tournament_id IN ({placeholders})"
+            params.extend(tournament_ids)
+        
+        result = self.db.execute_query(query, params)
+        return result[0][0] if result and result[0][0] is not None else 0.0
+    
+    def get_pre_ft_ko_sum(self, tournament_ids: Optional[List[str]] = None) -> float:
+        """
+        Получает сумму Pre-FT KO.
+        Оптимизирован для инкрементального обновления.
+        """
+        query = "SELECT SUM(pre_ft_ko) FROM hero_final_table_hands"
+        params = []
+        
+        if tournament_ids:
+            placeholders = ','.join(['?' for _ in tournament_ids])
+            query += f" WHERE tournament_id IN ({placeholders})"
+            params.extend(tournament_ids)
+        
+        result = self.db.execute_query(query, params)
+        return result[0][0] if result and result[0][0] is not None else 0.0

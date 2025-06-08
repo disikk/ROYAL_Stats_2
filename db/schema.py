@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS module_settings (
 
 # Индексы для оптимизации производительности
 CREATE_INDEXES = [
+    # Базовые индексы
     "CREATE INDEX IF NOT EXISTS idx_tournaments_session ON tournaments(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_tournaments_buyin ON tournaments(buyin)",
     "CREATE INDEX IF NOT EXISTS idx_tournaments_reached_ft ON tournaments(reached_final_table)",
@@ -136,6 +137,17 @@ CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_ft_hands_session ON hero_final_table_hands(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_ft_hands_is_early ON hero_final_table_hands(is_early_final)",
     "CREATE INDEX IF NOT EXISTS idx_ft_hands_ko ON hero_final_table_hands(hero_ko_this_hand)",
+    
+    # Составные индексы для оптимизации статистики
+    "CREATE INDEX IF NOT EXISTS idx_tournaments_ft_place ON tournaments(reached_final_table, finish_place)",
+    "CREATE INDEX IF NOT EXISTS idx_tournaments_ft_stacks ON tournaments(reached_final_table, final_table_initial_stack_chips, final_table_initial_stack_bb)",
+    "CREATE INDEX IF NOT EXISTS idx_tournaments_session_place ON tournaments(session_id, finish_place)",
+    "CREATE INDEX IF NOT EXISTS idx_tournaments_buyin_payout ON tournaments(buyin, payout)",
+    "CREATE INDEX IF NOT EXISTS idx_ft_hands_early_ko ON hero_final_table_hands(is_early_final, hero_ko_this_hand)",
+    "CREATE INDEX IF NOT EXISTS idx_tournaments_id_ko ON tournaments(tournament_id, ko_count)",
+    
+    # Индексы для ускорения агрегатных запросов
+    "CREATE INDEX IF NOT EXISTS idx_tournaments_stats ON tournaments(reached_final_table, finish_place, buyin, payout) WHERE finish_place IS NOT NULL",
 ]
 
 # Список всех SQL-запросов для создания таблиц

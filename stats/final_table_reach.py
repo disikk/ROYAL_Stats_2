@@ -2,11 +2,12 @@
 
 """
 Плагин для подсчёта процента попадания Hero на финальный стол.
+Автономный плагин для работы с сырыми данными.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from .base import BaseStat
-from models import Tournament, OverallStats # Импортируем модели
+from models import Tournament, FinalTableHand, Session
 
 class FinalTableReachStat(BaseStat):
     """
@@ -16,40 +17,43 @@ class FinalTableReachStat(BaseStat):
     description: str = "Процент турниров, в которых Hero достиг финального стола"
 
     def compute(self,
-                tournaments: List[Tournament],
-                final_table_hands: List[Any], # Не используется напрямую этим плагином
-                sessions: List[Any], # Не используется напрямую этим плагином
-                overall_stats: Any, # Используем overall_stats для получения общих сумм
+                tournaments: Optional[List[Tournament]] = None,
+                final_table_hands: Optional[List[FinalTableHand]] = None,
+                sessions: Optional[List[Session]] = None,
+                overall_stats: Optional[Any] = None,
                 **kwargs: Any
                ) -> Dict[str, Any]:
         """
         Рассчитывает процент достижения финального стола.
 
         Args:
-            tournaments: Список объектов Tournament.
-            overall_stats: Объект OverallStats с уже посчитанными агрегатами.
-            **kwargs: Дополнительные параметры.
+            tournaments: Список объектов Tournament
+            final_table_hands: Список рук финального стола (не используется)
+            sessions: Список сессий (не используется)
+            **kwargs: Дополнительные параметры:
+                - precomputed_stats: Dict с предварительно рассчитанными total_final_tables и total_tournaments
 
         Returns:
-            Словарь с ключом 'final_table_reach_percent'.
+            Словарь с ключом 'final_table_reach_percent' - процент достижения финального стола
         """
-        if not tournaments and not overall_stats:
+        tournaments = tournaments or []
+        if not tournaments:
             return {"final_table_reach_percent": 0.0}
 
-        # Этот стат уже рассчитывается и хранится в OverallStats
-        # Плагин просто извлекает его.
-
-        if overall_stats and hasattr(overall_stats, 'total_final_tables') and hasattr(overall_stats, 'total_tournaments'):
-            total_final_tables = overall_stats.total_final_tables
-            total_tournaments = overall_stats.total_tournaments
-            reach_percent = (total_final_tables / total_tournaments * 100) if total_tournaments > 0 else 0.0
-            reach_percent = round(reach_percent, 2)
+        # Проверяем наличие предварительно рассчитанных значений
+        precomputed_stats = kwargs.get('precomputed_stats', {})
+        
+        if 'total_final_tables' in precomputed_stats and 'total_tournaments' in precomputed_stats:
+            # Используем предварительно рассчитанные значения
+            total_final_tables = precomputed_stats['total_final_tables']
+            total_tournaments = precomputed_stats['total_tournaments']
         else:
-            # Fallback расчет
+            # Рассчитываем из сырых данных
             total_tournaments = len(tournaments)
             total_final_tables = sum(1 for t in tournaments if t.reached_final_table)
-            reach_percent = (total_final_tables / total_tournaments * 100) if total_tournaments > 0 else 0.0
-            reach_percent = round(reach_percent, 2)
-
+        
+        # Вычисляем процент
+        reach_percent = (total_final_tables / total_tournaments * 100) if total_tournaments > 0 else 0.0
+        reach_percent = round(reach_percent, 2)
 
         return {"final_table_reach_percent": reach_percent}

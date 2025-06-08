@@ -274,6 +274,9 @@ class DatabaseManager:
             if 'hero_ko_attempts' not in columns:
                 cursor.execute("ALTER TABLE hero_final_table_hands ADD COLUMN hero_ko_attempts INTEGER DEFAULT 0")
                 logger.debug("Добавлена колонка hero_ko_attempts в таблицу hero_final_table_hands")
+            
+            # Обновление индексов для существующих БД
+            self._update_indexes(cursor)
 
             conn.commit()
             logger.info(f"База данных успешно инициализирована: {self._db_path}")
@@ -284,6 +287,40 @@ class DatabaseManager:
             # В реальном приложении здесь можно показать сообщение пользователю
             # и, возможно, завершить работу или предложить выбрать другую БД.
             raise # Пробрасываем исключение, так как работа без схемы невозможна
+    
+    def _update_indexes(self, cursor: sqlite3.Cursor) -> None:
+        """
+        Проверяет и создает недостающие индексы для оптимизации производительности.
+        Безопасно для выполнения на существующих БД - CREATE INDEX IF NOT EXISTS.
+        """
+        try:
+            # Получаем список существующих индексов
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='index'")
+            existing_indexes = set(row[0] for row in cursor.fetchall())
+            
+            # Подсчитываем созданные индексы
+            created_indexes = 0
+            
+            # Создаем недостающие индексы
+            for index_query in db.schema.CREATE_INDEXES:
+                # Извлекаем имя индекса из запроса
+                index_name = index_query.split("IF NOT EXISTS ")[1].split(" ON")[0].strip()
+                
+                if index_name not in existing_indexes:
+                    try:
+                        cursor.execute(index_query)
+                        created_indexes += 1
+                        logger.debug(f"Создан индекс: {index_name}")
+                    except sqlite3.Error as e:
+                        # Если индекс уже существует под другим именем или есть другая проблема
+                        logger.warning(f"Не удалось создать индекс {index_name}: {e}")
+            
+            if created_indexes > 0:
+                logger.info(f"Создано {created_indexes} новых индексов для оптимизации производительности")
+                
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении индексов: {e}")
+            # Не прерываем инициализацию БД из-за проблем с индексами
 
 
 # Синглтон менеджер БД

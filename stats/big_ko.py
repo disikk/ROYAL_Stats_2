@@ -3,12 +3,15 @@
 """
 Плагин для подсчёта крупных нокаутов Hero (x1.5, x2, x10, x100, x1000, x10000).
 Жадное разложение суммы KO для каждого турнира.
-Обновлен для работы с новой архитектурой и моделями.
+Автономный плагин для работы с сырыми данными.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from .base import BaseStat
-from models import Tournament, OverallStats # Импортируем модели
+from models import Tournament, FinalTableHand, Session
+import logging
+
+logger = logging.getLogger('ROYAL_Stats.BigKOStat')
 
 class BigKOStat(BaseStat):
     name = "Big KO"
@@ -22,53 +25,77 @@ class BigKOStat(BaseStat):
     MULTIPLIERS = [10000.0, 1000.0, 100.0, 10.0, 2.0, 1.5]
 
     def compute(self,
-                tournaments: List[Tournament],
-                final_table_hands: List[Any],
-                sessions: List[Any],
-                overall_stats: Any,
+                tournaments: Optional[List[Tournament]] = None,
+                final_table_hands: Optional[List[FinalTableHand]] = None,
+                sessions: Optional[List[Session]] = None,
                 **kwargs: Any
                ) -> Dict[str, Any]:
         """
         Рассчитывает Big KO на основе турниров.
+        
+        Args:
+            tournaments: Список турниров для анализа
+            final_table_hands: Список рук финального стола (не используется)
+            sessions: Список сессий (не используется)
+            **kwargs: Дополнительные параметры:
+                - precomputed_stats: Dict с предварительно рассчитанными big_ko_x* значениями
+                
+        Returns:
+            Словарь с ключами 'x1.5', 'x2', 'x10', 'x100', 'x1000', 'x10000'
         """
+        # Обработка None значений
+        tournaments = tournaments or []
+        
+        # Инициализируем результат
         result = {}
         for m in self.MULTIPLIERS:
             key = f"x{int(m)}" if m == int(m) else f"x{m}"
             result[key] = 0
 
-        import logging
-        logger = logging.getLogger('ROYAL_Stats.BigKOStat')
-
-        if overall_stats:
-            for m in self.MULTIPLIERS:
-                key = f"x{int(m)}" if m == int(m) else f"x{m}"
-                result[key] = getattr(overall_stats, f"big_ko_{key.replace('.', '_')}", 0)
-        else:
-            logger.warning("Расчет Big KO выполняется в плагине (fallback).")
+        # Проверяем наличие предварительно рассчитанных значений
+        precomputed_stats = kwargs.get('precomputed_stats', {})
+        
+        # Пытаемся использовать предварительно рассчитанные значения
+        all_precomputed = True
+        for m in self.MULTIPLIERS:
+            key = f"x{int(m)}" if m == int(m) else f"x{m}"
+            big_ko_key = f"big_ko_{key.replace('.', '_')}"
+            if big_ko_key in precomputed_stats:
+                result[key] = precomputed_stats[big_ko_key]
+            else:
+                all_precomputed = False
+                break
+        
+        # Если не все значения предварительно рассчитаны, считаем из сырых данных
+        if not all_precomputed:
             tournaments_processed = 0
             tournaments_with_ko = 0
+            
             for t in tournaments:
                 tournaments_processed += 1
                 ko_sum = self._ko_sum(t)
                 buyin_val = t.buyin if t.buyin is not None else 0.0
+                
                 if buyin_val <= 0 or ko_sum <= 0:
                     continue
+                    
                 tournaments_with_ko += 1
                 remains = ko_sum
+                
+                # Жадное разложение суммы KO
                 for m in self.MULTIPLIERS:
                     value = m * buyin_val
                     if value <= 0:
                         continue
+                        
                     count = int(remains // value)
                     if count > 0:
                         key = f"x{int(m)}" if m == int(m) else f"x{m}"
-                        if key in result:
-                            result[key] += count
+                        result[key] += count
                         remains -= count * value
-                        if m >= 10:
-                            pass
-                            #logger.info(f"Турнир {getattr(t, 'tournament_id', '?')}: {count} x {key} KO (ko_sum={ko_sum}, buyin={buyin_val})")
-            #logger.info(f"Big KO расчет: обработано {tournaments_processed} турниров, {tournaments_with_ko} с KO суммой")
+            
+            logger.debug(f"Big KO расчет: обработано {tournaments_processed} турниров, {tournaments_with_ko} с KO суммой")
+        
         return result
 
     @staticmethod

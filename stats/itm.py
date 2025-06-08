@@ -5,33 +5,35 @@ ITM-плагин для Hero (In The Money — попадание в топ-3).
 Обновлен для работы с новой архитектурой и моделями.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from .base import BaseStat
-from models import Tournament, OverallStats # Импортируем модели
+from models import Tournament, FinalTableHand, Session
 
 class ITMStat(BaseStat):
     name = "ITM"
     description = "ITM% — процент попадания Hero в топ-3 (призовые места)"
 
     def compute(self,
-                tournaments: List[Tournament],
-                final_table_hands: List[Any],
-                sessions: List[Any],
-                overall_stats: Any,
+                tournaments: Optional[List[Tournament]] = None,
+                final_table_hands: Optional[List[FinalTableHand]] = None,
+                sessions: Optional[List[Session]] = None,
+                overall_stats: Optional[Any] = None,
                 **kwargs: Any
                ) -> Dict[str, Any]:
         """
-        Рассчитывает ITM%.
+        Рассчитывает ITM% (процент попадания в топ-3).
         
         Args:
-            tournaments: Список объектов Tournament.
-            overall_stats: Объект OverallStats (не используется в простой версии).
-            **kwargs: Дополнительные параметры.
+            tournaments: Список объектов Tournament
+            final_table_hands: Список рук финального стола (не используется)
+            sessions: Список сессий (не используется)
+            **kwargs: Дополнительные параметры
             
         Returns:
-            Словарь с ключом 'itm_percent'.
+            Словарь с ключом 'itm_percent' - процент попадания в топ-3
         """
         # Всегда считаем из списка турниров
+        tournaments = tournaments or []
         total = len(tournaments)
         itm_count = sum(1 for t in tournaments if t.finish_place is not None and t.finish_place in (1, 2, 3))
 
