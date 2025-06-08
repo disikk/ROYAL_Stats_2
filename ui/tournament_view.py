@@ -36,7 +36,8 @@ class TournamentView(QtWidgets.QWidget):
         self.sort_direction = "DESC"
         # Параметры фильтрации
         self.current_buyin_filter = None
-        self.current_date_from = datetime(2025, 1, 1, 0, 0)
+        # Фильтр по умолчанию начинается с 1 января 2024
+        self.current_date_from = datetime(2024, 1, 1, 0, 0)
         self.current_date_to = datetime.now()
         self.session_mapping = {}
         self._data_cache = {}  # Кеш для данных
@@ -118,7 +119,8 @@ class TournamentView(QtWidgets.QWidget):
         self.date_from_edit = QtWidgets.QDateTimeEdit()
         self.date_from_edit.setCalendarPopup(True)
         self.date_from_edit.setDisplayFormat("dd.MM.yyyy HH:mm")
-        self.date_from_edit.setDateTime(QtCore.QDateTime.fromString("2025-01-01 00:00:00", "yyyy-MM-dd HH:mm:ss"))
+        # Значение по умолчанию для фильтра — 1 января 2024
+        self.date_from_edit.setDateTime(QtCore.QDateTime.fromString("2024-01-01 00:00:00", "yyyy-MM-dd HH:mm:ss"))
         self.date_from_edit.dateTimeChanged.connect(self._on_filter_changed)
         from_layout.addWidget(from_label)
         from_layout.addWidget(self.date_from_edit)
@@ -310,7 +312,6 @@ class TournamentView(QtWidgets.QWidget):
         
     def reload(self, show_overlay: bool = True):
         """Перезагружает данные из ApplicationService."""
-        logger.debug("Перезагрузка TournamentView...")
         self._show_overlay = show_overlay
         if show_overlay:
             self.show_loading_overlay()

@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import os
+
+# Абсолютный путь до директории проекта, где расположен этот файл
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 """Application configuration for ROYAL Stats."""
 
 
@@ -10,28 +13,33 @@ APP_VERSION = "0.1.0" # Начальная версия для новой раз
 
 # Текущий путь к БД (по умолчанию, можно менять в интерфейсе)
 # Все базы храним в подпапке `databases` для удобства.
-DEFAULT_DB_DIR = "databases"
+DEFAULT_DB_DIR = os.path.join(BASE_DIR, "databases")
 # Создаём каталог, если его ещё нет
 os.makedirs(DEFAULT_DB_DIR, exist_ok=True)
 
 # Устанавливаем путь по умолчанию внутри каталога
 DEFAULT_DB_NAME = "royal_stats.db"
-DB_PATH = os.path.join(DEFAULT_DB_DIR, DEFAULT_DB_NAME)
+DEFAULT_DB_PATH = os.path.join(DEFAULT_DB_DIR, DEFAULT_DB_NAME)
 
 # Файл для хранения последней выбранной БД
 LAST_DB_FILE = os.path.join(DEFAULT_DB_DIR, "last_db_path.txt")
 # Файл для хранения кеша статистики по базам данных
-STATS_CACHE_FILE = os.path.join(DEFAULT_DB_DIR, "stats_cache.json")
+STATS_CACHE_FILE = os.path.abspath(
+    os.path.join(DEFAULT_DB_DIR, "stats_cache.json")
+)
 
 # Последняя открытая БД
 if os.path.exists(LAST_DB_FILE):
     try:
         with open(LAST_DB_FILE, "r", encoding="utf-8") as f:
-            LAST_DB_PATH = f.read().strip() or DB_PATH
+            LAST_DB_PATH = f.read().strip() or DEFAULT_DB_PATH
     except Exception:
-        LAST_DB_PATH = DB_PATH
+        LAST_DB_PATH = DEFAULT_DB_PATH
 else:
-    LAST_DB_PATH = DB_PATH
+    LAST_DB_PATH = DEFAULT_DB_PATH
+
+# Начальный путь к активной базе данных
+DB_PATH = LAST_DB_PATH
 
 # ==== Настройки игры ====
 # Параметры для определения финального стола и "зоны KO" в HH

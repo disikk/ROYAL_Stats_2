@@ -196,20 +196,26 @@ class SpecialStatCard(QtWidgets.QFrame):
     def update_value(self, value: str, subtitle: str = ""):
         """Обновляет значение и подзаголовок карточки."""
         self.value_label.setText(value)
-        if self.subtitle_label and subtitle:
-            self.subtitle_label.setText(subtitle)
-        elif subtitle and not self.subtitle_label:
-            self.subtitle_label = QtWidgets.QLabel(subtitle)
-            self.subtitle_label.setStyleSheet("""
-                QLabel {
-                    color: #71717A;
-                    font-size: 11px;
-                    background-color: transparent;
-                    margin-top: 0px;
-                }
-            """)
-            self.subtitle_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
-            self.layout().addWidget(self.subtitle_label)
+        if subtitle:
+            if self.subtitle_label:
+                self.subtitle_label.setText(subtitle)
+            else:
+                self.subtitle_label = QtWidgets.QLabel(subtitle)
+                self.subtitle_label.setStyleSheet("""
+                    QLabel {
+                        color: #71717A;
+                        font-size: 11px;
+                        background-color: transparent;
+                        margin-top: 0px;
+                    }
+                """)
+                self.subtitle_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+                self.layout().addWidget(self.subtitle_label)
+        else:
+            if self.subtitle_label:
+                self.layout().removeWidget(self.subtitle_label)
+                self.subtitle_label.deleteLater()
+                self.subtitle_label = None
     
     def setTooltip(self, text: str):
         """Устанавливает тултип для всей карточки."""
@@ -228,7 +234,8 @@ class StatsGrid(QtWidgets.QWidget):
         self._cache_valid = False  # Флаг валидности кеша
         self.current_buyin_filter = None
         self.current_session_id = None
-        self.current_date_from = datetime(2025, 1, 1, 0, 0)
+        # По умолчанию показываем статистику начиная с 1 января 2024 года
+        self.current_date_from = datetime(2024, 1, 1, 0, 0)
         self.current_date_to = datetime.now()
         self._session_map = {}
         
@@ -311,7 +318,8 @@ class StatsGrid(QtWidgets.QWidget):
         self.date_from_edit = QtWidgets.QDateTimeEdit()
         self.date_from_edit.setCalendarPopup(True)
         self.date_from_edit.setDisplayFormat("dd.MM.yyyy HH:mm")
-        self.date_from_edit.setDateTime(QtCore.QDateTime.fromString("2025-01-01 00:00:00", "yyyy-MM-dd HH:mm:ss"))
+        # Значение по умолчанию — начало 2024 года
+        self.date_from_edit.setDateTime(QtCore.QDateTime.fromString("2024-01-01 00:00:00", "yyyy-MM-dd HH:mm:ss"))
         self.date_from_edit.dateTimeChanged.connect(self._on_filter_changed)
         from_layout.addWidget(from_label)
         from_layout.addWidget(self.date_from_edit)
@@ -332,8 +340,6 @@ class StatsGrid(QtWidgets.QWidget):
         header_layout.addWidget(to_widget)
 
         content_layout.addLayout(header_layout)
-
-        self._update_filters()
         
         # Сетка карточек статистики
         stats_grid = QtWidgets.QGridLayout()
@@ -769,7 +775,6 @@ class StatsGrid(QtWidgets.QWidget):
         
     def reload(self, show_overlay: bool = True):
         """Перезагружает все данные из ApplicationService."""
-        logger.debug("=== Начало reload StatsGrid ===")
         self._show_overlay = show_overlay
         if show_overlay:
             self.show_loading_overlay()
@@ -794,7 +799,18 @@ class StatsGrid(QtWidgets.QWidget):
         self.current_session_id = (
             self._session_map.get(session_name) if session_name and session_name != "Все" else None
         )
-        
+
+        cache_key = (
+            self.current_buyin_filter,
+            self.current_session_id,
+            self.current_date_from,
+            self.current_date_to,
+        )
+        if self._cache_valid and cache_key in self._data_cache:
+            logger.debug("Используем кешированные данные StatsGrid")
+            self._on_data_loaded(self._data_cache[cache_key])
+            return
+
         def load_data(is_cancelled_callback=None):
             # Проверяем отмену перед загрузкой турниров
             if is_cancelled_callback and is_cancelled_callback():
@@ -897,7 +913,7 @@ class StatsGrid(QtWidgets.QWidget):
             avg_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
             no_ft_places = [t.finish_place for t in tournaments if not t.reached_final_table and t.finish_place is not None]
             avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
-            return {
+            result = {
                 'overall_stats': overall_stats,
                 'all_tournaments': tournaments,
                 'place_dist': place_dist,
@@ -923,6 +939,9 @@ class StatsGrid(QtWidgets.QWidget):
                 'ko_contribution': ko_contrib,
                 'ko_contribution_adj': ko_contrib_adj,
             }
+            self._data_cache[cache_key] = result
+            self._cache_valid = True
+            return result
         thread_manager.run_in_thread(
             widget_id=str(id(self)),
             fn=load_data,
@@ -935,7 +954,6 @@ class StatsGrid(QtWidgets.QWidget):
         """Применяет загруженные данные к UI."""
         # Проверяем, что данные не были отменены
         if data is None:
-            logger.debug("Загрузка данных была отменена")
             return
             
         try:
@@ -943,18 +961,14 @@ class StatsGrid(QtWidgets.QWidget):
             all_tournaments = data['all_tournaments']
             
             self.cards['tournaments'].update_value(str(overall_stats.total_tournaments))
-            logger.debug(f"Обновлена карточка tournaments: {overall_stats.total_tournaments}")
 
             self.cards['knockouts'].update_value(f"{overall_stats.total_knockouts:.1f}")
-            logger.debug(f"Обновлена карточка knockouts: {overall_stats.total_knockouts:.1f}")
 
             self.cards['avg_ko'].update_value(f"{overall_stats.avg_ko_per_tournament:.2f}")
-            logger.debug(f"Обновлена карточка avg_ko: {overall_stats.avg_ko_per_tournament:.2f}")
 
             roi_value = data['roi']
             roi_text = f"{roi_value:+.1f}%"
             self.cards['roi'].update_value(roi_text)
-            logger.debug(f"Обновлена карточка roi: {roi_text}")
             # Применяем цвет только к тексту, а не к фону
             apply_cell_color_by_value(self.cards['roi'].value_label, roi_value)
 
@@ -964,17 +978,12 @@ class StatsGrid(QtWidgets.QWidget):
                 f"{ko_contrib:.1f}%",
                 f"С поправкой на удачу в КО (adj) {ko_contrib_adj:.1f}%"
             )
-            logger.debug(
-                f"Обновлена карточка ko_contribution: {ko_contrib:.1f}% / {ko_contrib_adj:.1f}%"
-            )
 
             itm_value = data['itm']
             self.cards['itm'].update_value(f"{itm_value:.1f}%")
-            logger.debug(f"Обновлена карточка itm: {itm_value:.1f}%")
 
             ft_reach_value = data['ft_reach']
             self.cards['ft_reach'].update_value(f"{ft_reach_value:.1f}%")
-            logger.debug(f"Обновлена карточка ft_reach: {ft_reach_value:.1f}%")
 
             avg_chips = data['avg_chips']
             avg_bb = data['avg_bb']
@@ -983,7 +992,6 @@ class StatsGrid(QtWidgets.QWidget):
                 f"{avg_chips:,.0f}",
                 f"{avg_chips:,.0f} фишек / {avg_bb:.1f} BB"
             )
-            logger.debug(f"Обновлена карточка avg_ft_stack: {avg_chips:,.0f} / {avg_bb:.1f} BB")
 
             early_ko_count = data['early_ko']
             early_ko_per = data['early_ko_per']
@@ -992,7 +1000,6 @@ class StatsGrid(QtWidgets.QWidget):
                 f"{early_ko_count:.1f}",
                 f"{early_ko_per:.2f} за турнир с FT"
             )
-            logger.debug(f"Обновлена карточка early_ft_ko: {early_ko_count} / {early_ko_per:.2f}")
 
             ft_stack_conv = data.get('ft_stack_conv', 0.0)
             avg_attempts = data.get('avg_ko_attempts_per_ft', 0.0)
@@ -1000,20 +1007,15 @@ class StatsGrid(QtWidgets.QWidget):
                 f"{ft_stack_conv:.2f}",
                 f"{avg_attempts:.2f} попыток за турнир с FT"
             )
-            logger.debug(
-                f"Обновлена карточка ft_stack_conv: {ft_stack_conv:.2f} / {avg_attempts:.2f}"
-            )
             
 
             bust_result = EarlyFTBustStat().compute(all_tournaments, [], [], overall_stats)
-            logger.debug(f"Early FT Bust result: {bust_result}")
             bust_count = bust_result.get('early_ft_bust_count', 0)
             bust_per = bust_result.get('early_ft_bust_per_tournament', 0.0)
             self.cards['early_ft_bust'].update_value(
                 str(bust_count),
                 f"{bust_per:.2f} за турнир с FT"
             )
-            logger.debug(f"Обновлена карточка early_ft_bust: {bust_count} / {bust_per:.2f}")
             
             if overall_stats.big_ko_x1_5 > 0:
                 per = overall_stats.total_knockouts / overall_stats.big_ko_x1_5 if overall_stats.total_knockouts > 0 else 0
@@ -1057,7 +1059,6 @@ class StatsGrid(QtWidgets.QWidget):
             )
             # Текст над карточкой KO x10 больше не отображается
             self.bigko_x10_info_label.setText("")
-            logger.debug(f"Обновлены карточки Big KO: x1.5={overall_stats.big_ko_x1_5}, x2={overall_stats.big_ko_x2}, x10={overall_stats.big_ko_x10}, x100={overall_stats.big_ko_x100}, x1000={overall_stats.big_ko_x1000}, x10000={overall_stats.big_ko_x10000}")
             
             # Обновляем стат KO Luck
             ko_luck = data.get('ko_luck', 0.0)
@@ -1090,14 +1091,12 @@ class StatsGrid(QtWidgets.QWidget):
                         font-weight: bold;
                     }
                 """)
-            logger.debug(f"Обновлен KO Luck: {ko_luck_text}")
 
             # Обновляем ROI с поправкой на KO Luck
             roi_adj = data.get('roi_adj', 0.0)
             roi_adj_text = f"{roi_adj:+.1f}%"
             self.roi_adj_value.setText(roi_adj_text)
             apply_cell_color_by_value(self.roi_adj_value, roi_adj)
-            logger.debug(f"Обновлен ROI adj: {roi_adj_text}")
             
             # Статы средних мест (fallback расчет, пока не обновлены другие компоненты)
             # Среднее место по всем турнирам
@@ -1119,7 +1118,6 @@ class StatsGrid(QtWidgets.QWidget):
             # Pre-FT KO count
             pre_ft_ko_count = data.get('pre_ft_ko_count', 0.0)
             self.cards['pre_ft_ko'].update_value(f"{pre_ft_ko_count:.1f}")
-            logger.debug(f"Обновлена карточка pre_ft_ko: {pre_ft_ko_count:.1f}")
 
             
 
@@ -1137,7 +1135,6 @@ class StatsGrid(QtWidgets.QWidget):
             )
             self._update_chart(self._get_current_distribution())
             self.overallStatsChanged.emit(overall_stats)
-            logger.debug("=== Конец reload StatsGrid ===")
 
         finally:
             # Скрываем индикатор загрузки

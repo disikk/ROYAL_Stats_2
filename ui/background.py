@@ -56,7 +56,6 @@ class CancellableWorker(QtCore.QObject):
             try:
                 from db.manager import database_manager
                 database_manager.close_connection()
-                logger.debug("Соединение БД закрыто в фоновом потоке")
             except:
                 pass
 
