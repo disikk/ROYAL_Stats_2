@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 from ui.app_style import setup_table_widget, format_money, apply_cell_color_by_value, format_percentage
-from app_facade import AppFacade # MODIFIED
+from application_service import ApplicationService
 from models import Tournament
 from ui.background import thread_manager
 from db.repositories.tournament_repo import PaginationResult  # Импортируем новый класс
@@ -21,10 +21,10 @@ logger.setLevel(logging.DEBUG)
 
 class TournamentView(QtWidgets.QWidget):
     """Виджет для отображения списка турниров с фильтрами."""
-    
-    def __init__(self, app_facade: AppFacade, parent=None): # MODIFIED
+
+    def __init__(self, app_service: ApplicationService, parent=None):
         super().__init__(parent)
-        self.app_facade = app_facade # MODIFIED
+        self.app_service = app_service
         self.tournaments: List[Tournament] = []
         # Параметры пагинации
         self.current_page = 1
@@ -43,17 +43,17 @@ class TournamentView(QtWidgets.QWidget):
         self._data_cache = {}  # Кеш для данных
         self._cache_valid = False  # Флаг валидности кеша
         self._init_ui()
-        
+
     def _init_ui(self):
         """Инициализирует интерфейс."""
         self.main_layout = QtWidgets.QVBoxLayout(self)
         self.main_layout.setContentsMargins(16, 16, 16, 16)
-        
+
         # Контейнер для содержимого
         self.content_widget = QtWidgets.QWidget()
         content_layout = QtWidgets.QVBoxLayout(self.content_widget)
         content_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         # Заголовок
         header = QtWidgets.QLabel("Список турниров")
         header.setStyleSheet("""
@@ -65,7 +65,7 @@ class TournamentView(QtWidgets.QWidget):
             }
         """)
         content_layout.addWidget(header)
-        
+
         # Панель фильтров
         filter_layout = QtWidgets.QHBoxLayout()
         filter_layout.setSpacing(12)
@@ -139,16 +139,16 @@ class TournamentView(QtWidgets.QWidget):
         to_layout.addWidget(to_label)
         to_layout.addWidget(self.date_to_edit)
         filter_layout.addWidget(to_widget)
-        
+
         filter_layout.addStretch()
-        
+
         # Информация о пагинации
         self.pagination_info = QtWidgets.QLabel("")
         self.pagination_info.setStyleSheet("color: #A1A1AA; font-size: 13px;")
         filter_layout.addWidget(self.pagination_info)
-        
+
         content_layout.addLayout(filter_layout)
-        
+
         # Таблица турниров
         self.table = QtWidgets.QTableWidget()
         self.table.setColumnCount(8)
@@ -177,15 +177,15 @@ class TournamentView(QtWidgets.QWidget):
         # Контекстное меню для копирования ID
         self.table.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._show_context_menu)
-        
+
         # Настройка ширины колонок
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        
+
         content_layout.addWidget(self.table)
-        
+
         # Панель пагинации
         pagination_layout = QtWidgets.QHBoxLayout()
         pagination_layout.setSpacing(8)
@@ -225,10 +225,10 @@ class TournamentView(QtWidgets.QWidget):
         content_layout.addLayout(pagination_layout)
 
         self.main_layout.addWidget(self.content_widget)
-        
+
         # Создаем loading overlay
         self._create_loading_overlay()
-        
+
     def _create_loading_overlay(self):
         """Создает оверлей загрузки."""
         self.loading_overlay = QtWidgets.QWidget(self)
@@ -237,9 +237,9 @@ class TournamentView(QtWidgets.QWidget):
                 background-color: rgba(0, 0, 0, 0.7);
             }
         """)
-        
+
         layout = QtWidgets.QVBoxLayout(self.loading_overlay)
-        
+
         # Контейнер для индикатора
         container = QtWidgets.QWidget()
         container.setMaximumWidth(300)
@@ -250,9 +250,9 @@ class TournamentView(QtWidgets.QWidget):
                 padding: 20px;
             }
         """)
-        
+
         container_layout = QtWidgets.QVBoxLayout(container)
-        
+
         # Индикатор загрузки
         self.progress_bar = QtWidgets.QProgressBar()
         self.progress_bar.setRange(0, 0)  # Неопределенный прогресс
@@ -269,7 +269,7 @@ class TournamentView(QtWidgets.QWidget):
             }
         """)
         container_layout.addWidget(self.progress_bar)
-        
+
         # Текст загрузки
         self.loading_label = QtWidgets.QLabel("Загрузка турниров...")
         self.loading_label.setStyleSheet("""
@@ -282,42 +282,42 @@ class TournamentView(QtWidgets.QWidget):
         """)
         self.loading_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         container_layout.addWidget(self.loading_label)
-        
+
         layout.addWidget(container, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
-        
+
         self.loading_overlay.hide()
-        
+
     def show_loading_overlay(self):
         """Показывает оверлей загрузки."""
         self.loading_overlay.resize(self.size())
         self.loading_overlay.raise_()
         self.loading_overlay.show()
-        
+
     def hide_loading_overlay(self):
         """Скрывает оверлей загрузки."""
         self.loading_overlay.hide()
-        
+
     def resizeEvent(self, event):
         """Обрабатывает изменение размера виджета."""
         super().resizeEvent(event)
         # Обновляем размер оверлея при изменении размера виджета
         if hasattr(self, 'loading_overlay'):
             self.loading_overlay.resize(self.size())
-            
+
     def invalidate_cache(self):
         """Сбрасывает кеш данных."""
         self._cache_valid = False
         self._data_cache.clear()
         self.session_mapping.clear()
-        
+
     def reload(self, show_overlay: bool = True):
         """Перезагружает данные из ApplicationService."""
         self._show_overlay = show_overlay
         if show_overlay:
             self.show_loading_overlay()
         def load_filter_data(is_cancelled_callback=None):
-            buyins = self.app_facade.get_distinct_buyins()
-            sessions = self.app_facade.get_all_sessions()
+            buyins = self.app_service.get_distinct_buyins()
+            sessions = self.app_service.get_all_sessions()
             return buyins, sessions
         thread_manager.run_in_thread(
             widget_id=f"{id(self)}_filters",
@@ -346,7 +346,7 @@ class TournamentView(QtWidgets.QWidget):
             buyin_filter = float(buyin) if buyin and buyin != "Все" else None
             result_filter = result_filter_map.get(self.result_filter.currentText())
             session_id = self.session_filter.currentData()
-            return self.app_facade.tournament_repo.get_tournaments_paginated(
+            return self.app_service.tournament_repo.get_tournaments_paginated(
                 page=self.current_page,
                 page_size=int(self.page_size_combo.currentText()),
                 session_id=session_id,
@@ -438,7 +438,7 @@ class TournamentView(QtWidgets.QWidget):
     def _update_tournaments_table(self, tournaments: List[Tournament]):
         """Обновляет таблицу турниров."""
         self.table.setRowCount(len(tournaments))
-        
+
         for row, t in enumerate(tournaments):
             # ID турнира
             self.table.setItem(row, 0, QtWidgets.QTableWidgetItem(t.tournament_id))
@@ -543,8 +543,8 @@ class TournamentView(QtWidgets.QWidget):
             self.loading_label.setText("Удаление турнира...")
 
             def delete_tournament(is_cancelled_callback=None):
-                self.app_facade.delete_tournament(tournament.tournament_id)
-                self.app_facade.statistics_service._update_all_statistics(None) # MODIFIED
+                self.app_service.delete_tournament(tournament.tournament_id)
+                self.app_service._update_all_statistics(None)
                 return tournament.tournament_id
 
             thread_manager.run_in_thread(

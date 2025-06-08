@@ -1,0 +1,341 @@
+# -*- coding: utf-8 -*-
+
+"""
+Сервис приложения Royal Stats.
+Содержит основную бизнес-логику, оркестрирует работу парсеров и репозиториев,
+подсчитывает агрегированную статистику.
+"""
+
+import os
+import json
+import hashlib
+import logging
+import uuid
+from typing import List, Dict, Any, Optional
+from datetime import datetime
+import math # Для округления в BB
+import re  # Добавить к существующим импортам
+import threading
+
+import config
+from db.manager import database_manager # Используем синглтон менеджер БД
+from db.repositories import (
+    TournamentRepository,
+    PaginationResult,  # Добавляем импорт для пагинации
+    SessionRepository,
+    OverallStatsRepository,
+    PlaceDistributionRepository,
+    FinalTableHandRepository,
+)
+from parsers import HandHistoryParser, TournamentSummaryParser
+from models import Tournament, Session, OverallStats, FinalTableHand
+# Импортируем плагины статистик (будут реализованы далее)
+from stats import (
+    BaseStat, # Базовый класс
+    BigKOStat,
+    ITMStat,
+    ROIStat,
+    TotalKOStat,
+    AvgKOPerTournamentStat, # Новый
+    FinalTableReachStat, # Новый
+    AvgFTInitialStackStat, # Новый
+    EarlyFTKOStat, # Новый
+    EarlyFTBustStat,
+    PreFTKOStat,
+    AvgFinishPlaceStat,
+    AvgFinishPlaceFTStat,
+    AvgFinishPlaceNoFTStat,
+    FTStackConversionStat,
+)
+
+logger = logging.getLogger('ROYAL_Stats.ApplicationService')
+logger.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
+
+# Список плагинов статистик, которые будем использовать
+# В реальном приложении можно было бы загружать их динамически
+# MOVED: STAT_PLUGINS are now passed to StatisticsService
+# STAT_PLUGINS: List[BaseStat] = [
+#     TotalKOStat(),
+#     ITMStat(),
+#     ROIStat(),
+#     BigKOStat(),
+#     AvgKOPerTournamentStat(),
+#     FinalTableReachStat(),
+#     AvgFTInitialStackStat(),
+#     EarlyFTKOStat(),
+#     EarlyFTBustStat(),
+#     PreFTKOStat(),
+#     AvgFinishPlaceStat(),
+#     AvgFinishPlaceFTStat(),
+#     AvgFinishPlaceNoFTStat(),
+#     FTStackConversionStat(),
+# ]
+
+# MOVED TO ImportService: def determine_file_type(file_path: str) -> Optional[str]:
+# MOVED TO ImportService:     """
+# MOVED TO ImportService:     Определяет тип покерного файла по первым двум строкам.
+# MOVED TO ImportService:
+# MOVED TO ImportService:     Returns:
+# MOVED TO ImportService:         'ts' - Tournament Summary
+# MOVED TO ImportService:         'hh' - Hand History
+# MOVED TO ImportService:         None - файл не соответствует ожидаемым форматам
+# MOVED TO ImportService:     """
+# MOVED TO ImportService:     try:
+# MOVED TO ImportService:         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+# MOVED TO ImportService:             lines = f.readlines()
+# MOVED TO ImportService:
+# MOVED TO ImportService:         # Нужно минимум 2 строки для проверки
+# MOVED TO ImportService:         if len(lines) < 2:
+# MOVED TO ImportService:             return None
+# MOVED TO ImportService:
+# MOVED TO ImportService:         first_line = lines[0].strip()
+# MOVED TO ImportService:         second_line = lines[1].strip()
+# MOVED TO ImportService:
+# MOVED TO ImportService:         # Проверка Tournament Summary
+# MOVED TO ImportService:         if (first_line.startswith("Tournament #") and
+# MOVED TO ImportService:             "Mystery Battle Royale" in first_line and
+# MOVED TO ImportService:             second_line.startswith("Buy-in:")):
+# MOVED TO ImportService:             return 'ts'
+# MOVED TO ImportService:
+# MOVED TO ImportService:         # Проверка Hand History
+# MOVED TO ImportService:         if (first_line.startswith("Poker Hand #") and
+# MOVED TO ImportService:             "Mystery Battle Royale" in first_line and
+# MOVED TO ImportService:             second_line.startswith("Table")):
+# MOVED TO ImportService:             return 'hh'
+# MOVED TO ImportService:
+# MOVED TO ImportService:         # Если не подходит ни под один формат
+# MOVED TO ImportService:         return None
+# MOVED TO ImportService:
+# MOVED TO ImportService:     except Exception as e:
+# MOVED TO ImportService:         logger.warning(f"Не удалось прочитать файл {file_path}: {e}")
+# MOVED TO ImportService:         return None
+
+
+# MOVED TO ImportService: def is_poker_file(file_path: str) -> bool:
+# MOVED TO ImportService:     """
+# MOVED TO ImportService:     Предварительная проверка файла - является ли покерным файлом.
+# MOVED TO ImportService:     Возвращает True, если файл соответствует ожидаемым форматам.
+# MOVED TO ImportService:     """
+# MOVED TO ImportService:     return determine_file_type(file_path) is not None
+
+class ApplicationService:
+    """
+    Центральный сервис приложения.
+    """
+
+    def __init__(self):
+        self.db = database_manager
+        self._tournament_repo = TournamentRepository()
+        self.session_repo = SessionRepository()
+        self.overall_stats_repo = OverallStatsRepository()
+        self.place_dist_repo = PlaceDistributionRepository()
+        self.ft_hand_repo = FinalTableHandRepository()
+
+        # MOVED TO StatisticsService: # Кеш статистики по БД. Ключ - путь к БД, значение - OverallStats
+        # MOVED TO StatisticsService: self._overall_stats_cache: Dict[str, OverallStats] = {}
+        # MOVED TO StatisticsService: # Кеш гистограммы распределения финишных позиций
+        # MOVED TO StatisticsService: self._place_distribution_cache: Dict[str, Dict[int, int]] = {}
+
+        # MOVED TO StatisticsService: # Файл для сохранения кеша между перезапусками
+        # MOVED TO StatisticsService: self._cache_file = config.STATS_CACHE_FILE
+        # MOVED TO StatisticsService: # Создаём папку для файла кеша, если её ещё нет
+        # MOVED TO StatisticsService: os.makedirs(os.path.dirname(self._cache_file), exist_ok=True)
+        # MOVED TO StatisticsService: self._persistent_cache = self._load_persistent_cache()
+
+        # MOVED TO StatisticsService: # Блокировка для предотвращения параллельного пересчета статистики
+        # MOVED TO StatisticsService: self._stats_update_lock = threading.Lock()
+        # MOVED TO StatisticsService: self._is_updating_stats = False
+
+        self.hh_parser = HandHistoryParser()
+        self.ts_parser = TournamentSummaryParser()
+
+        # Загружаем кэш или создаём его при инициализации сервиса
+        self.ensure_overall_stats_cached()
+
+    @property
+    def tournament_repo(self):
+        """Предоставляет прямой доступ к репозиторию турниров для пагинации."""
+        return self._tournament_repo
+
+    @property
+    def db_path(self) -> str:
+        """Возвращает путь к текущей базе данных."""
+        return self.db.db_path
+
+    def get_available_databases(self) -> List[str]:
+        """Возвращает список доступных файлов баз данных."""
+        return self.db.get_available_databases()
+
+    def switch_database(self, db_path: str, load_stats: bool = True):
+        """Переключает активную базу данных."""
+        self.db.set_db_path(db_path)
+        # После смены БД репозитории автоматически работают с новой БД
+        if load_stats:
+            # Подгружаем статистику или пересчитываем её при первом подключении
+            self.ensure_overall_stats_cached() # This will become a placeholder shortly
+
+    def _compute_db_checksum(self, path: str) -> str:
+        # This method has been moved to StatisticsService
+        logger.error("_compute_db_checksum called on ApplicationService. Moved to StatisticsService.")
+        raise NotImplementedError("_compute_db_checksum has been moved to StatisticsService")
+
+    def _load_persistent_cache(self) -> Dict[str, Dict[str, Any]]:
+        # This method has been moved to StatisticsService
+        logger.error("_load_persistent_cache called on ApplicationService. Moved to StatisticsService.")
+        raise NotImplementedError("_load_persistent_cache has been moved to StatisticsService")
+
+    def _save_persistent_cache(self) -> None:
+        # This method has been moved to StatisticsService
+        logger.error("_save_persistent_cache called on ApplicationService. Moved to StatisticsService.")
+        raise NotImplementedError("_save_persistent_cache has been moved to StatisticsService")
+
+    def ensure_overall_stats_cached(self, progress_callback=None) -> None:
+        # This method has been moved to StatisticsService
+        logger.error("ensure_overall_stats_cached called on ApplicationService. Moved to StatisticsService.")
+        # Note: The UI or other parts of AppService might still call this.
+        # Depending on how StatisticsService is integrated, this might need to delegate
+        # or the callsites updated. For now, just the placeholder.
+        raise NotImplementedError("ensure_overall_stats_cached has been moved to StatisticsService")
+
+    def create_new_database(self, db_name: str):
+        """Создает новую базу данных и переключается на нее."""
+        # DatabaseManager сам создаст папку, если нужно, и инициализирует схему
+        new_db_path = os.path.join(config.DEFAULT_DB_DIR, db_name)
+        if not new_db_path.lower().endswith(".db"):
+            new_db_path += ".db"
+
+        if os.path.exists(new_db_path):
+            logger.warning(f"Попытка создать существующую БД: {new_db_path}")
+            # Можно вернуть False или пробросить исключение, чтобы UI показал ошибку
+            raise FileExistsError(f"База данных '{os.path.basename(new_db_path)}' уже существует.")
+
+        self.db.set_db_path(new_db_path)  # Устанавливаем новый путь
+
+        # Принудительно открываем соединение, чтобы физически создать файл БД
+        # и инициализировать схему. Иначе файл появится только при первом
+        # обращении к данным, что мешает отображению новой БД в диалоге.
+        conn = self.db.get_connection()
+        self.db.close_connection()
+
+        logger.info(f"Создана и выбрана новая база данных: {new_db_path}")
+
+    def rename_database(self, old_path: str, new_name: str) -> str:
+        """Переименовывает файл базы данных."""
+        directory = os.path.dirname(old_path)
+        new_path = os.path.join(directory, new_name)
+        if not new_path.lower().endswith(".db"):
+            new_path += ".db"
+
+        if os.path.exists(new_path):
+            raise FileExistsError(
+                f"База данных '{os.path.basename(new_path)}' уже существует."
+            )
+
+        # Закрываем соединение перед переименованием
+        self.db.close_all_connections()
+        os.rename(old_path, new_path)
+
+        # Обновляем кеши статистики
+        if old_path in self._overall_stats_cache:
+            self._overall_stats_cache[new_path] = self._overall_stats_cache.pop(old_path)
+        if old_path in self._place_distribution_cache:
+            self._place_distribution_cache[new_path] = self._place_distribution_cache.pop(old_path)
+        if old_path in self._persistent_cache:
+            self._persistent_cache[new_path] = self._persistent_cache.pop(old_path)
+            self._save_persistent_cache()
+
+        if self.db.db_path == old_path:
+            self.switch_database(new_path, load_stats=False)
+
+        return new_path
+
+    def import_files(self, *args, **kwargs):
+        # This method has been moved to ImportService
+        logger.error("import_files called on ApplicationService. It has been moved to ImportService.")
+        raise NotImplementedError("import_files has been moved to ImportService")
+
+    def _update_all_statistics(self, session_id: str, progress_callback=None):
+        # This method has been moved to StatisticsService
+        logger.error("_update_all_statistics called on ApplicationService. Moved to StatisticsService.")
+        raise NotImplementedError("_update_all_statistics has been moved to StatisticsService")
+
+    def _calculate_overall_stats(self) -> OverallStats:
+        # This method has been moved to StatisticsService
+        logger.error("_calculate_overall_stats called on ApplicationService. Moved to StatisticsService.")
+        raise NotImplementedError("_calculate_overall_stats has been moved to StatisticsService")
+
+    def _calculate_and_update_session_stats(self, session_id: str):
+        # This method has been moved to StatisticsService
+        logger.error("_calculate_and_update_session_stats called on ApplicationService. Moved to StatisticsService.")
+        raise NotImplementedError("_calculate_and_update_session_stats has been moved to StatisticsService")
+
+
+    # --- Методы для получения данных для UI ---
+
+    def get_overall_stats(self) -> OverallStats:
+        # This method has been moved to StatisticsService
+        logger.error("get_overall_stats called on ApplicationService. Moved to StatisticsService.")
+        # The caller will need to be updated to use StatisticsService.
+        # Returning a default or raising might be appropriate.
+        # For now, let's make it clear it's not implemented here.
+        raise NotImplementedError("get_overall_stats has been moved to StatisticsService")
+
+    def get_all_tournaments(self, buyin_filter: Optional[float] = None) -> List[Tournament]:
+        """Возвращает список всех турниров Hero, опционально фильтруя по бай-ину."""
+        return self.tournament_repo.get_all_tournaments(buyin_filter=buyin_filter)
+
+    def get_all_sessions(self) -> List[Session]:
+        """Возвращает список всех сессий Hero."""
+        return self.session_repo.get_all_sessions()
+
+    def get_place_distribution(self) -> Dict[int, int]:
+        # This method has been moved to StatisticsService
+        logger.error("get_place_distribution called on ApplicationService. Moved to StatisticsService.")
+        raise NotImplementedError("get_place_distribution has been moved to StatisticsService")
+
+    def get_place_distribution_pre_ft(self) -> Dict[int, int]:
+        # This method has been moved to StatisticsService
+        logger.error("get_place_distribution_pre_ft called on ApplicationService. Moved to StatisticsService.")
+        raise NotImplementedError("get_place_distribution_pre_ft has been moved to StatisticsService")
+
+    def get_place_distribution_overall(self) -> Dict[int, int]:
+        # This method has been moved to StatisticsService
+        logger.error("get_place_distribution_overall called on ApplicationService. Moved to StatisticsService.")
+        raise NotImplementedError("get_place_distribution_overall has been moved to StatisticsService")
+
+    def get_distinct_buyins(self) -> List[float]:
+        """Возвращает список уникальных бай-инов из сохраненных турниров."""
+        return self.tournament_repo.get_distinct_buyins()
+
+    # Методы для получения данных сессии для отображения стат по сессии
+    def get_session_stats(self, session_id: str) -> Optional[Session]:
+        # This method has been moved to StatisticsService
+        logger.error("get_session_stats called on ApplicationService. Moved to StatisticsService.")
+        raise NotImplementedError("get_session_stats has been moved to StatisticsService")
+
+    def get_place_distribution_for_session(self, session_id: str) -> tuple[Dict[int, int], int]: # Keep original tuple return for now
+        # This method has been moved to StatisticsService
+        logger.error("get_place_distribution_for_session called on ApplicationService. Moved to StatisticsService.")
+        # The return type in StatisticsService skeleton was Dict[int, int], but original is tuple.
+        # Raising error is safer until integration.
+        raise NotImplementedError("get_place_distribution_for_session has been moved to StatisticsService")
+
+    def delete_session(self, session_id: str):
+        """Удаляет сессию и все связанные данные."""
+        # Удаляем сессию (каскадное удаление удалит связанные турниры и руки)
+        self.session_repo.delete_session_by_id(session_id)
+        # Статистика пересчитывается асинхронно во внешнем потоке
+
+    def rename_session(self, session_id: str, new_name: str):
+        """Переименовывает сессию."""
+        self.session_repo.update_session_name(session_id, new_name)
+
+    def delete_tournament(self, tournament_id: str):
+        """Удаляет турнир и связанные с ним данные."""
+        self.tournament_repo.delete_tournament_by_id(tournament_id)
+
+
+# Создаем синглтон экземпляр ApplicationService
+application_service = ApplicationService()
+
+[end of app_facade.py]

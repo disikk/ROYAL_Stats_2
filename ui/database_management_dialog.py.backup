@@ -11,33 +11,33 @@ import logging
 from typing import Optional, List
 
 import config
-from app_facade import AppFacade # MODIFIED
+from application_service import ApplicationService
 
 logger = logging.getLogger('ROYAL_Stats.DatabaseDialog')
 
 
 class DatabaseManagementDialog(QtWidgets.QDialog):
     """Диалог для управления базами данных."""
-    
-    def __init__(self, parent=None, app_facade: AppFacade = None): # MODIFIED
+
+    def __init__(self, parent=None, app_service: ApplicationService = None):
         super().__init__(parent)
-        self.app_facade = app_facade # MODIFIED
+        self.app_service = app_service
         self.selected_db_path = None
         self.sort_mode = "name"  # name or date
         self._init_ui()
         self._load_databases()
-        
+
     def _init_ui(self):
         """Инициализирует интерфейс диалога."""
         self.setWindowTitle("Управление базами данных")
         self.setModal(True)
         self.setMinimumWidth(500)
         self.setMinimumHeight(400)
-        
+
         layout = QtWidgets.QVBoxLayout(self)
         layout.setSpacing(16)
         layout.setContentsMargins(20, 20, 20, 20)
-        
+
         # Заголовок
         header = QtWidgets.QLabel("Выберите базу данных или создайте новую")
         header.setStyleSheet("""
@@ -94,7 +94,7 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
         self.db_list.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.db_list.customContextMenuRequested.connect(self._show_context_menu)
         layout.addWidget(self.db_list)
-        
+
         # Информация о выбранной БД
         self.info_label = QtWidgets.QLabel("")
         self.info_label.setStyleSheet("""
@@ -109,16 +109,16 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
         """)
         self.info_label.setWordWrap(True)
         layout.addWidget(self.info_label)
-        
+
         # Кнопки управления
         button_layout = QtWidgets.QHBoxLayout()
         button_layout.setSpacing(8)
-        
+
         self.new_db_btn = QtWidgets.QPushButton("Создать новую БД")
         self.new_db_btn.setIcon(QtGui.QIcon.fromTheme("document-new"))
         self.new_db_btn.clicked.connect(self._create_new_database)
         button_layout.addWidget(self.new_db_btn)
-        
+
         self.delete_db_btn = QtWidgets.QPushButton("Удалить выбранные БД")
         self.delete_db_btn.setIcon(QtGui.QIcon.fromTheme("edit-delete"))
         self.delete_db_btn.clicked.connect(self._delete_database)
@@ -132,40 +132,40 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
             }
         """)
         button_layout.addWidget(self.delete_db_btn)
-        
+
         button_layout.addStretch()
-        
+
         layout.addLayout(button_layout)
-        
+
         # Разделитель
         separator = QtWidgets.QFrame()
         separator.setFrameShape(QtWidgets.QFrame.Shape.HLine)
         separator.setStyleSheet("QFrame { background-color: #3F3F46; max-height: 1px; }")
         layout.addWidget(separator)
-        
+
         # Кнопки диалога
         dialog_buttons = QtWidgets.QHBoxLayout()
-        
+
         self.select_btn = QtWidgets.QPushButton("Выбрать")
         self.select_btn.setDefault(True)
         self.select_btn.clicked.connect(self._select_database)
         self.select_btn.setEnabled(False)  # Активируется при выборе БД
         dialog_buttons.addWidget(self.select_btn)
-        
+
         self.cancel_btn = QtWidgets.QPushButton("Отмена")
         self.cancel_btn.clicked.connect(self.reject)
         dialog_buttons.addWidget(self.cancel_btn)
-        
+
         layout.addLayout(dialog_buttons)
-        
+
         # Подключаем сигналы
         self.db_list.itemSelectionChanged.connect(self._on_selection_changed)
-        
+
     def _load_databases(self):
         """Загружает список доступных баз данных."""
         self.db_list.clear()
-        db_files = self.app_facade.get_available_databases()
-        current_db = self.app_facade.db_path
+        db_files = self.app_service.get_available_databases()
+        current_db = self.app_service.db_path
 
         # Сортируем список в зависимости от выбранного режима
         other_dbs = [p for p in db_files if p != current_db]
@@ -180,16 +180,16 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
             db_name = os.path.basename(db_path)
             item = QtWidgets.QListWidgetItem(db_name)
             item.setData(QtCore.Qt.ItemDataRole.UserRole, db_path)
-            
+
             # Помечаем текущую БД
             if db_path == current_db:
                 item.setText(f"{db_name} (текущая)")
                 font = item.font()
                 font.setBold(True)
                 item.setFont(font)
-                
+
             self.db_list.addItem(item)
-            
+
         # Если есть БД, выбираем первую
         if self.db_list.count() > 0:
             self.db_list.setCurrentRow(0)
@@ -200,7 +200,7 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
         if mode:
             self.sort_mode = mode
         self._load_databases()
-            
+
     def _on_selection_changed(self):
         """Обработчик изменения выбора в списке."""
         selected_items = self.db_list.selectedItems()
@@ -225,7 +225,7 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
                 self.info_label.setText(f"Ошибка получения информации: {e}")
 
             self.select_btn.setEnabled(True)
-            is_current = db_path == self.app_facade.db_path
+            is_current = db_path == self.app_service.db_path
             self.delete_db_btn.setEnabled(not is_current)
 
         elif len(selected_items) > 1:
@@ -233,7 +233,7 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
             self.info_label.setText(f"Выбрано {len(selected_items)} баз данных")
             self.select_btn.setEnabled(False)
             is_current_selected = any(
-                item.data(QtCore.Qt.ItemDataRole.UserRole) == self.app_facade.db_path
+                item.data(QtCore.Qt.ItemDataRole.UserRole) == self.app_service.db_path
                 for item in selected_items
             )
             self.delete_db_btn.setEnabled(not is_current_selected)
@@ -243,18 +243,18 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
             self.info_label.setText("")
             self.select_btn.setEnabled(False)
             self.delete_db_btn.setEnabled(False)
-            
+
     def _on_db_double_clicked(self, item):
         """Обработчик двойного клика по БД."""
         if item:
             self._select_database()
-            
+
     def _select_database(self):
         """Выбирает БД и закрывает диалог."""
-        if self.selected_db_path and self.selected_db_path != self.app_facade.db_path:
+        if self.selected_db_path and self.selected_db_path != self.app_service.db_path:
             try:
                 # Загружаем новую БД без синхронного пересчёта статистики
-                self.app_facade.switch_database(self.selected_db_path, load_stats=False)
+                self.app_service.switch_database(self.selected_db_path, load_stats=False)
                 self.accept()
             except Exception as e:
                 QtWidgets.QMessageBox.critical(
@@ -264,7 +264,7 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
                 )
         else:
             self.accept()
-            
+
     def _create_new_database(self):
         """Создает новую базу данных."""
         name, ok = QtWidgets.QInputDialog.getText(
@@ -274,14 +274,14 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
             QtWidgets.QLineEdit.EchoMode.Normal,
             f"royal_stats_{QtCore.QDateTime.currentDateTime().toString('yyyyMMdd_HHmmss')}.db"
         )
-        
+
         if ok and name:
             # Убеждаемся, что имя заканчивается на .db
             if not name.endswith('.db'):
                 name += '.db'
-                
+
             try:
-                self.app_facade.create_new_database(name)
+                self.app_service.create_new_database(name)
                 # Принудительно обновляем список БД
                 self._load_databases()
                 # Находим и выбираем созданную БД
@@ -291,7 +291,7 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
                     if item_path and name in os.path.basename(item_path):
                         self.db_list.setCurrentItem(item)
                         break
-                
+
                 QtWidgets.QMessageBox.information(
                     self,
                     "Успех",
@@ -301,14 +301,14 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
                 # Закрываем диалог, чтобы основное окно сразу обновило статистику
                 # (MainWindow.compare db_path и вызовет refresh_all_data)
                 self.accept()
-                
+
             except Exception as e:
                 QtWidgets.QMessageBox.critical(
                     self,
                     "Ошибка",
                     f"Не удалось создать базу данных:\n{e}"
                 )
-                
+
     def _delete_database(self):
         """Удаляет выбранные базы данных."""
         selected_items = self.db_list.selectedItems()
@@ -318,7 +318,7 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
         db_paths = [item.data(QtCore.Qt.ItemDataRole.UserRole) for item in selected_items]
 
         # Нельзя удалять текущую БД
-        if self.app_facade.db_path in db_paths:
+        if self.app_service.db_path in db_paths:
             QtWidgets.QMessageBox.warning(
                 self,
                 "Ошибка",
@@ -389,7 +389,7 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
 
         if ok and new_name and new_name != old_name:
             try:
-                new_path = self.app_facade.rename_database(old_path, new_name)
+                new_path = self.app_service.rename_database(old_path, new_name)
                 self._load_databases()
                 # Выбрать переименованную БД в списке
                 for i in range(self.db_list.count()):

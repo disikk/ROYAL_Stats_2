@@ -13,8 +13,8 @@ from typing import List, Optional
 from datetime import datetime
 
 import config
-# from application_service import application_service # Removed global import
-from app_facade import AppFacade # For type hinting and eventual direct use if needed by threads/dialogs
+# Импортируем синглтон ApplicationService
+from application_service import application_service, ApplicationService
 
 # Импортируем UI компоненты
 from ui.app_style import apply_dark_theme, format_money, format_percentage, apply_cell_color_by_value
@@ -40,13 +40,14 @@ class MainWindow(QtWidgets.QMainWindow):
     # Сигнал для обновления прогресса импорта
     import_progress_signal = QtCore.pyqtSignal(int, int, str)
 
-    def __init__(self, app_facade: AppFacade): # MODIFIED to accept AppFacade
+    def __init__(self):
         super().__init__()
         self.setWindowTitle(config.APP_TITLE)
         self.setMinimumSize(1300, 880)
 
-        self.app_facade = app_facade # MODIFIED to store passed AppFacade
-        
+        # ApplicationService уже проинициализирован как синглтон
+        self.app_service = application_service
+
         # Флаги для отслеживания загруженности вкладок
         self._tab_loaded = {'stats': False, 'tournaments': False, 'sessions': False}
         self._initial_load_done = False
@@ -60,10 +61,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def _load_initial_data(self):
         """Подключает последнюю БД и запускает обновление статистики."""
         try:
-            self.app_facade.switch_database(config.LAST_DB_PATH, load_stats=False)
+            self.app_service.switch_database(config.LAST_DB_PATH, load_stats=False)
             self._update_db_label()
             self.statusBar().showMessage(
-                f"Подключена база данных: {os.path.basename(self.app_facade.db_path)}"
+                f"Подключена база данных: {os.path.basename(self.app_service.db_path)}"
             )
         except Exception as e:
             logger.error(f"Ошибка при подключении к последней БД {config.LAST_DB_PATH}: {e}")
@@ -175,12 +176,12 @@ class MainWindow(QtWidgets.QMainWindow):
         main_layout.addWidget(self.tabs)
 
         # Создаем экземпляры представлений (Views)
-        # Передаем им AppFacade или ссылки на репозитории через AppFacade
-        # Лучше передавать сам AppFacade, чтобы Views могли запрашивать у него данные
-        self.stats_grid = StatsGrid(self.app_facade)
+        # Передаем им ApplicationService или ссылки на репозитории через ApplicationService
+        # Лучше передавать сам ApplicationService, чтобы Views могли запрашивать у него данные
+        self.stats_grid = StatsGrid(self.app_service)
         self.stats_grid.overallStatsChanged.connect(self._update_toolbar_info)
-        self.tournament_view = TournamentView(self.app_facade)
-        self.session_view = SessionView(self.app_facade)
+        self.tournament_view = TournamentView(self.app_service)
+        self.session_view = SessionView(self.app_service)
 
         # Добавляем вкладки с иконками
         self.tabs.addTab(self.stats_grid, CustomIcons.chart_icon("#10B981"), "Дашборд")
@@ -202,10 +203,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def manage_databases(self):
         """Открывает диалог управления базами данных."""
-        dialog = DatabaseManagementDialog(self, self.app_facade)
-        current_path = self.app_facade.db_path
+        dialog = DatabaseManagementDialog(self, self.app_service)
+        current_path = self.app_service.db_path
         if dialog.exec():  # Модальное исполнение
-            new_path = self.app_facade.db_path
+            new_path = self.app_service.db_path
             if new_path != current_path:
                 # Отменяем все фоновые операции перед сменой БД
                 thread_manager.cancel_all()
@@ -223,7 +224,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.refresh_all_data()
             self._update_db_label()
             self.statusBar().showMessage(
-                f"Подключена база данных: {os.path.basename(self.app_facade.db_path)}"
+                f"Подключена база данных: {os.path.basename(self.app_service.db_path)}"
             )
         dialog.deleteLater()
 
@@ -246,7 +247,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _start_import(self, paths: List[str]):
         """Запускает процесс импорта с прогресс-баром."""
-        dialog = SessionSelectDialog(self.app_facade, self)
+        dialog = SessionSelectDialog(self.app_service, self)
         if not dialog.exec():
             return
         session_id, session_name = dialog.get_result()
@@ -272,9 +273,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.progress_dialog.canceled.connect(self._cancel_import) # Обработка отмены
 
         # Запускаем импорт в отдельном потоке, чтобы не блокировать UI
-        # AppFacade сам будет вызывать self.import_progress_signal.emit
+        # ApplicationService сам будет вызывать self.import_progress_signal.emit
         self.import_thread = ImportThread(
-            self.app_facade, # MODIFIED
+            self.app_service,
             paths,
             session_name,
             self.import_progress_signal,
@@ -350,7 +351,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.import_thread = None
         # Диалог мы закрываем вручную, так как автоматическое закрытие
         # отключено для предотвращения мигания.
-        
+
         # По завершении импорта сразу обновляем UI
         self._update_toolbar_info()
         self.invalidate_all_caches()
@@ -358,7 +359,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_db_label()
 
         self.statusBar().showMessage(
-            f"Импорт завершен. База данных: {os.path.basename(self.app_facade.db_path)}",
+            f"Импорт завершен. База данных: {os.path.basename(self.app_service.db_path)}",
             3000,
         )
 
@@ -410,7 +411,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if hasattr(self, 'refresh_action'):
             self.refresh_action.setEnabled(False)
         self.statusBar().showMessage("Обновление данных...")
-        self.refresh_thread = RefreshThread(self.app_facade) # MODIFIED
+        self.refresh_thread = RefreshThread(self.app_service)
         self.refresh_thread.progress_update.connect(self._on_refresh_progress)
         self.refresh_thread.progress_percent.connect(self._on_refresh_percent)
         self.refresh_thread.finished_update.connect(self._on_refresh_finished)
@@ -439,19 +440,19 @@ class MainWindow(QtWidgets.QMainWindow):
         if hasattr(self, 'refresh_action'):
             self.refresh_action.setEnabled(True)
         self._update_db_label()
-        self.statusBar().showMessage(f"Данные обновлены. База данных: {os.path.basename(self.app_facade.db_path)}", 3000)
+        self.statusBar().showMessage(f"Данные обновлены. База данных: {os.path.basename(self.app_service.db_path)}", 3000)
 
     @QtCore.pyqtSlot(str)
     def _on_refresh_error(self, error_message: str):
         """Обработка ошибок при обновлении данных."""
         logger.error(f"Ошибка обновления: {error_message}")
-        
+
         # Восстанавливаем кнопку обновления
         if hasattr(self, 'refresh_action'):
             self.refresh_action.setEnabled(True)
-        
+
         self.statusBar().showMessage(f"Ошибка обновления: {error_message}", 5000)
-        
+
         QtWidgets.QMessageBox.critical(
             self,
             "Ошибка обновления",
@@ -462,17 +463,16 @@ class MainWindow(QtWidgets.QMainWindow):
     def _update_toolbar_info(self, stats: Optional[OverallStats] = None):
         """Обновляет информационные Label в панели инструментов."""
         if stats is None:
-            stats = self.app_facade.get_overall_stats()
-        self.total_tournaments_label.setText(f"Турниров: {stats.total_tournaments if stats else '-'}")
-        profit = (stats.total_prize - stats.total_buy_in) if stats else 0
-        self.total_profit_label.setText(f"Прибыль: {format_money(profit, with_plus=True)}")
+            stats = self.app_service.get_overall_stats()
+        self.total_tournaments_label.setText(f"Турниров: {stats.total_tournaments}")
+        self.total_profit_label.setText(f"Прибыль: {format_money(stats.total_prize - stats.total_buy_in, with_plus=True)}")
         apply_cell_color_by_value(self.total_profit_label, stats.total_prize - stats.total_buy_in) # Применяем цвет
         self.total_ko_label.setText(f"KO: {stats.total_knockouts:.1f}")
 
     def _update_db_label(self):
         """Отображает имя текущей базы данных в правой части тулбара."""
         self.db_status_label.setText(
-            f"БД: {os.path.basename(self.app_facade.db_path)}"
+            f"БД: {os.path.basename(self.app_service.db_path)}"
         )
 
 
@@ -502,14 +502,14 @@ class ImportThread(QtCore.QThread):
 
     def __init__(
         self,
-        app_facade: AppFacade, # MODIFIED
+        app_service: ApplicationService,
         paths: List[str],
         session_name: str,
         progress_signal: QtCore.pyqtSignal,
         existing_session_id: str | None = None,
     ):
         super().__init__()
-        self.app_facade = app_facade # MODIFIED
+        self.app_service = app_service
         self.paths = paths
         self.session_name = session_name
         self.existing_session_id = existing_session_id
@@ -520,8 +520,8 @@ class ImportThread(QtCore.QThread):
         """Метод, выполняемый в потоке."""
         logger.info(f"Поток импорта запущен для {len(self.paths)} путей.")
         try:
-            # Передаем progress_update и is_cancelled в AppFacade
-            self.app_facade.import_files( # MODIFIED
+            # Передаем progress_update и is_cancelled в ApplicationService
+            self.app_service.import_files(
                 self.paths,
                 self.session_name,
                 session_id=self.existing_session_id,
@@ -535,15 +535,13 @@ class ImportThread(QtCore.QThread):
         finally:
             # Явно закрываем SQLite-соединение этого потока,
             # чтобы избежать его закрытия из другого потока при сборке мусора.
-            # AppFacade's db object should provide close_connection if needed by thread
-            if hasattr(self.app_facade.db, 'close_connection'):
-                 try:
-                     self.app_facade.db.close_connection()
-                 except Exception as e:
-                     logger.warning(f"Ошибка при закрытии соединения в потоке импорта: {e}")
+            try:
+                self.app_service.db.close_connection()
+            except Exception as e:
+                logger.warning(f"Ошибка при закрытии соединения в потоке импорта: {e}")
 
         logger.info("Поток импорта завершает работу.")
-        
+
     def _is_import_canceled(self):
         """Возвращает статус отмены импорта."""
         return self._is_canceled
@@ -566,11 +564,11 @@ class RefreshThread(QtCore.QThread):
     progress_percent = QtCore.pyqtSignal(int)  # Сигнал для обновления процентов
     finished_update = QtCore.pyqtSignal()     # Сигнал завершения
     error_occurred = QtCore.pyqtSignal(str)   # Сигнал ошибки
-    
-    def __init__(self, app_facade: AppFacade): # MODIFIED
+
+    def __init__(self, app_service: ApplicationService):
         super().__init__()
-        self.app_facade = app_facade # MODIFIED
-        
+        self.app_service = app_service
+
     def run(self):
         """Выполняет обновление данных в отдельном потоке."""
         try:
@@ -578,7 +576,7 @@ class RefreshThread(QtCore.QThread):
             self.progress_percent.emit(0)
 
             # Пересчитываем статистику только при первом открытии базы данных
-            self.app_facade.ensure_overall_stats_cached( # MODIFIED
+            self.app_service.ensure_overall_stats_cached(
                 progress_callback=self._report_progress
             )
 
@@ -588,7 +586,7 @@ class RefreshThread(QtCore.QThread):
         except Exception as e:
             logger.error(f"Ошибка при обновлении данных: {e}")
             self.error_occurred.emit(str(e))
-    
+
     def _report_progress(self, step: int, total: int, text: str = ""):
         """Отправляет прогресс в процентах через сигналы Qt."""
         if total > 0:
