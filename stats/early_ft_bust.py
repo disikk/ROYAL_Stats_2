@@ -25,11 +25,12 @@ class EarlyFTBustStat(BaseStat):
         self,
         tournaments: List[Tournament],
         final_table_hands: List[Any],
-        sessions: List[Any],
-        overall_stats: OverallStats,
+        sessions: List[Any] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Рассчитывает количество вылетов и среднее число таких вылетов."""
+        overall_stats = kwargs.get('overall_stats')
+        
         if not tournaments and not overall_stats:
             return {"early_ft_bust_count": 0, "early_ft_bust_per_tournament": 0.0}
 

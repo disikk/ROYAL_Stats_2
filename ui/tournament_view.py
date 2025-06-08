@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 from ui.app_style import setup_table_widget, format_money, apply_cell_color_by_value, format_percentage
-from application_service import ApplicationService
+from services import AppFacade
 from models import Tournament
 from ui.background import thread_manager
 from db.repositories.tournament_repo import PaginationResult  # Импортируем новый класс
@@ -22,7 +22,7 @@ logger.setLevel(logging.DEBUG)
 class TournamentView(QtWidgets.QWidget):
     """Виджет для отображения списка турниров с фильтрами."""
     
-    def __init__(self, app_service: ApplicationService, parent=None):
+    def __init__(self, app_service: AppFacade, parent=None):
         super().__init__(parent)
         self.app_service = app_service
         self.tournaments: List[Tournament] = []
@@ -346,7 +346,7 @@ class TournamentView(QtWidgets.QWidget):
             buyin_filter = float(buyin) if buyin and buyin != "Все" else None
             result_filter = result_filter_map.get(self.result_filter.currentText())
             session_id = self.session_filter.currentData()
-            return self.app_service.tournament_repo.get_tournaments_paginated(
+            return self.app_service.get_tournaments_paginated(
                 page=self.current_page,
                 page_size=int(self.page_size_combo.currentText()),
                 session_id=session_id,

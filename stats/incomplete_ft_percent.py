@@ -20,11 +20,12 @@ class IncompleteFTPercentStat(BaseStat):
         self,
         tournaments: List[Tournament],
         final_table_hands: List[FinalTableHand],
-        sessions: List[Any],
-        overall_stats: OverallStats,
+        sessions: List[Any] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Возвращает процент неполных финальных столов."""
+        overall_stats = kwargs.get('overall_stats')
+        
         if overall_stats and hasattr(overall_stats, "incomplete_ft_percent"):
             percent = overall_stats.incomplete_ft_percent
             return {"incomplete_ft_percent": percent}

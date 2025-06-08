@@ -372,12 +372,12 @@ class ImportService:
         all_final_table_hands_data: List[Dict[str, Any]]
     ):
         """Обрабатывает файл истории рук."""
-        hh_data = self.hh_parser.parse(content, filename=os.path.basename(file_path))
-        tourney_id = hh_data.get('tournament_id')
+        hh_result = self.hh_parser.parse(content, filename=os.path.basename(file_path))
+        tourney_id = hh_result.tournament_id
         
         logger.debug(f"Tournament ID: {tourney_id}")
-        logger.debug(f"Reached final table: {hh_data.get('reached_final_table', False)}")
-        logger.debug(f"Final table hands data: {len(hh_data.get('final_table_hands_data', []))} рук")
+        logger.debug(f"Reached final table: {hh_result.reached_final_table}")
+        logger.debug(f"Final table hands data: {len(hh_result.final_table_hands_data)} рук")
         
         if tourney_id:
             # Инициализируем запись в словаре, если ее нет
@@ -392,18 +392,18 @@ class ImportService:
             # Добавляем данные из HH к временной записи турнира
             parsed_tournaments_data[tourney_id]['start_time'] = (
                 parsed_tournaments_data[tourney_id].get('start_time') or 
-                hh_data.get('start_time')
+                hh_result.start_time
             )
             
             # Обновляем временные данные турнира из HH
-            if hh_data.get('reached_final_table', False):
+            if hh_result.reached_final_table:
                 parsed_tournaments_data[tourney_id]['reached_final_table'] = True
-                parsed_tournaments_data[tourney_id]['final_table_initial_stack_chips'] = hh_data.get('final_table_initial_stack_chips')
-                parsed_tournaments_data[tourney_id]['final_table_initial_stack_bb'] = hh_data.get('final_table_initial_stack_bb')
-                parsed_tournaments_data[tourney_id]['final_table_start_players'] = hh_data.get('final_table_start_players')
+                parsed_tournaments_data[tourney_id]['final_table_initial_stack_chips'] = hh_result.final_table_initial_stack_chips
+                parsed_tournaments_data[tourney_id]['final_table_initial_stack_bb'] = hh_result.final_table_initial_stack_bb
+                parsed_tournaments_data[tourney_id]['final_table_start_players'] = hh_result.final_table_start_players
             
             # Собираем данные финальных раздач
-            ft_hands_data = hh_data.get('final_table_hands_data', [])
+            ft_hands_data = hh_result.final_table_hands_data
             for hand_data in ft_hands_data:
                 hand_data['session_id'] = session_id
                 all_final_table_hands_data.append(hand_data)
@@ -416,8 +416,8 @@ class ImportService:
         parsed_tournaments_data: Dict[str, Dict[str, Any]]
     ):
         """Обрабатывает файл сводки турнира."""
-        ts_data = self.ts_parser.parse(content, filename=os.path.basename(file_path))
-        tourney_id = ts_data.get('tournament_id')
+        ts_result = self.ts_parser.parse(content, filename=os.path.basename(file_path))
+        tourney_id = ts_result.tournament_id
         
         if tourney_id:
             # Инициализируем запись, если ее нет
@@ -431,23 +431,23 @@ class ImportService:
             
             # Обновляем временные данные турнира из TS (TS имеет приоритет)
             parsed_tournaments_data[tourney_id]['tournament_name'] = (
-                ts_data.get('tournament_name') or 
+                ts_result.tournament_name or 
                 parsed_tournaments_data[tourney_id].get('tournament_name')
             )
             parsed_tournaments_data[tourney_id]['start_time'] = (
-                ts_data.get('start_time') or 
+                ts_result.start_time or 
                 parsed_tournaments_data[tourney_id].get('start_time')
             )
             parsed_tournaments_data[tourney_id]['buyin'] = (
-                ts_data.get('buyin') or 
+                ts_result.buyin or 
                 parsed_tournaments_data[tourney_id].get('buyin')
             )
             parsed_tournaments_data[tourney_id]['payout'] = (
-                ts_data.get('payout') or 
+                ts_result.payout or 
                 parsed_tournaments_data[tourney_id].get('payout')
             )
             parsed_tournaments_data[tourney_id]['finish_place'] = (
-                ts_data.get('finish_place') or 
+                ts_result.finish_place or 
                 parsed_tournaments_data[tourney_id].get('finish_place')
             )
     

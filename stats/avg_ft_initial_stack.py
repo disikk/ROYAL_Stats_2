@@ -19,8 +19,7 @@ class AvgFTInitialStackStat(BaseStat):
     def compute(self,
                 tournaments: List[Tournament],
                 final_table_hands: List[Any], # Не используется напрямую этим плагином
-                sessions: List[Any], # Не используется напрямую этим плагином
-                overall_stats: Any, # Используем overall_stats для получения общих сумм
+                sessions: List[Any] = None, # Не используется напрямую этим плагином
                 **kwargs: Any
                ) -> Dict[str, Any]:
         """
@@ -28,17 +27,21 @@ class AvgFTInitialStackStat(BaseStat):
 
         Args:
             tournaments: Список объектов Tournament.
-            overall_stats: Объект OverallStats с уже посчитанными агрегатами.
+            final_table_hands: Список рук финального стола (не используется).
+            sessions: Список сессий (не используется).
             **kwargs: Дополнительные параметры.
 
         Returns:
             Словарь с ключами 'avg_ft_initial_stack_chips' и 'avg_ft_initial_stack_bb'.
         """
-        if not tournaments and not overall_stats:
+        if not tournaments:
             return {"avg_ft_initial_stack_chips": 0.0, "avg_ft_initial_stack_bb": 0.0}
 
+        # Получаем overall_stats из kwargs если передан
+        overall_stats = kwargs.get('overall_stats')
+
         # Эти статы уже рассчитываются и хранятся в OverallStats
-        # Плагин просто извлекает их.
+        # Плагин может просто извлечь их если они переданы.
 
         if overall_stats and hasattr(overall_stats, 'avg_ft_initial_stack_chips') and hasattr(overall_stats, 'avg_ft_initial_stack_bb'):
             avg_chips = overall_stats.avg_ft_initial_stack_chips

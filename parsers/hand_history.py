@@ -16,6 +16,7 @@ from typing import Dict, List, Set, Tuple, Optional, Any
 import config
 from models import Tournament, FinalTableHand # Импортируем модели
 from .base_parser import BaseParser # ИМПОРТИРУЕМ BaseParser
+from .parse_results import HandHistoryResult
 
 logger = logging.getLogger('ROYAL_Stats.HandHistoryParser')
 logger.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
@@ -76,7 +77,7 @@ class HandData:
         self.players = list(seats.keys())  # Список игроков за столом в этой раздаче
         self.eliminated_players = set()  # Игроки, выбывшие в этой раздаче
 
-class HandHistoryParser(BaseParser):
+class HandHistoryParser(BaseParser[HandHistoryResult]):
     def __init__(self, hero_name: str = config.HERO_NAME):
         super().__init__(hero_name)
         self._tournament_id: Optional[str] = None
@@ -85,7 +86,7 @@ class HandHistoryParser(BaseParser):
         self._final_table_hands: List[HandData] = [] # Только раздачи финального стола (9-max, без учёта блайндов)
 
 
-    def parse(self, file_content: str, filename: str = "") -> Dict[str, Any]:
+    def parse(self, file_content: str, filename: str = "") -> HandHistoryResult:
         """
         Парсит HH-файл. Возвращает данные турнира и список данных раздач финального стола.
 
@@ -107,7 +108,15 @@ class HandHistoryParser(BaseParser):
         # Если не нашли ни одной руки, вернем пустой результат
         if not hand_chunks:
             logger.warning(f"Не найдено раздач в файле: {filename}")
-            return {'tournament_id': None}
+            return HandHistoryResult(
+                tournament_id=None,
+                start_time=None,
+                reached_final_table=False,
+                final_table_initial_stack_chips=None,
+                final_table_initial_stack_bb=None,
+                final_table_start_players=None,
+                final_table_hands_data=[]
+            )
             
         # Определяем Tournament ID из первой найденной раздачи
         first_chunk = hand_chunks[0]
@@ -125,7 +134,15 @@ class HandHistoryParser(BaseParser):
                 
         if not self._tournament_id:
             logger.warning(f"Не удалось извлечь Tournament ID из файла HH: {filename}. Файл пропущен.")
-            return {'tournament_id': None} # Пропускаем файл без ID
+            return HandHistoryResult(
+                tournament_id=None,
+                start_time=None,
+                reached_final_table=False,
+                final_table_initial_stack_chips=None,
+                final_table_initial_stack_bb=None,
+                final_table_start_players=None,
+                final_table_hands_data=[]
+            )
             
         
         # Обрабатываем раздачи в хронологическом порядке (от первой к последней)
@@ -219,18 +236,15 @@ class HandHistoryParser(BaseParser):
                 )
         
         # Собираем итоговый результат для ApplicationService
-        result = {
-            'tournament_id': self._tournament_id,
-            'start_time': self._start_time,
-            'reached_final_table': first_ft_hand_data is not None,
-            'final_table_initial_stack_chips': first_ft_hand_data.hero_stack if first_ft_hand_data else None,
-            'final_table_initial_stack_bb': (first_ft_hand_data.hero_stack / first_ft_hand_data.bb) if first_ft_hand_data and first_ft_hand_data.bb > 0 else None,
-            'final_table_start_players': first_ft_hand_data.players_count if first_ft_hand_data else None,
-            'final_table_hands_data': final_table_data_for_db, # Список данных по рукам финалки для сохранения
-        }
-        
-        
-        return result
+        return HandHistoryResult(
+            tournament_id=self._tournament_id,
+            start_time=self._start_time,
+            reached_final_table=first_ft_hand_data is not None,
+            final_table_initial_stack_chips=first_ft_hand_data.hero_stack if first_ft_hand_data else None,
+            final_table_initial_stack_bb=(first_ft_hand_data.hero_stack / first_ft_hand_data.bb) if first_ft_hand_data and first_ft_hand_data.bb > 0 else None,
+            final_table_start_players=first_ft_hand_data.players_count if first_ft_hand_data else None,
+            final_table_hands_data=final_table_data_for_db, # Список данных по рукам финалки для сохранения
+        )
 
     def _reset(self):
         """Сбрасывает состояние парсера для нового файла."""

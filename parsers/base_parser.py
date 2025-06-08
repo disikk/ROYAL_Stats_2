@@ -4,29 +4,35 @@
 Базовый класс парсера для Royal Stats.
 Все дочерние парсеры должны реализовывать только работу с Hero.
 """
-import config # Для имени Hero
+from abc import ABC, abstractmethod
+from typing import Any, TypeVar, Generic
+import config  # Для имени Hero
 
-class BaseParser:
+# Тип для результата парсера
+T = TypeVar('T')
+
+class BaseParser(ABC, Generic[T]):
     """
     Базовый класс для всех парсеров проекта.
     Реализует базовую структуру и общие проверки.
+    Теперь типизирован для возврата конкретных моделей.
     """
 
     def __init__(self, hero_name: str = config.HERO_NAME):
         # Имя Hero берется из конфигурации
         self.hero_name = hero_name
 
-    def parse(self, file_content: str, filename: str = ""):
+    @abstractmethod
+    def parse(self, file_content: str, filename: str = "") -> T:
         """
-        Метод-заглушка: должен быть переопределён в наследниках.
-        Парсит содержимое файла и возвращает структурированные данные.
+        Парсит содержимое файла и возвращает типизированные данные.
 
         Args:
             file_content: Содержимое файла в виде строки.
             filename: Имя файла (может быть полезно для определения турнира ID).
 
         Returns:
-            Словарь или объект модели с извлеченными данными.
+            Типизированный результат парсинга (зависит от конкретного парсера).
         """
         raise NotImplementedError("Метод parse должен быть реализован в дочернем классе.")
 

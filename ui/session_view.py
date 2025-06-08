@@ -9,7 +9,7 @@ import logging
 from typing import List, Optional
 
 from ui.app_style import setup_table_widget, format_money, apply_cell_color_by_value
-from application_service import ApplicationService
+from services import AppFacade
 from models import Session
 from ui.background import thread_manager
 
@@ -20,7 +20,7 @@ logger.setLevel(logging.DEBUG)
 class SessionView(QtWidgets.QWidget):
     """Виджет для отображения списка игровых сессий."""
     
-    def __init__(self, app_service: ApplicationService, parent=None):
+    def __init__(self, app_service: AppFacade, parent=None):
         super().__init__(parent)
         self.app_service = app_service
         self.sessions: List[Session] = []

@@ -1,0 +1,254 @@
+# -*- coding: utf-8 -*-
+
+"""
+ViewModel для StatsGrid.
+Содержит всю логику подготовки данных для отображения.
+"""
+
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Any
+from .stat_card import StatCardViewModel
+from models import Tournament, FinalTableHand, OverallStats
+
+# Импортируем стат-плагины для расчетов
+from stats import (
+    TotalKOStat, ITMStat, ROIStat, BigKOStat,
+    AvgKOPerTournamentStat, FinalTableReachStat,
+    AvgFTInitialStackStat, EarlyFTKOStat, EarlyFTBustStat,
+    FTStackConversionStat, FTStackConversionAttemptsStat,
+    PreFTKOStat, KOLuckStat, ROIAdjustedStat, KOContributionStat
+)
+
+
+@dataclass
+class BigKOCardViewModel:
+    """ViewModel для карточки Big KO."""
+    
+    tier: str  # "x1.5", "x2", etc.
+    count: int
+    subtitle: Optional[str] = None
+    value_color: Optional[str] = None
+    
+    @staticmethod
+    def get_big_ko_color(tier: str, total_tournaments: int, count: int) -> Optional[str]:
+        """Определяет цвет для Big KO карточки."""
+        if tier == "x10":
+            # Специальная логика для x10
+            ratio = total_tournaments / count if count > 0 else float('inf')
+            if ratio <= 50:
+                return "#10B981"  # Зеленый
+            elif ratio >= 300:
+                return "#EF4444"  # Красный
+        elif tier in ["x100", "x1000", "x10000"]:
+            # Для высоких уровней - зеленый если есть хотя бы один
+            if count > 0:
+                return "#10B981"
+        return None
+    
+    @classmethod
+    def create_from_stats(cls, tier: str, count: int, total_knockouts: float,
+                         total_tournaments: int = 0) -> 'BigKOCardViewModel':
+        """Создает ViewModel для Big KO карточки."""
+        subtitle = None
+        if tier in ["x1.5", "x2", "x10"] and count > 0 and total_knockouts > 0:
+            per = total_knockouts / count
+            subtitle = f"1 на {per:.0f} нокаутов"
+        
+        value_color = cls.get_big_ko_color(tier, total_tournaments, count)
+        
+        return cls(
+            tier=tier,
+            count=count,
+            subtitle=subtitle,
+            value_color=value_color
+        )
+
+
+@dataclass
+class PlaceDistributionViewModel:
+    """ViewModel для распределения мест."""
+    
+    place_distribution: Dict[int, int]
+    chart_type: str  # "ft", "pre_ft", "all"
+    total_count: int = 0
+
+
+@dataclass
+class StatsGridViewModel:
+    """Основной ViewModel для сетки статистики."""
+    
+    # Основные карточки статистики
+    stat_cards: Dict[str, StatCardViewModel]
+    
+    # Карточки Big KO
+    big_ko_cards: Dict[str, BigKOCardViewModel]
+    
+    # Распределения для графиков
+    place_distributions: Dict[str, PlaceDistributionViewModel]
+    
+    # Дополнительные данные
+    overall_stats: OverallStats
+    total_tournaments: int
+    
+    @classmethod
+    def create_from_data(cls, 
+                        tournaments: List[Tournament],
+                        final_table_hands: List[FinalTableHand],
+                        overall_stats: OverallStats,
+                        precomputed_stats: Optional[Dict[str, Any]] = None) -> 'StatsGridViewModel':
+        """Создает ViewModel из сырых данных."""
+        
+        # Подготовка предварительно рассчитанных значений
+        if precomputed_stats is None:
+            precomputed_stats = {
+                'total_tournaments': overall_stats.total_tournaments,
+                'total_buy_in': overall_stats.total_buy_in,
+                'total_prize': overall_stats.total_prize,
+                'total_knockouts': overall_stats.total_knockouts,
+                'total_final_tables': overall_stats.total_final_tables,
+            }
+        
+        # Расчет всех статистик через плагины
+        roi_value = ROIStat().compute(tournaments, final_table_hands, precomputed_stats=precomputed_stats).get('roi', 0.0)
+        itm_value = ITMStat().compute(tournaments, final_table_hands).get('itm_percent', 0.0)
+        ft_reach = FinalTableReachStat().compute(tournaments, final_table_hands, precomputed_stats=precomputed_stats).get('final_table_reach_percent', 0.0)
+        
+        avg_stack_res = AvgFTInitialStackStat().compute(tournaments, final_table_hands)
+        avg_chips = avg_stack_res.get('avg_ft_initial_stack_chips', 0.0)
+        avg_bb = avg_stack_res.get('avg_ft_initial_stack_bb', 0.0)
+        
+        early_res = EarlyFTKOStat().compute(tournaments, final_table_hands)
+        early_ko = early_res.get('early_ft_ko_count', 0)
+        early_ko_per = early_res.get('early_ft_ko_per_tournament', 0.0)
+        
+        conv_res = FTStackConversionStat().compute(tournaments, final_table_hands)
+        ft_stack_conv = conv_res.get('ft_stack_conversion', 0.0)
+        
+        attempts_res = FTStackConversionAttemptsStat().compute(tournaments, final_table_hands)
+        avg_attempts = attempts_res.get('avg_ko_attempts_per_ft', 0.0)
+        
+        pre_ft_ko_res = PreFTKOStat().compute(tournaments, final_table_hands)
+        pre_ft_ko_count = pre_ft_ko_res.get('pre_ft_ko_count', 0.0)
+        
+        ko_luck_value = KOLuckStat().compute(tournaments, final_table_hands).get('ko_luck', 0.0)
+        roi_adj_value = ROIAdjustedStat().compute(tournaments, final_table_hands).get('roi_adj', 0.0)
+        
+        ko_contrib_res = KOContributionStat().compute(tournaments, final_table_hands)
+        ko_contrib = ko_contrib_res.get('ko_contribution', 0.0)
+        ko_contrib_adj = ko_contrib_res.get('ko_contribution_adj', 0.0)
+        
+        early_bust_res = EarlyFTBustStat().compute(tournaments, final_table_hands)
+        early_bust_count = early_bust_res.get('early_ft_bust_count', 0)
+        early_bust_per = early_bust_res.get('early_ft_bust_per_tournament', 0.0)
+        
+        # Расчет средних мест
+        all_places = [t.finish_place for t in tournaments if t.finish_place is not None]
+        avg_all = sum(all_places) / len(all_places) if all_places else 0.0
+        
+        ft_places = [t.finish_place for t in tournaments 
+                    if t.reached_final_table and t.finish_place is not None and 1 <= t.finish_place <= 9]
+        avg_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
+        
+        no_ft_places = [t.finish_place for t in tournaments 
+                       if not t.reached_final_table and t.finish_place is not None]
+        avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
+        
+        # Создание карточек статистики
+        stat_cards = {
+            'tournaments': StatCardViewModel(
+                title="Tournaments",
+                value=str(overall_stats.total_tournaments)
+            ),
+            'knockouts': StatCardViewModel(
+                title="Knockouts",
+                value=f"{overall_stats.total_knockouts:.1f}"
+            ),
+            'avg_ko': StatCardViewModel(
+                title="Avg KO/Tour",
+                value=f"{overall_stats.avg_ko_per_tournament:.2f}"
+            ),
+            'roi': StatCardViewModel.create_roi_card(roi_value),
+            'ko_contribution': StatCardViewModel.create_ko_contribution_card(ko_contrib, ko_contrib_adj),
+            'itm': StatCardViewModel(
+                title="ITM%",
+                value=f"{itm_value:.1f}%"
+            ),
+            'ft_reach': StatCardViewModel(
+                title="% Reach FT",
+                value=f"{ft_reach:.1f}%"
+            ),
+            'avg_ft_stack': StatCardViewModel.create_avg_stack_card(avg_chips, avg_bb),
+            'early_ft_ko': StatCardViewModel.create_early_ko_card(early_ko, early_ko_per),
+            'ft_stack_conv': StatCardViewModel.create_stack_conversion_card(ft_stack_conv, avg_attempts),
+            'early_ft_bust': StatCardViewModel(
+                title="Early FT Bust",
+                value=str(early_bust_count),
+                subtitle=f"{early_bust_per:.2f} за турнир с FT"
+            ),
+            'avg_place_all': StatCardViewModel(
+                title="Avg Place (All)",
+                value=f"{avg_all:.2f}"
+            ),
+            'avg_place_ft': StatCardViewModel(
+                title="Avg Place (FT)",
+                value=f"{avg_ft:.2f}"
+            ),
+            'avg_place_no_ft': StatCardViewModel(
+                title="Avg Place (No FT)",
+                value=f"{avg_no_ft:.2f}"
+            ),
+            'pre_ft_ko': StatCardViewModel(
+                title="Pre-FT KO",
+                value=f"{pre_ft_ko_count:.1f}"
+            ),
+            'ko_luck': StatCardViewModel.create_ko_luck_card(ko_luck_value),
+            'roi_adj': StatCardViewModel(
+                title="ROI adj",
+                value=StatCardViewModel.format_percentage(roi_adj_value),
+                value_color=StatCardViewModel.get_value_color(roi_adj_value),
+                tooltip="ROI с поправкой на удачу в нокаутах"
+            ),
+        }
+        
+        # Создание карточек Big KO
+        big_ko_cards = {}
+        for tier, count_attr in [
+            ("x1.5", overall_stats.big_ko_x1_5),
+            ("x2", overall_stats.big_ko_x2),
+            ("x10", overall_stats.big_ko_x10),
+            ("x100", overall_stats.big_ko_x100),
+            ("x1000", overall_stats.big_ko_x1000),
+            ("x10000", overall_stats.big_ko_x10000),
+        ]:
+            big_ko_cards[tier] = BigKOCardViewModel.create_from_stats(
+                tier, count_attr, overall_stats.total_knockouts, overall_stats.total_tournaments
+            )
+        
+        # Расчет распределений мест
+        place_dist_ft = {i: 0 for i in range(1, 10)}
+        place_dist_pre_ft = {i: 0 for i in range(10, 19)}
+        place_dist_all = {i: 0 for i in range(1, 19)}
+        
+        for t in tournaments:
+            if t.finish_place is None:
+                continue
+            if 1 <= t.finish_place <= 9:
+                place_dist_ft[t.finish_place] += 1
+            if 10 <= t.finish_place <= 18:
+                place_dist_pre_ft[t.finish_place] += 1
+            if 1 <= t.finish_place <= 18:
+                place_dist_all[t.finish_place] += 1
+        
+        place_distributions = {
+            'ft': PlaceDistributionViewModel(place_dist_ft, 'ft'),
+            'pre_ft': PlaceDistributionViewModel(place_dist_pre_ft, 'pre_ft'),
+            'all': PlaceDistributionViewModel(place_dist_all, 'all'),
+        }
+        
+        return cls(
+            stat_cards=stat_cards,
+            big_ko_cards=big_ko_cards,
+            place_distributions=place_distributions,
+            overall_stats=overall_stats,
+            total_tournaments=overall_stats.total_tournaments
+        )

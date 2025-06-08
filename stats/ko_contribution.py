@@ -19,11 +19,12 @@ class KOContributionStat(BaseStat):
         self,
         tournaments: List[Tournament],
         final_table_hands: List[Any],
-        sessions: List[Any],
-        overall_stats: Any,
+        sessions: List[Any] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Возвращает фактический и скорректированный вклад нокаутов."""
+        overall_stats = kwargs.get('overall_stats')
+        
         if not tournaments:
             return {"ko_contribution": 0.0, "ko_contribution_adj": 0.0}
 

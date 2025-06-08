@@ -177,9 +177,7 @@ def main():
 
     # Создаем и показываем главное окно
     # Передаем фасад приложения в главное окно
-    # TODO: MainWindow пока еще использует application_service напрямую
-    # Это будет исправлено в следующих этапах рефакторинга
-    main_window = MainWindow()
+    main_window = MainWindow(app_facade=container.app_facade)
     main_window.show()
 
     # Запускаем приложение

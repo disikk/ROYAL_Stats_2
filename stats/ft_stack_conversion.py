@@ -32,10 +32,11 @@ class FTStackConversionStat(BaseStat):
         self,
         tournaments: List[Tournament],
         final_table_hands: List[Any],
-        sessions: List[Any],
-        overall_stats: OverallStats,
+        sessions: List[Any] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
+        overall_stats = kwargs.get('overall_stats')
+        
         if not tournaments and not overall_stats:
             return {"ft_stack_conversion": 0.0}
 

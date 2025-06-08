@@ -34,6 +34,7 @@ from .events import (
     TournamentDeletedEvent,
     CacheInvalidatedEvent
 )
+from viewmodels import StatsGridViewModel
 
 logger = logging.getLogger('ROYAL_Stats.AppFacade')
 
@@ -255,6 +256,32 @@ class AppFacade:
         """Возвращает список всех турниров."""
         return self._tournament_repo.get_all_tournaments(buyin_filter=buyin_filter)
     
+    def get_tournaments_filtered(
+        self,
+        session_id: Optional[str] = None,
+        buyin_filter: Optional[float] = None,
+        start_time_from: Optional[str] = None,
+        start_time_to: Optional[str] = None
+    ) -> List[Tournament]:
+        """
+        Возвращает отфильтрованный список турниров.
+        
+        Args:
+            session_id: ID сессии для фильтрации
+            buyin_filter: Фильтр по байину
+            start_time_from: Начальная дата
+            start_time_to: Конечная дата
+            
+        Returns:
+            Список отфильтрованных турниров
+        """
+        return self._tournament_repo.get_all_tournaments(
+            session_id=session_id,
+            buyin_filter=buyin_filter,
+            start_time_from=start_time_from,
+            start_time_to=start_time_to
+        )
+    
     def get_all_sessions(self) -> List[Session]:
         """Возвращает список всех сессий."""
         return self._session_repo.get_all_sessions()
@@ -274,6 +301,50 @@ class AppFacade:
     def get_session_stats(self, session_id: str) -> Optional[Session]:
         """Возвращает статистику для указанной сессии."""
         return self._session_repo.get_session_by_id(session_id)
+    
+    def get_tournaments_paginated(
+        self,
+        page: int,
+        page_size: int,
+        session_id: Optional[str] = None,
+        buyin_filter: Optional[float] = None,
+        result_filter: Optional[str] = None,
+        start_time_from: Optional[str] = None,
+        start_time_to: Optional[str] = None,
+        sort_column: str = "start_time",
+        sort_direction: str = "DESC"
+    ):
+        """
+        Возвращает турниры с пагинацией и фильтрами.
+        Делегирует вызов к репозиторию турниров.
+        """
+        return self._tournament_repo.get_tournaments_paginated(
+            page=page,
+            page_size=page_size,
+            session_id=session_id,
+            buyin_filter=buyin_filter,
+            result_filter=result_filter,
+            start_time_from=start_time_from,
+            start_time_to=start_time_to,
+            sort_column=sort_column,
+            sort_direction=sort_direction
+        )
+    
+    def ensure_overall_stats_cached(
+        self,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None
+    ):
+        """
+        Обеспечивает наличие кешированной общей статистики.
+        Делегирует вызов к StatisticsService.
+        
+        Args:
+            progress_callback: Callback для отслеживания прогресса
+        """
+        self.statistics_service.ensure_overall_stats_cached(
+            db_path=self.db_path,
+            progress_callback=progress_callback
+        )
     
     # === Управление данными ===
     
@@ -351,6 +422,137 @@ class AppFacade:
                 reason=f"Tournament {tournament_id} deleted"
             ))
     
+    # === ViewModel методы для UI ===
+    
+    def create_stats_grid_viewmodel(
+        self,
+        session_id: Optional[str] = None,
+        buyin_filter: Optional[float] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None
+    ) -> StatsGridViewModel:
+        """
+        Создает ViewModel для StatsGrid с учетом фильтров.
+        
+        Args:
+            session_id: ID сессии для фильтрации
+            buyin_filter: Фильтр по байину
+            date_from: Начальная дата (формат YYYY/MM/DD HH:MM:SS)
+            date_to: Конечная дата (формат YYYY/MM/DD HH:MM:SS)
+            
+        Returns:
+            StatsGridViewModel с готовыми для отображения данными
+        """
+        # Получаем отфильтрованные турниры
+        tournaments = self._tournament_repo.get_all_tournaments(
+            session_id=session_id,
+            buyin_filter=buyin_filter,
+            start_time_from=date_from,
+            start_time_to=date_to
+        )
+        
+        # Получаем руки финального стола
+        if buyin_filter is not None:
+            # Если есть фильтр по байину, получаем список tournament_id
+            tournament_ids = [t.tournament_id for t in tournaments]
+            ft_hand_repo = FinalTableHandRepository()
+            ft_hands = ft_hand_repo.get_hands_by_filters(
+                session_id=session_id,
+                tournament_ids=tournament_ids if tournament_ids else None
+            )
+        else:
+            # Если нет фильтра по байину, фильтруем только по сессии
+            ft_hand_repo = FinalTableHandRepository()
+            ft_hands = ft_hand_repo.get_hands_by_filters(session_id=session_id)
+        
+        # Вычисляем общую статистику для отфильтрованных данных
+        overall_stats = self._compute_overall_stats_filtered(tournaments, ft_hands)
+        
+        # Подготавливаем предварительно рассчитанные значения
+        precomputed_stats = {
+            'total_tournaments': overall_stats.total_tournaments,
+            'total_buy_in': overall_stats.total_buy_in,
+            'total_prize': overall_stats.total_prize,
+            'total_knockouts': overall_stats.total_knockouts,
+            'total_final_tables': overall_stats.total_final_tables,
+        }
+        
+        # Создаем ViewModel
+        return StatsGridViewModel.create_from_data(
+            tournaments=tournaments,
+            final_table_hands=ft_hands,
+            overall_stats=overall_stats,
+            precomputed_stats=precomputed_stats
+        )
+    
+    def _compute_overall_stats_filtered(self, tournaments, ft_hands) -> OverallStats:
+        """
+        Вычисляет агрегированную статистику по отфильтрованным данным.
+        Временный метод для совместимости - позже будет перенесен в StatisticsService.
+        """
+        stats = OverallStats()
+        stats.total_tournaments = len(tournaments)
+        
+        # Оптимизированный подсчет с одним проходом по турнирам
+        ft_count = 0
+        total_buyin = 0.0
+        total_prize = 0.0
+        total_ko = 0.0
+        ft_chips_sum = 0.0
+        ft_chips_count = 0
+        ft_bb_sum = 0.0
+        ft_bb_count = 0
+        early_bust_count = 0
+        
+        for t in tournaments:
+            if t.reached_final_table:
+                ft_count += 1
+                if t.final_table_initial_stack_chips is not None:
+                    ft_chips_sum += t.final_table_initial_stack_chips
+                    ft_chips_count += 1
+                if t.final_table_initial_stack_bb is not None:
+                    ft_bb_sum += t.final_table_initial_stack_bb
+                    ft_bb_count += 1
+                if t.finish_place is not None and 6 <= t.finish_place <= 9:
+                    early_bust_count += 1
+            
+            if t.buyin is not None:
+                total_buyin += t.buyin
+            if t.payout is not None:
+                total_prize += t.payout
+            total_ko += t.ko_count
+        
+        stats.total_final_tables = ft_count
+        stats.total_buy_in = total_buyin
+        stats.total_prize = total_prize
+        stats.total_knockouts = round(total_ko, 1)
+        stats.avg_ko_per_tournament = total_ko / stats.total_tournaments if stats.total_tournaments else 0.0
+        stats.final_table_reach_percent = ft_count / stats.total_tournaments * 100 if stats.total_tournaments else 0.0
+        stats.avg_ft_initial_stack_chips = ft_chips_sum / ft_chips_count if ft_chips_count else 0.0
+        stats.avg_ft_initial_stack_bb = ft_bb_sum / ft_bb_count if ft_bb_count else 0.0
+        stats.early_ft_bust_count = early_bust_count
+        stats.early_ft_bust_per_tournament = early_bust_count / ft_count if ft_count else 0.0
+        
+        # Подсчет Big KO через плагин
+        from stats import BigKOStat
+        big_ko_res = BigKOStat().compute(tournaments, ft_hands)
+        stats.big_ko_x1_5 = big_ko_res.get("x1.5", 0)
+        stats.big_ko_x2 = big_ko_res.get("x2", 0)
+        stats.big_ko_x10 = big_ko_res.get("x10", 0)
+        stats.big_ko_x100 = big_ko_res.get("x100", 0)
+        stats.big_ko_x1000 = big_ko_res.get("x1000", 0)
+        stats.big_ko_x10000 = big_ko_res.get("x10000", 0)
+        
+        # Подсчет early FT KO
+        early_ko_count = sum(hand.hero_ko_this_hand for hand in ft_hands if hand.is_early_final)
+        stats.early_ft_ko_count = early_ko_count
+        stats.early_ft_ko_per_tournament = early_ko_count / ft_count if ft_count else 0.0
+        
+        # Pre-FT KO
+        stats.pre_ft_ko_count = sum(hand.pre_ft_ko for hand in ft_hands)
+        
+        return stats
+
     # === Прямой доступ к репозиториям (для совместимости) ===
     
     @property

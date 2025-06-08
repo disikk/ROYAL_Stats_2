@@ -13,8 +13,8 @@ from typing import List, Optional
 from datetime import datetime
 
 import config
-# Импортируем синглтон ApplicationService
-from application_service import application_service, ApplicationService
+# Импортируем типы для AppFacade
+from services import AppFacade
 
 # Импортируем UI компоненты
 from ui.app_style import apply_dark_theme, format_money, format_percentage, apply_cell_color_by_value
@@ -40,13 +40,13 @@ class MainWindow(QtWidgets.QMainWindow):
     # Сигнал для обновления прогресса импорта
     import_progress_signal = QtCore.pyqtSignal(int, int, str)
 
-    def __init__(self):
+    def __init__(self, app_facade: AppFacade):
         super().__init__()
         self.setWindowTitle(config.APP_TITLE)
         self.setMinimumSize(1300, 880)
 
-        # ApplicationService уже проинициализирован как синглтон
-        self.app_service = application_service
+        # Используем переданный AppFacade
+        self.app_service = app_facade
         
         # Флаги для отслеживания загруженности вкладок
         self._tab_loaded = {'stats': False, 'tournaments': False, 'sessions': False}
@@ -502,7 +502,7 @@ class ImportThread(QtCore.QThread):
 
     def __init__(
         self,
-        app_service: ApplicationService,
+        app_service: AppFacade,
         paths: List[str],
         session_name: str,
         progress_signal: QtCore.pyqtSignal,
@@ -536,7 +536,7 @@ class ImportThread(QtCore.QThread):
             # Явно закрываем SQLite-соединение этого потока,
             # чтобы избежать его закрытия из другого потока при сборке мусора.
             try:
-                self.app_service.db.close_connection()
+                self.app_service.db_manager.close_connection()
             except Exception as e:
                 logger.warning(f"Ошибка при закрытии соединения в потоке импорта: {e}")
 
@@ -565,7 +565,7 @@ class RefreshThread(QtCore.QThread):
     finished_update = QtCore.pyqtSignal()     # Сигнал завершения
     error_occurred = QtCore.pyqtSignal(str)   # Сигнал ошибки
     
-    def __init__(self, app_service: ApplicationService):
+    def __init__(self, app_service: AppFacade):
         super().__init__()
         self.app_service = app_service
         

@@ -12,12 +12,13 @@ import logging
 from typing import Dict, Any, Optional
 import config
 from .base_parser import BaseParser # Наследуем от BaseParser
+from .parse_results import TournamentSummaryResult
 
 logger = logging.getLogger('ROYAL_Stats.TournamentSummaryParser')
 logger.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
 
 
-class TournamentSummaryParser(BaseParser):
+class TournamentSummaryParser(BaseParser[TournamentSummaryResult]):
     """
     Парсер summary-файла турнира только для Hero.
     """
@@ -33,7 +34,7 @@ class TournamentSummaryParser(BaseParser):
         self.re_tournament_name_title = re.compile(r"Tournament #\d+,\s*(.+)") # Название турнира из заголовка (первая строка)
 
 
-    def parse(self, file_content: str, filename: str = "") -> Dict[str, Any]:
+    def parse(self, file_content: str, filename: str = "") -> TournamentSummaryResult:
         """
         Парсит summary-файл, извлекая информацию о турнире для Hero.
 
@@ -131,17 +132,20 @@ class TournamentSummaryParser(BaseParser):
 
         if tournament_id is None:
             logger.warning(f"Не удалось извлечь Tournament ID из файла Summary: {filename}. Файл пропущен.")
-            return {'tournament_id': None} # Пропускаем файл без ID
+            return TournamentSummaryResult(
+                tournament_id=None,
+                tournament_name=None,
+                start_time=None,
+                buyin=None,
+                payout=None,
+                finish_place=None
+            )
 
-
-        result = {
-            "tournament_id": tournament_id,
-            "tournament_name": tournament_name,
-            "start_time": start_time,
-            "buyin": buyin,
-            "payout": payout,
-            "finish_place": finish_place,
-        }
-
-
-        return result
+        return TournamentSummaryResult(
+            tournament_id=tournament_id,
+            tournament_name=tournament_name,
+            start_time=start_time,
+            buyin=buyin,
+            payout=payout,
+            finish_place=finish_place
+        )
