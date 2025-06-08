@@ -1,129 +1,204 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Этот файл предоставляет руководство для Claude Code (claude.ai/code) при работе с кодом в этом репозитории.
 
-## Project Overview
+## Обзор проекта
 
-Royal Stats is a desktop application designed to track and analyze poker tournament statistics for a single player (Hero). It specializes in tracking tournament performance and knockout statistics for Battle Royale/PKO (Progressive Knockout) poker tournaments.
+Royal Stats — десктопное приложение для отслеживания и анализа статистики турниров по покеру для одного игрока (Hero). Специализируется на отслеживании производительности турниров и статистики нокаутов для турниров Battle Royale/PKO (Progressive Knockout).
 
-The application parses poker hand history files and tournament summaries to extract key metrics and provide statistical insights for the player's performance, with a special focus on final table play and knockouts achieved.
+Приложение парсит файлы истории рук и сводки турниров для извлечения ключевых метрик и предоставления статистических инсайтов для производительности игрока, с особым акцентом на игру за финальным столом и достигнутые нокауты.
 
-## Setup and Running
+## Настройка и запуск
 
 ```bash
-# Install dependencies
+# Установка зависимостей
 pip install -r requirements.txt
 
-# Run the application
+# Запуск приложения
 python app.py
 
-# Run tests
+# Запуск тестов
 python -m unittest discover tests
 ```
 
-## Key Features and Functionality
+## Ключевые особенности и функциональность
 
-- **Tournament Tracking**: Records key tournament information including buy-ins, payouts, finishing positions, and knockout counts
-- **Final Table Analysis**: Specialized tracking of final table performance (9-max tables)
-- **Knockout Statistics**: Detailed tracking of knockouts, including early final table KOs and "big knockouts" (valuable bounties)
-- **Session Management**: Groups tournaments into sessions for period-based analysis
-- **Statistics Dashboard**: Provides aggregate statistics across all tournaments or filtered by session
-- **Place Distribution**: Visualizes final table finishing positions (1-9)
-- **Database Management**: Supports multiple SQLite databases for data organization
+- **Отслеживание турниров**: Записывает ключевую информацию о турнирах, включая бай-ины, выплаты, финишные позиции и количество нокаутов
+- **Анализ финального стола**: Специализированное отслеживание производительности финального стола (столы 9-max)
+- **Статистика нокаутов**: Детальное отслеживание нокаутов, включая KO ранней стадии финалки и "большие нокауты" (ценные баунти)
+- **Управление сессиями**: Группирует турниры в сессии для анализа по периодам
+- **Дашборд статистики**: Предоставляет агрегированную статистику по всем турнирам или отфильтрованную по сессиям
+- **Распределение мест**: Визуализирует финишные позиции финального стола (1-9)
+- **Управление базами данных**: Поддерживает множественные базы данных SQLite для организации данных
 
-## Architecture and Components
+## Архитектура и компоненты
 
-The application follows a layered architecture with clear separation of concerns:
+Приложение следует слоистой архитектуре с четким разделением ответственностей:
 
-### 1. UI Layer (`ui/` directory)
-- PyQt6-based desktop interface with dark theme by default
-- Main window and various views/dialogs
-- Components for visualization and data presentation
+### 1. Слой UI (`ui/` директория)
+- Интерфейс на основе PyQt6 с темной темой по умолчанию
+- Главное окно и различные представления/диалоги
+- Компоненты для визуализации и представления данных
 
-### 2. Application Logic (`application_service.py`)
-- Coordinates between UI, parsers, and database operations
-- Handles the core business logic of the application
-- Manages the data flow between components
+### 2. Логика приложения (`application_service.py`)
+- Координирует взаимодействие между UI, парсерами и операциями с базой данных
+- Обрабатывает основную бизнес-логику приложения
+- Управляет потоком данных между компонентами
+- Реализован как синглтон `application_service`
 
-### 3. Parsers (`parsers/` directory)
-- `tournament_summary.py` - Parses tournament summary files
-- `hand_history.py` - Parses poker hand history files
-- Extract relevant information from text files in GG Poker format
+### 3. Парсеры (`parsers/` директория)
+- `tournament_summary.py` - Парсит файлы сводок турниров
+- `hand_history.py` - Парсит файлы истории рук покера
+- Извлекают релевантную информацию из текстовых файлов в формате GG Poker
 
-### 4. Database Layer (`db/` directory)
-- SQLite database with repositories for different entities
-- Schema defined in `db/schema.py`
-- Repositories for each entity type in `db/repositories/`
+### 4. Слой базы данных (`db/` директория)
+- База данных SQLite с репозиториями для различных сущностей
+- Схема определена в `db/schema.py`
+- Репозитории для каждого типа сущности в `db/repositories/`
+- `DatabaseManager` как синглтон `database_manager` для управления соединениями
 
-### 5. Statistics Modules (`stats/` directory)
-- Various statistics calculations (ROI, knockouts, etc.)
-- Each module implements statistics for specific metrics
-- Pluggable architecture for extending functionality
+### 5. Модули статистики (`stats/` директория)
+- Различные расчеты статистики (ROI, нокауты и т.д.)
+- Каждый модуль реализует статистику для конкретных метрик
+- Подключаемая архитектура для расширения функциональности
 
-### 6. Models (`models/` directory)
-- Data models representing entities like tournaments and sessions
+### 6. Модели (`models/` директория)
+- Модели данных, представляющие сущности такие как турниры и сессии
+- Реализованы как dataclasses с методами to_dict/from_dict
 
-## Database Schema
+## Схема базы данных
 
-The SQLite database includes the following tables:
-- `sessions`: Records of import sessions
-- `tournaments`: Tournament data and results
-- `hero_final_table_hands`: Detailed information about hands played at final tables
-- `overall_stats`: Aggregate statistics across all tournaments
-- `places_distribution`: Distribution of final table finishes by position
-- `stat_modules`: Configuration for statistics modules
+База данных SQLite включает следующие таблицы:
+- `sessions`: Записи сессий импорта
+- `tournaments`: Данные турниров и результаты
+- `hero_final_table_hands`: Детальная информация о руках, сыгранных за финальными столами
+- `overall_stats`: Агрегированная статистика по всем турнирам
+- `places_distribution`: Распределение финишей финального стола по позициям
+- `stat_modules`: Конфигурация для модулей статистики
 
-## Specific Requirements and Definitions
+### Ключевые таблицы:
 
-- **Hero**: The player whose statistics are being tracked
-- **Final Table Definition**: 9-max table regardless of blind level
-- **Early Final Table Stage**: Defined as the 9-6 player stage of the final table
-- **Knockout Detection Logic**:
-  - Player is considered knocked out by Hero if:
-    - They went all-in
-    - Hero had them covered (Hero's stack ≥ their stack)
-    - Hero won the pot to which they contributed
-- **Big Knockouts**: Valuable bounties categorized by their size relative to buy-in (1.5x, 2x, 10x, 100x, 1000x, 10000x)
+**tournaments:**
+- Объединяет данные из HH и TS файлов
+- Ключевые поля: `tournament_id`, `buy_in`, `payout`, `finish_place`, `reached_final_table`
+- Отслеживает стеки на старте финалки в фишках и BB
 
-## Key Configuration
+**hero_final_table_hands:**
+- Детальные записи каждой раздачи финального стола
+- Включает информацию о нокаутах (`hero_ko_this_hand`)
+- Флаг ранней стадии финалки (`is_early_final` для 9-6 игроков)
 
-Configuration settings are in `config.py`, which includes:
-- Hero player name
-- Database path settings
-- Final table and knockout zone parameters
-- UI configuration (dark theme by default)
+**overall_stats:**
+- Агрегированные показатели по всей истории
+- Включает "большие KO" по категориям (x1.5, x2, x10, x100, x1000, x10000)
+- Статистика ранней стадии финалки
 
-## Data Processing Pipeline
+## Специфические требования и определения
 
-1. Parse hand histories first to identify knockouts and final table data
-2. Parse tournament summaries to gather finishing positions and payouts
-3. Merge data and calculate statistics
-4. Store results in the database
-5. Present statistics through the UI
+- **Hero**: Игрок, чья статистика отслеживается
+- **Определение финального стола**: Стол 9-max независимо от уровня блайндов
+- **Ранняя стадия финального стола**: Определяется как стадия финального стола с 9-6 игроками
+- **Логика обнаружения нокаута**:
+  - Игрок считается выбитым Hero, если:
+    - Он пошел ва-банк
+    - Hero покрывал его (стек Hero ≥ его стек)
+    - Hero выиграл банк, в который тот внес вклад
+- **Большие нокауты**: Ценные баунти, категоризированные по размеру относительно бай-ина (1.5x, 2x, 10x, 100x, 1000x, 10000x)
 
-## Common Development Tasks
+## Ключевая конфигурация
 
-### Add a New Statistic Module
+Настройки конфигурации находятся в `config.py`, включая:
+- Имя игрока Hero
+- Настройки пути к базе данных
+- Параметры финального стола и зоны нокаутов
+- Конфигурация UI (темная тема по умолчанию)
+- Версия приложения: `0.1.0`
 
-1. Create a new class in the `stats/` directory that extends `stats/base.py`
-2. Implement the required methods for calculating and displaying statistics
-3. Update the UI to display the new statistic
+## Конвейер обработки данных
 
-### Add or Modify Database Schema
+1. Сначала парсить истории рук для идентификации нокаутов и данных финального стола
+2. Парсить сводки турниров для сбора финишных позиций и выплат
+3. Объединить данные и рассчитать статистику
+4. Сохранить результаты в базе данных
+5. Представить статистику через UI
 
-1. Update the schema in `db/schema.py`
-2. Create or update the corresponding repository in `db/repositories/`
-3. Create or update the model in `models/`
-4. Ensure the schema changes are applied to new and existing databases
+## Файловая структура
 
-### Extend the Parser
+```
+├── app.py                  # Точка входа приложения
+├── config.py              # Конфигурация приложения
+├── application_service.py  # Основная бизнес-логика (синглтон)
+├── requirements.txt        # Зависимости Python
+├── ui/                     # Пользовательский интерфейс
+│   ├── main_window.py      # Главное окно
+│   ├── stats_grid.py       # Дашборд статистики
+│   ├── tournament_view.py  # Представление турниров
+│   ├── session_view.py     # Представление сессий
+│   └── app_style.py        # Стили и темы
+├── db/                     # Слой базы данных
+│   ├── manager.py          # Менеджер БД (синглтон)
+│   ├── schema.py           # Схема БД
+│   └── repositories/       # Репозитории данных
+├── models/                 # Модели данных
+├── parsers/                # Парсеры файлов
+├── stats/                  # Модули статистики
+└── databases/             # SQLite файлы
+```
 
-1. Update relevant parser implementations in `parsers/` directory
-2. Add tests for new parsing logic
-3. Ensure backwards compatibility with existing hand history formats
+## Общие задачи разработки
 
-### Add UI Components
+### Добавление нового модуля статистики
 
-1. Create new components in the `ui/` directory
-2. Follow the existing design patterns and UI conventions
-3. Connect the new components to the appropriate data sources
+1. Создать новый класс в директории `stats/`, расширяющий `stats/base.py`
+2. Реализовать требуемые методы для расчета и отображения статистики
+3. Обновить UI для отображения новой статистики
+
+### Добавление или изменение схемы БД
+
+1. Обновить схему в `db/schema.py`
+2. Создать или обновить соответствующий репозиторий в `db/repositories/`
+3. Создать или обновить модель в `models/`
+4. Добавить миграцию в `DatabaseManager.initialize_db()` если необходимо
+5. Убедиться, что изменения схемы применяются к новым и существующим базам данных
+
+### Расширение парсера
+
+1. Обновить соответствующие реализации парсеров в директории `parsers/`
+2. Добавить тесты для новой логики парсинга
+3. Обеспечить обратную совместимость с существующими форматами истории рук
+
+### Добавление UI компонентов
+
+1. Создать новые компоненты в директории `ui/`
+2. Следовать существующим шаблонам проектирования и соглашениям UI
+3. Подключить новые компоненты к соответствующим источникам данных
+
+## Управление состоянием
+
+- `ApplicationService` выступает как центральный координатор
+- Кеширование статистики для производительности
+- Персистентный кеш в файле `stats_cache.json`
+- Многопоточность для операций импорта с использованием `QThread`
+
+## Особенности реализации
+
+- **Архитектура синглтонов**: `application_service` и `database_manager`
+- **Ленивая загрузка**: Статистика загружается по требованию для каждой вкладки
+- **Прогресс импорта**: Детальная обратная связь во время обработки файлов
+- **Управление ошибками**: Комплексивное логирование и обработка исключений
+- **Кеширование**: Многоуровневая система кеширования для оптимизации производительности
+
+## Качество кода и стандарты
+
+- Используйте type hints для всех функций и методов
+- Следуйте существующим соглашениям именования
+- Добавляйте docstrings для всех публичных методов
+- Реализуйте правильную обработку ошибок с логированием
+- Поддерживайте чистое разделение между слоями архитектуры
+
+## Отладка и логирование
+
+- Логирование настроено в `app.py`
+- Используйте уровень `DEBUG` в `config.py` для подробного логирования
+- Каждый модуль имеет свой именованный логгер
+- Проверяйте логи для диагностики проблем импорта и базы данных
