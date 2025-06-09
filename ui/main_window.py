@@ -495,6 +495,26 @@ class MainWindow(QtWidgets.QMainWindow):
             self.session_view.reload(show_overlay=show_overlay)
             self._tab_loaded['sessions'] = True
 
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+        """Корректно завершает все фоновые потоки перед закрытием окна."""
+        logger.debug("Закрытие окна, останавливаем фоновые потоки")
+        try:
+            thread_manager.cancel_all()
+        except Exception as e:
+            logger.warning(f"Ошибка при отмене фоновых операций: {e}")
+
+        if hasattr(self, "import_thread") and self.import_thread:
+            if self.import_thread.isRunning():
+                self.import_thread.cancel()
+                self.import_thread.wait()
+
+        if hasattr(self, "refresh_thread") and self.refresh_thread:
+            if self.refresh_thread.isRunning():
+                self.refresh_thread.quit()
+                self.refresh_thread.wait()
+
+        super().closeEvent(event)
+
 
 # Отдельный поток для импорта, чтобы не блокировать GUI
 class ImportThread(QtCore.QThread):
@@ -608,26 +628,6 @@ class RefreshThread(QtCore.QThread):
                     self.progress_update.emit("Подсчет нокаутов...")
                 else:
                     self.progress_update.emit("Обновление статистики сессий...")
-
-    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
-        """Корректно завершает все фоновые потоки перед закрытием окна."""
-        logger.debug("Закрытие окна, останавливаем фоновые потоки")
-        try:
-            thread_manager.cancel_all()
-        except Exception as e:
-            logger.warning(f"Ошибка при отмене фоновых операций: {e}")
-
-        if hasattr(self, "import_thread") and self.import_thread:
-            if self.import_thread.isRunning():
-                self.import_thread.cancel()
-                self.import_thread.wait()
-
-        if hasattr(self, "refresh_thread") and self.refresh_thread:
-            if self.refresh_thread.isRunning():
-                self.refresh_thread.quit()
-                self.refresh_thread.wait()
-
-        super().closeEvent(event)
 
 
 # Предполагаем, что DatabaseManagementDialog.py будет создан отдельно
