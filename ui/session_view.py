@@ -346,7 +346,7 @@ class SessionView(QtWidgets.QWidget):
             self.loading_label.setText("Удаление сессии...")
             def delete_session(is_cancelled_callback=None):
                 self.app_service.delete_session(session.session_id)
-                self.app_service._update_all_statistics(None)
+                self.app_service.update_all_statistics(progress_callback=None)
                 return session.session_name
             thread_manager.run_in_thread(
                 widget_id=f"{id(self)}_delete",

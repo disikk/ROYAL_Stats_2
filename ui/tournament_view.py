@@ -549,7 +549,7 @@ class TournamentView(QtWidgets.QWidget):
 
             def delete_tournament(is_cancelled_callback=None):
                 self.app_service.delete_tournament(tournament.tournament_id)
-                self.app_service._update_all_statistics(None)
+                self.app_service.update_all_statistics(progress_callback=None)
                 return tournament.tournament_id
 
             thread_manager.run_in_thread(

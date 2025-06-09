@@ -345,6 +345,18 @@ class AppFacade:
             db_path=self.db_path,
             progress_callback=progress_callback
         )
+
+    def update_all_statistics(
+        self,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    ):
+        """Пересчитывает всю статистику в текущей базе данных."""
+        self.statistics_service.update_all_statistics(
+            session_id="",
+            db_path=self.db_path,
+            progress_callback=progress_callback,
+            use_incremental=False,
+        )
     
     # === Управление данными ===
     
