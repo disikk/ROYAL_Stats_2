@@ -561,6 +561,8 @@ class ImportThread(QtCore.QThread):
                 self.app_service.db_manager.close_connection()
             except Exception as e:
                 logger.warning(f"Ошибка при закрытии соединения в потоке импорта: {e}")
+            # Сбрасываем флаг отмены на случай повторного использования потока
+            self._is_canceled = False
 
         logger.info("Поток импорта завершает работу.")
         
