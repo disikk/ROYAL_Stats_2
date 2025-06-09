@@ -33,7 +33,7 @@ class TournamentRepository:
         """
         Добавляет новый турнир или обновляет существующий по tournament_id.
         Использует ON CONFLICT для upsert.
-        Логика мерджа данных из HH и TS происходит в ApplicationService,
+        Логика мерджа данных из HH и TS происходит в ImportService,
         сюда приходит уже подготовленный объект Tournament.
         Если значения всех полей не изменились, обновление пропускается,
         чтобы избежать лишних модификаций базы.
@@ -62,7 +62,7 @@ class TournamentRepository:
                 buyin = COALESCE(excluded.buyin, tournaments.buyin),
                 payout = COALESCE(excluded.payout, tournaments.payout),
                 finish_place = COALESCE(excluded.finish_place, tournaments.finish_place),
-                ko_count = excluded.ko_count, -- ko_count приходит уже объединенный из ApplicationService
+                ko_count = excluded.ko_count, -- ko_count приходит уже объединенный из ImportService
                 session_id = COALESCE(tournaments.session_id, excluded.session_id), -- Сохраняем первый session_id, если новый не установлен
                 reached_final_table = tournaments.reached_final_table OR excluded.reached_final_table, -- Флаг становится TRUE если хоть раз был TRUE
                 final_table_initial_stack_chips = COALESCE(excluded.final_table_initial_stack_chips, tournaments.final_table_initial_stack_chips),

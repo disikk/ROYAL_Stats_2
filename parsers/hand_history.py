@@ -231,11 +231,11 @@ class HandHistoryParser(BaseParser[HandHistoryResult]):
                         'pre_ft_ko': hand_data.pre_ft_ko,
                         'hero_ko_attempts': hand_data.hero_ko_attempts,
                         'is_early_final': hand_data.is_early_final,
-                        # session_id будет добавлен в ApplicationService
+                        # session_id будет добавлен в ImportService
                     }
                 )
         
-        # Собираем итоговый результат для ApplicationService
+        # Собираем итоговый результат для ImportService
         return HandHistoryResult(
             tournament_id=self._tournament_id,
             start_time=self._start_time,

@@ -311,7 +311,7 @@ class TournamentView(QtWidgets.QWidget):
         self.session_mapping.clear()
         
     def reload(self, show_overlay: bool = True):
-        """Перезагружает данные из ApplicationService."""
+        """Перезагружает данные через AppFacade."""
         self._show_overlay = show_overlay
         # При каждой перезагрузке обновляем дату "По" на текущее время,
         # иначе новые турниры с временем старше предыдущего значения
