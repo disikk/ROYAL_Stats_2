@@ -401,6 +401,8 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         logger.info("Запуск полного обновления данных...")
         self._tab_loaded = {'stats': False, 'tournaments': False, 'sessions': False}
+        # Сбрасываем кеши сразу, чтобы избежать отображения устаревших данных
+        self.invalidate_all_caches()
         self._refresh_all_data_async(force_all=True)
 
     def _refresh_all_data_async(self, force_all: bool = False):
