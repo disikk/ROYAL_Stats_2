@@ -28,21 +28,43 @@ class BigKOCardViewModel:
     count: int
     subtitle: Optional[str] = None
     value_color: Optional[str] = None
-    
+    emoji: Optional[str] = None
+
     @staticmethod
-    def get_big_ko_color(tier: str, total_tournaments: int, count: int) -> Optional[str]:
+    def get_big_ko_color(tier: str, total_knockouts: float, count: int) -> Optional[str]:
         """Определяет цвет для Big KO карточки."""
         if tier == "x10":
-            # Специальная логика для x10
-            ratio = total_tournaments / count if count > 0 else float('inf')
-            if ratio <= 50:
+            if count <= 0 or total_knockouts <= 0:
+                return None
+            ratio = total_knockouts / count
+            if ratio <= 25:
+                return "#00FF00"  # Ярко-зеленый
+            elif 26 <= ratio <= 29:
                 return "#10B981"  # Зеленый
-            elif ratio >= 300:
+            elif 30 <= ratio <= 33:
+                return "#F59E0B"  # Оранжевый
+            else:
                 return "#EF4444"  # Красный
         elif tier in ["x100", "x1000", "x10000"]:
-            # Для высоких уровней - зеленый если есть хотя бы один
             if count > 0:
-                return "#10B981"
+                return "#10B981"  # Зеленый
+        return None
+
+    @staticmethod
+    def get_big_ko_emoji(tier: str, total_knockouts: float, count: int) -> Optional[str]:
+        """Возвращает emoji для Big KO карточки."""
+        if tier == "x10":
+            if count <= 0 or total_knockouts <= 0:
+                return None
+            ratio = total_knockouts / count
+            if ratio <= 25:
+                return "\U0001F525"  # Огонек
+            elif ratio >= 34:
+                return "\U0001F622"  # :sad:
+            return None
+        elif tier in ["x100", "x1000", "x10000"]:
+            if count > 0:
+                return "\U0001F525"  # Огонек
         return None
     
     @classmethod
@@ -53,14 +75,16 @@ class BigKOCardViewModel:
         if tier in ["x1.5", "x2", "x10"] and count > 0 and total_knockouts > 0:
             per = total_knockouts / count
             subtitle = f"1 на {per:.0f} нокаутов"
-        
-        value_color = cls.get_big_ko_color(tier, total_tournaments, count)
-        
+
+        value_color = cls.get_big_ko_color(tier, total_knockouts, count)
+        emoji = cls.get_big_ko_emoji(tier, total_knockouts, count)
+
         return cls(
             tier=tier,
             count=count,
             subtitle=subtitle,
-            value_color=value_color
+            value_color=value_color,
+            emoji=emoji
         )
 
 
