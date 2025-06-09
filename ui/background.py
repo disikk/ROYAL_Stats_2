@@ -120,8 +120,11 @@ class ThreadManager:
                 # Увеличиваем время ожидания для больших операций
                 thread.wait(2000)  # Ждем максимум 2 секунды
                 if thread.isRunning():
-                    logger.warning(f"Поток {widget_id} не завершился, принудительное завершение")
+                    logger.warning(
+                        f"Поток {widget_id} не завершился, принудительное завершение"
+                    )
                     thread.terminate()  # Принудительное завершение
+                    thread.wait()  # Дожидаемся завершения после terminate
                     
     def _cleanup(self, widget_id: str):
         """Удаляет ссылки на завершенный поток."""

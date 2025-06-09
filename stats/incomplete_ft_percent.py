@@ -5,7 +5,7 @@
 
 from typing import Dict, Any, List
 
-import config
+from services.app_config import app_config
 from .base import BaseStat
 from models import Tournament, FinalTableHand, OverallStats
 
@@ -20,11 +20,12 @@ class IncompleteFTPercentStat(BaseStat):
         self,
         tournaments: List[Tournament],
         final_table_hands: List[FinalTableHand],
-        sessions: List[Any],
-        overall_stats: OverallStats,
+        sessions: List[Any] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Возвращает процент неполных финальных столов."""
+        overall_stats = kwargs.get('overall_stats')
+        
         if overall_stats and hasattr(overall_stats, "incomplete_ft_percent"):
             percent = overall_stats.incomplete_ft_percent
             return {"incomplete_ft_percent": percent}
@@ -35,14 +36,14 @@ class IncompleteFTPercentStat(BaseStat):
 
         first_hands: dict[str, FinalTableHand] = {}
         for hand in final_table_hands:
-            if hand.table_size == config.FINAL_TABLE_SIZE:
+            if hand.table_size == app_config.final_table_size:
                 saved = first_hands.get(hand.tournament_id)
                 if saved is None or hand.hand_number < saved.hand_number:
                     first_hands[hand.tournament_id] = hand
 
         total_ft = len(first_hands)
         incomplete_count = sum(
-            1 for h in first_hands.values() if h.players_count < config.FINAL_TABLE_SIZE
+            1 for h in first_hands.values() if h.players_count < app_config.final_table_size
         )
         percent = int(round(incomplete_count / total_ft * 100)) if total_ft > 0 else 0
         return {"incomplete_ft_percent": percent}

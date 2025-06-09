@@ -12,12 +12,12 @@ import logging
 import threading
 from typing import Optional, List, Dict, Any
 
-import config
+from services.app_config import app_config
 import db.schema # Импортируем схему для создания таблиц
 
 # Настройка логирования
 logger = logging.getLogger('ROYAL_Stats.Database')
-logger.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
+logger.setLevel(logging.DEBUG if app_config.debug else logging.INFO)
 
 class ThreadLocalConnection:
     """
@@ -101,14 +101,14 @@ class DatabaseManager:
     def __init__(self):
         """
         Инициализирует менеджер БД.
-        Путь к БД берется из config.DB_PATH при первом подключении.
+        Путь к БД берется из app_config.current_db_path при первом подключении.
         """
-        self._db_path = config.DB_PATH # Текущий активный путь к БД
+        self._db_path = app_config.current_db_path  # Текущий активный путь к БД
         self._conn_manager: Optional[ThreadLocalConnection] = None
         self._is_initialized = False # Флаг, показывающий, была ли инициализирована текущая БД
 
         # Убеждаемся, что папка для БД существует
-        os.makedirs(config.DEFAULT_DB_DIR, exist_ok=True)
+        os.makedirs(app_config.db_dir, exist_ok=True)
 
     @property
     def db_path(self) -> str:
@@ -126,7 +126,7 @@ class DatabaseManager:
             self._db_path = new_db_path
             self._conn_manager = None # Сбрасываем менеджер соединений
             self._is_initialized = False # Сбрасываем флаг инициализации
-            config.set_db_path(new_db_path) # Сохраняем новый путь в конфиг
+            app_config.set_current_db_path(new_db_path)  # Сохраняем новый путь в конфиг
 
 
     def get_connection(self) -> sqlite3.Connection:
@@ -226,18 +226,18 @@ class DatabaseManager:
         db_files = []
         try:
             # Проверяем существование директории
-            if os.path.exists(config.DEFAULT_DB_DIR) and os.path.isdir(config.DEFAULT_DB_DIR):
+            if os.path.exists(app_config.db_dir) and os.path.isdir(app_config.db_dir):
                 # Получаем список всех файлов с расширением .db
-                for file_name in os.listdir(config.DEFAULT_DB_DIR):
+                for file_name in os.listdir(app_config.db_dir):
                     if file_name.endswith('.db'):
-                        full_path = os.path.join(config.DEFAULT_DB_DIR, file_name)
+                        full_path = os.path.join(app_config.db_dir, file_name)
                         if os.path.isfile(full_path):
                             db_files.append(full_path)
                 
             else:
-                logger.warning(f"Директория {config.DEFAULT_DB_DIR} не существует или не является директорией")
+                logger.warning(f"Директория {app_config.db_dir} не существует или не является директорией")
                 # Создаем директорию, если она не существует
-                os.makedirs(config.DEFAULT_DB_DIR, exist_ok=True)
+                os.makedirs(app_config.db_dir, exist_ok=True)
         except Exception as e:
             logger.error(f"Ошибка при получении списка баз данных: {e}")
         
@@ -274,6 +274,9 @@ class DatabaseManager:
             if 'hero_ko_attempts' not in columns:
                 cursor.execute("ALTER TABLE hero_final_table_hands ADD COLUMN hero_ko_attempts INTEGER DEFAULT 0")
                 logger.debug("Добавлена колонка hero_ko_attempts в таблицу hero_final_table_hands")
+            
+            # Обновление индексов для существующих БД
+            self._update_indexes(cursor)
 
             conn.commit()
             logger.info(f"База данных успешно инициализирована: {self._db_path}")
@@ -284,6 +287,40 @@ class DatabaseManager:
             # В реальном приложении здесь можно показать сообщение пользователю
             # и, возможно, завершить работу или предложить выбрать другую БД.
             raise # Пробрасываем исключение, так как работа без схемы невозможна
+    
+    def _update_indexes(self, cursor: sqlite3.Cursor) -> None:
+        """
+        Проверяет и создает недостающие индексы для оптимизации производительности.
+        Безопасно для выполнения на существующих БД - CREATE INDEX IF NOT EXISTS.
+        """
+        try:
+            # Получаем список существующих индексов
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='index'")
+            existing_indexes = set(row[0] for row in cursor.fetchall())
+            
+            # Подсчитываем созданные индексы
+            created_indexes = 0
+            
+            # Создаем недостающие индексы
+            for index_query in db.schema.CREATE_INDEXES:
+                # Извлекаем имя индекса из запроса
+                index_name = index_query.split("IF NOT EXISTS ")[1].split(" ON")[0].strip()
+                
+                if index_name not in existing_indexes:
+                    try:
+                        cursor.execute(index_query)
+                        created_indexes += 1
+                        logger.debug(f"Создан индекс: {index_name}")
+                    except sqlite3.Error as e:
+                        # Если индекс уже существует под другим именем или есть другая проблема
+                        logger.warning(f"Не удалось создать индекс {index_name}: {e}")
+            
+            if created_indexes > 0:
+                logger.info(f"Создано {created_indexes} новых индексов для оптимизации производительности")
+                
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении индексов: {e}")
+            # Не прерываем инициализацию БД из-за проблем с индексами
 
 
 # Синглтон менеджер БД

@@ -7,7 +7,7 @@
 
 import uuid
 from typing import List, Optional
-from db.manager import database_manager # Используем синглтон менеджер БД
+from db.manager import DatabaseManager, database_manager  # Используем синглтон менеджер БД
 from models import Session
 
 class SessionRepository:
@@ -15,8 +15,9 @@ class SessionRepository:
     Репозиторий для хранения агрегированной инфы о сессиях Hero из таблицы sessions.
     """
 
-    def __init__(self):
-        self.db = database_manager # Используем синглтон
+    def __init__(self, db_manager: DatabaseManager = database_manager):
+        """Initialize repository with the shared database manager."""
+        self.db = db_manager
 
     def create_session(self, session_name: str) -> Session:
         """
@@ -129,6 +130,59 @@ class SessionRepository:
         """
         query = "DELETE FROM sessions WHERE session_id = ?"
         self.db.execute_update(query, (session_id,))
+    
+    def calculate_session_stats_efficient(self, session_id: str) -> dict:
+        """
+        Эффективно рассчитывает статистику сессии одним SQL запросом.
+        Возвращает словарь со всеми необходимыми показателями.
+        """
+        # Получаем основную статистику турниров
+        tournament_stats_query = """
+            SELECT 
+                COUNT(*) as tournaments_count,
+                SUM(CASE WHEN finish_place IS NOT NULL THEN finish_place ELSE 0 END) as sum_places,
+                SUM(CASE WHEN finish_place IS NOT NULL THEN 1 ELSE 0 END) as count_places,
+                SUM(CASE WHEN payout IS NOT NULL THEN payout ELSE 0 END) as total_prize,
+                SUM(CASE WHEN buyin IS NOT NULL THEN buyin ELSE 0 END) as total_buy_in
+            FROM tournaments
+            WHERE session_id = ?
+        """
+        
+        # Получаем количество KO
+        ko_stats_query = """
+            SELECT SUM(hero_ko_this_hand) as total_knockouts
+            FROM hero_final_table_hands
+            WHERE session_id = ?
+        """
+        
+        tournament_result = self.db.execute_query(tournament_stats_query, (session_id,))
+        ko_result = self.db.execute_query(ko_stats_query, (session_id,))
+        
+        stats = {
+            'tournaments_count': 0,
+            'knockouts_count': 0.0,
+            'avg_finish_place': 0.0,
+            'total_prize': 0.0,
+            'total_buy_in': 0.0
+        }
+        
+        if tournament_result and tournament_result[0]:
+            row = tournament_result[0]
+            stats['tournaments_count'] = row[0] or 0
+            
+            # Рассчитываем среднее место
+            sum_places = row[1] or 0
+            count_places = row[2] or 0
+            if count_places > 0:
+                stats['avg_finish_place'] = round(sum_places / count_places, 2)
+            
+            stats['total_prize'] = round(row[3] or 0, 2)
+            stats['total_buy_in'] = round(row[4] or 0, 2)
+        
+        if ko_result and ko_result[0] and ko_result[0][0] is not None:
+            stats['knockouts_count'] = ko_result[0][0]
+        
+        return stats
 
 # Создаем синглтон экземпляр репозитория
-session_repository = SessionRepository()
+session_repository = SessionRepository(database_manager)

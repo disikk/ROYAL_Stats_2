@@ -21,8 +21,8 @@ import math
 from statistics import median
 from datetime import datetime
 
-import config
-from application_service import ApplicationService
+from services.app_config import app_config
+from services import AppFacade
 from models import OverallStats
 
 # Импортируем функции стилизации
@@ -60,7 +60,7 @@ from stats import (
 from ui.background import thread_manager
 
 logger = logging.getLogger('ROYAL_Stats.StatsGrid')
-logger.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
+logger.setLevel(logging.DEBUG if app_config.debug else logging.INFO)
 
 
 class StatCard(QtWidgets.QFrame):
@@ -227,7 +227,7 @@ class StatsGrid(QtWidgets.QWidget):
 
     overallStatsChanged = QtCore.pyqtSignal(OverallStats)
     
-    def __init__(self, app_service: ApplicationService, parent=None):
+    def __init__(self, app_service: AppFacade, parent=None):
         super().__init__(parent)
         self.app_service = app_service
         self._data_cache = {}  # Кеш для данных
@@ -319,7 +319,11 @@ class StatsGrid(QtWidgets.QWidget):
         self.date_from_edit.setCalendarPopup(True)
         self.date_from_edit.setDisplayFormat("dd.MM.yyyy HH:mm")
         # Значение по умолчанию — начало 2024 года
-        self.date_from_edit.setDateTime(QtCore.QDateTime.fromString("2024-01-01 00:00:00", "yyyy-MM-dd HH:mm:ss"))
+        self.date_from_edit.blockSignals(True)
+        self.date_from_edit.setDateTime(
+            QtCore.QDateTime.fromString("2024-01-01 00:00:00", "yyyy-MM-dd HH:mm:ss")
+        )
+        self.date_from_edit.blockSignals(False)
         self.date_from_edit.dateTimeChanged.connect(self._on_filter_changed)
         from_layout.addWidget(from_label)
         from_layout.addWidget(self.date_from_edit)
@@ -333,7 +337,9 @@ class StatsGrid(QtWidgets.QWidget):
         self.date_to_edit = QtWidgets.QDateTimeEdit()
         self.date_to_edit.setCalendarPopup(True)
         self.date_to_edit.setDisplayFormat("dd.MM.yyyy HH:mm")
+        self.date_to_edit.blockSignals(True)
         self.date_to_edit.setDateTime(QtCore.QDateTime.currentDateTime())
+        self.date_to_edit.blockSignals(False)
         self.date_to_edit.dateTimeChanged.connect(self._on_filter_changed)
         to_layout.addWidget(to_label)
         to_layout.addWidget(self.date_to_edit)
@@ -772,10 +778,28 @@ class StatsGrid(QtWidgets.QWidget):
         """Сбрасывает кеш данных."""
         self._cache_valid = False
         self._data_cache.clear()
+        # Сбрасываем отображаемые значения карточек
+        for card in self.cards.values():
+            card.update_value("-")
+        for card in self.bigko_cards.values():
+            card.update_value("-")
+        # Очищаем график
+        self._clear_chart_overlays()
+        empty_chart = QChart()
+        empty_chart.setTheme(QChart.ChartTheme.ChartThemeDark)
+        self.chart_view.setChart(empty_chart)
         
     def reload(self, show_overlay: bool = True):
-        """Перезагружает все данные из ApplicationService."""
+        """Перезагружает все данные через AppFacade."""
         self._show_overlay = show_overlay
+        # Аналогично TournamentView обновляем верхнюю границу диапазона дат,
+        # чтобы статистика учитывала недавно добавленные турниры.
+        self.current_date_to = datetime.now()
+        # Блокируем сигналы, чтобы изменение даты не вызывало повторный
+        # запуск таймера фильтра и рекурсивный вызов reload
+        self.date_to_edit.blockSignals(True)
+        self.date_to_edit.setDateTime(QtCore.QDateTime.currentDateTime())
+        self.date_to_edit.blockSignals(False)
         if show_overlay:
             self.show_loading_overlay()
 
@@ -812,51 +836,34 @@ class StatsGrid(QtWidgets.QWidget):
             return
 
         def load_data(is_cancelled_callback=None):
-            # Проверяем отмену перед загрузкой турниров
+            # Проверяем отмену перед загрузкой
             if is_cancelled_callback and is_cancelled_callback():
                 return None
 
-            tournaments = self.app_service.tournament_repo.get_all_tournaments(
+            # Создаем ViewModel через AppFacade
+            date_from_str = self.current_date_from.strftime("%Y/%m/%d %H:%M:%S") if self.current_date_from else None
+            date_to_str = self.current_date_to.strftime("%Y/%m/%d %H:%M:%S") if self.current_date_to else None
+            
+            viewmodel = self.app_service.create_stats_grid_viewmodel(
                 session_id=self.current_session_id,
                 buyin_filter=self.current_buyin_filter,
-                # В БД дата хранится в формате "YYYY/MM/DD HH:MM:SS", поэтому
-                # формируем строки фильтра аналогично, чтобы сравнение прошло корректно
-                start_time_from=self.current_date_from.strftime("%Y/%m/%d %H:%M:%S"),
-                start_time_to=self.current_date_to.strftime("%Y/%m/%d %H:%M:%S"),
+                date_from=date_from_str,
+                date_to=date_to_str
             )
             
-            # Проверяем отмену после загрузки турниров
-            if is_cancelled_callback and is_cancelled_callback():
-                return None
-            
-            # Получаем руки финального стола с фильтрацией на уровне SQL
-            if self.current_buyin_filter is not None:
-                # Если есть фильтр по байину, получаем список tournament_id для этого байина
-                tournament_ids = [t.tournament_id for t in tournaments]
-                ft_hands = self.app_service.ft_hand_repo.get_hands_by_filters(
-                    session_id=self.current_session_id,
-                    tournament_ids=tournament_ids if tournament_ids else None
-                )
-            else:
-                # Если нет фильтра по байину, фильтруем только по сессии
-                ft_hands = self.app_service.ft_hand_repo.get_hands_by_filters(
-                    session_id=self.current_session_id
-                )
-                
-            # Проверяем отмену после загрузки рук
+            # Проверяем отмену после создания ViewModel
             if is_cancelled_callback and is_cancelled_callback():
                 return None
 
-            # Вычисляем статистику в фоновом потоке
-            overall_stats = self._compute_overall_stats_filtered(tournaments, ft_hands)
+            # Для совместимости с текущей логикой сохраняем доп. данные
+            # которые нужны для графиков (временно, пока не перенесем их в ViewModel)
+            tournaments = self.app_service.get_tournaments_filtered(
+                session_id=self.current_session_id,
+                buyin_filter=self.current_buyin_filter,
+                start_time_from=date_from_str,
+                start_time_to=date_to_str,
+            )
             
-            # Проверяем отмену после вычисления статистики
-            if is_cancelled_callback and is_cancelled_callback():
-                return None
-
-            place_dist = {i: 0 for i in range(1, 10)}
-            place_dist_pre_ft = {i: 0 for i in range(10, 19)}
-            place_dist_all = {i: 0 for i in range(1, 19)}
             # Новое распределение для стеков FT и медиана
             ft_stack_dist, ft_stack_median = self._calculate_ft_stack_distribution(
                 tournaments, step=self.ft_stack_step
@@ -866,78 +873,11 @@ class StatsGrid(QtWidgets.QWidget):
                 tournaments, step=self.ft_stack_step
             )
             
-            for t in tournaments:
-                if t.finish_place is None:
-                    continue
-                if 1 <= t.finish_place <= 9:
-                    place_dist[t.finish_place] += 1
-                if 10 <= t.finish_place <= 18:
-                    place_dist_pre_ft[t.finish_place] += 1
-                if 1 <= t.finish_place <= 18:
-                    place_dist_all[t.finish_place] += 1
-
-            # Вычисляем статистики с проверками отмены
-            roi_value = ROIStat().compute([], [], [], overall_stats).get('roi', 0.0)
-            if is_cancelled_callback and is_cancelled_callback():
-                return None
-                
-            itm_value = ITMStat().compute(tournaments, [], [], overall_stats).get('itm_percent', 0.0)
-            ft_reach = FinalTableReachStat().compute(tournaments, [], [], overall_stats).get('final_table_reach_percent', 0.0)
-            avg_stack_res = AvgFTInitialStackStat().compute(tournaments, [], [], overall_stats)
-            avg_chips = avg_stack_res.get('avg_ft_initial_stack_chips', 0.0)
-            avg_bb = avg_stack_res.get('avg_ft_initial_stack_bb', 0.0)
-            
-            if is_cancelled_callback and is_cancelled_callback():
-                return None
-                
-            early_res = EarlyFTKOStat().compute(tournaments, ft_hands, [], overall_stats)
-            early_ko = early_res.get('early_ft_ko_count', 0)
-            early_ko_per = early_res.get('early_ft_ko_per_tournament', 0.0)
-            conv_res = FTStackConversionStat().compute(tournaments, ft_hands, [], overall_stats)
-            ft_stack_conv = conv_res.get('ft_stack_conversion', 0.0)
-            attempts_res = FTStackConversionAttemptsStat().compute(tournaments, ft_hands, [], overall_stats)
-            avg_attempts = attempts_res.get('avg_ko_attempts_per_ft', 0.0)
-            pre_ft_ko_res = PreFTKOStat().compute(tournaments, ft_hands, [], overall_stats)
-            pre_ft_ko_count = pre_ft_ko_res.get('pre_ft_ko_count', 0.0)
-            
-            if is_cancelled_callback and is_cancelled_callback():
-                return None
-            ko_luck_value = KOLuckStat().compute(tournaments, [], [], overall_stats).get('ko_luck', 0.0)
-            roi_adj_value = ROIAdjustedStat().compute(tournaments, ft_hands, [], overall_stats).get('roi_adj', 0.0)
-            ko_contrib_res = KOContributionStat().compute(tournaments, [], [], None)
-            ko_contrib = ko_contrib_res.get('ko_contribution', 0.0)
-            ko_contrib_adj = ko_contrib_res.get('ko_contribution_adj', 0.0)
-            all_places = [t.finish_place for t in tournaments if t.finish_place is not None]
-            avg_all = sum(all_places) / len(all_places) if all_places else 0.0
-            ft_places = [t.finish_place for t in tournaments if t.reached_final_table and t.finish_place is not None and 1 <= t.finish_place <= 9]
-            avg_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
-            no_ft_places = [t.finish_place for t in tournaments if not t.reached_final_table and t.finish_place is not None]
-            avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
             result = {
-                'overall_stats': overall_stats,
+                'viewmodel': viewmodel,
                 'all_tournaments': tournaments,
-                'place_dist': place_dist,
-                'place_dist_pre_ft': place_dist_pre_ft,
-                'place_dist_all': place_dist_all,
                 'ft_stack_dist': ft_stack_dist,
                 'ft_stack_median': ft_stack_median,
-                'roi': roi_value,
-                'itm': itm_value,
-                'ft_reach': ft_reach,
-                'avg_chips': avg_chips,
-                'avg_bb': avg_bb,
-                'early_ko': early_ko,
-                'early_ko_per': early_ko_per,
-                'avg_ko_attempts_per_ft': avg_attempts,
-                'ft_stack_conv': ft_stack_conv,
-                'pre_ft_ko_count': pre_ft_ko_count,
-                'avg_place_all': avg_all,
-                'avg_place_ft': avg_ft,
-                'avg_place_no_ft': avg_no_ft,
-                'ko_luck': ko_luck_value,
-                'roi_adj': roi_adj_value,
-                'ko_contribution': ko_contrib,
-                'ko_contribution_adj': ko_contrib_adj,
             }
             self._data_cache[cache_key] = result
             self._cache_valid = True
@@ -957,184 +897,104 @@ class StatsGrid(QtWidgets.QWidget):
             return
             
         try:
-            overall_stats = data['overall_stats']
+            viewmodel = data['viewmodel']
             all_tournaments = data['all_tournaments']
             
-            self.cards['tournaments'].update_value(str(overall_stats.total_tournaments))
-
-            self.cards['knockouts'].update_value(f"{overall_stats.total_knockouts:.1f}")
-
-            self.cards['avg_ko'].update_value(f"{overall_stats.avg_ko_per_tournament:.2f}")
-
-            roi_value = data['roi']
-            roi_text = f"{roi_value:+.1f}%"
-            self.cards['roi'].update_value(roi_text)
-            # Применяем цвет только к тексту, а не к фону
-            apply_cell_color_by_value(self.cards['roi'].value_label, roi_value)
-
-            ko_contrib = data.get('ko_contribution', 0.0)
-            ko_contrib_adj = data.get('ko_contribution_adj', 0.0)
-            self.cards['ko_contribution'].update_value(
-                f"{ko_contrib:.1f}%",
-                f"С поправкой на удачу в КО (adj) {ko_contrib_adj:.1f}%"
-            )
-
-            itm_value = data['itm']
-            self.cards['itm'].update_value(f"{itm_value:.1f}%")
-
-            ft_reach_value = data['ft_reach']
-            self.cards['ft_reach'].update_value(f"{ft_reach_value:.1f}%")
-
-            avg_chips = data['avg_chips']
-            avg_bb = data['avg_bb']
-            # Форматируем основное значение и подзаголовок
-            self.cards['avg_ft_stack'].update_value(
-                f"{avg_chips:,.0f}",
-                f"{avg_chips:,.0f} фишек / {avg_bb:.1f} BB"
-            )
-
-            early_ko_count = data['early_ko']
-            early_ko_per = data['early_ko_per']
-            # Форматируем основное значение и подзаголовок
-            self.cards['early_ft_ko'].update_value(
-                f"{early_ko_count:.1f}",
-                f"{early_ko_per:.2f} за турнир с FT"
-            )
-
-            ft_stack_conv = data.get('ft_stack_conv', 0.0)
-            avg_attempts = data.get('avg_ko_attempts_per_ft', 0.0)
-            self.cards['ft_stack_conv'].update_value(
-                f"{ft_stack_conv:.2f}",
-                f"{avg_attempts:.2f} попыток за турнир с FT"
-            )
+            # Обновляем карточки статистики из ViewModel
+            for card_id, stat_card_vm in viewmodel.stat_cards.items():
+                if card_id in self.cards:
+                    self.cards[card_id].update_value(stat_card_vm.value, stat_card_vm.subtitle or "")
+                    
+                    # Применяем цвет для значения если указан
+                    if stat_card_vm.value_color:
+                        self.cards[card_id].value_label.setStyleSheet(f"""
+                            QLabel {{
+                                color: {stat_card_vm.value_color};
+                                font-size: 16px;
+                                font-weight: bold;
+                                background-color: transparent;
+                            }}
+                        """)
+                    
+                    # Устанавливаем tooltip если указан
+                    if stat_card_vm.tooltip:
+                        self.cards[card_id].setTooltip(stat_card_vm.tooltip)
             
+            # Обновляем карточки Big KO из ViewModel
+            for tier, big_ko_vm in viewmodel.big_ko_cards.items():
+                if tier in self.bigko_cards:
+                    value_text = str(big_ko_vm.count)
+                    if big_ko_vm.emoji:
+                        value_text += f" {big_ko_vm.emoji}"
+                    self.bigko_cards[tier].update_value(value_text, big_ko_vm.subtitle or "")
 
-            bust_result = EarlyFTBustStat().compute(all_tournaments, [], [], overall_stats)
-            bust_count = bust_result.get('early_ft_bust_count', 0)
-            bust_per = bust_result.get('early_ft_bust_per_tournament', 0.0)
-            self.cards['early_ft_bust'].update_value(
-                str(bust_count),
-                f"{bust_per:.2f} за турнир с FT"
-            )
+                    if big_ko_vm.value_color:
+                        self.bigko_cards[tier].value_label.setStyleSheet(f"""
+                            QLabel {{
+                                color: {big_ko_vm.value_color};
+                                font-size: 16px;
+                                font-weight: bold;
+                                background-color: transparent;
+                            }}
+                        """)
+                    else:
+                        self.bigko_cards[tier].value_label.setStyleSheet("""
+                            QLabel {
+                                font-size: 16px;
+                                font-weight: bold;
+                                background-color: transparent;
+                            }
+                        """)
             
-            if overall_stats.big_ko_x1_5 > 0:
-                per = overall_stats.total_knockouts / overall_stats.big_ko_x1_5 if overall_stats.total_knockouts > 0 else 0
-                subtitle = f"1 на {per:.0f} нокаутов"
-            else:
-                subtitle = ""
-            self.bigko_cards['x1.5'].update_value(str(overall_stats.big_ko_x1_5), subtitle)
-
-            if overall_stats.big_ko_x2 > 0:
-                per = overall_stats.total_knockouts / overall_stats.big_ko_x2 if overall_stats.total_knockouts > 0 else 0
-                subtitle = f"1 на {per:.0f} нокаутов"
-            else:
-                subtitle = ""
-            self.bigko_cards['x2'].update_value(str(overall_stats.big_ko_x2), subtitle)
-
-            if overall_stats.big_ko_x10 > 0:
-                per = overall_stats.total_knockouts / overall_stats.big_ko_x10 if overall_stats.total_knockouts > 0 else 0
-                subtitle = f"1 на {per:.0f} нокаутов"
-            else:
-                subtitle = ""
-            self.bigko_cards['x10'].update_value(str(overall_stats.big_ko_x10), subtitle)
-            self.bigko_cards['x100'].update_value(str(overall_stats.big_ko_x100))
-            self.bigko_cards['x1000'].update_value(str(overall_stats.big_ko_x1000))
-            self.bigko_cards['x10000'].update_value(str(overall_stats.big_ko_x10000))
-            apply_bigko_x10_color(
-                self.bigko_cards['x10'].value_label,
-                overall_stats.total_tournaments,
-                overall_stats.big_ko_x10,
-            )
-            apply_bigko_high_tier_color(
-                self.bigko_cards['x100'].value_label,
-                overall_stats.big_ko_x100,
-            )
-            apply_bigko_high_tier_color(
-                self.bigko_cards['x1000'].value_label,
-                overall_stats.big_ko_x1000,
-            )
-            apply_bigko_high_tier_color(
-                self.bigko_cards['x10000'].value_label,
-                overall_stats.big_ko_x10000,
-            )
             # Текст над карточкой KO x10 больше не отображается
             self.bigko_x10_info_label.setText("")
             
-            # Обновляем стат KO Luck
-            ko_luck = data.get('ko_luck', 0.0)
-            if ko_luck == 0:
-                ko_luck_text = "$0.00"
-            else:
-                ko_luck_text = f"${ko_luck:+.2f}"
-            self.ko_luck_value.setText(ko_luck_text)
-            # Применяем цвет в зависимости от значения
-            if ko_luck > 0:
-                self.ko_luck_value.setStyleSheet("""
-                    QLabel {
-                        font-size: 16px;
-                        font-weight: bold;
-                        color: #10B981;
-                    }
-                """)
-            elif ko_luck < 0:
-                self.ko_luck_value.setStyleSheet("""
-                    QLabel {
-                        font-size: 16px;
-                        font-weight: bold;
-                        color: #EF4444;
-                    }
-                """)
-            else:
-                self.ko_luck_value.setStyleSheet("""
-                    QLabel {
-                        font-size: 16px;
-                        font-weight: bold;
-                    }
-                """)
+            # Обновляем стат KO Luck (специальная обработка)
+            ko_luck_card = viewmodel.stat_cards.get('ko_luck')
+            if ko_luck_card:
+                self.ko_luck_value.setText(ko_luck_card.value)
+                if ko_luck_card.value_color:
+                    self.ko_luck_value.setStyleSheet(f"""
+                        QLabel {{
+                            font-size: 16px;
+                            font-weight: bold;
+                            color: {ko_luck_card.value_color};
+                        }}
+                    """)
+                else:
+                    self.ko_luck_value.setStyleSheet("""
+                        QLabel {
+                            font-size: 16px;
+                            font-weight: bold;
+                        }
+                    """)
 
             # Обновляем ROI с поправкой на KO Luck
-            roi_adj = data.get('roi_adj', 0.0)
-            roi_adj_text = f"{roi_adj:+.1f}%"
-            self.roi_adj_value.setText(roi_adj_text)
-            apply_cell_color_by_value(self.roi_adj_value, roi_adj)
-            
-            # Статы средних мест (fallback расчет, пока не обновлены другие компоненты)
-            # Среднее место по всем турнирам
-            all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
-            avg_all = sum(all_places) / len(all_places) if all_places else 0.0
-            self.cards['avg_place_all'].update_value(f"{avg_all:.2f}")
-            # Среднее место на финалке
-            ft_places = [t.finish_place for t in all_tournaments 
-                         if t.reached_final_table and t.finish_place is not None 
-                         and 1 <= t.finish_place <= 9]
-            avg_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
-            self.cards['avg_place_ft'].update_value(f"{avg_ft:.2f}")
-            # Среднее место без финалки
-            no_ft_places = [t.finish_place for t in all_tournaments 
-                            if not t.reached_final_table and t.finish_place is not None]
-            avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
-            self.cards['avg_place_no_ft'].update_value(f"{avg_no_ft:.2f}")
-            
-            # Pre-FT KO count
-            pre_ft_ko_count = data.get('pre_ft_ko_count', 0.0)
-            self.cards['pre_ft_ko'].update_value(f"{pre_ft_ko_count:.1f}")
+            roi_adj_card = viewmodel.stat_cards.get('roi_adj')
+            if roi_adj_card:
+                self.roi_adj_value.setText(roi_adj_card.value)
+                if roi_adj_card.value_color:
+                    self.roi_adj_value.setStyleSheet(f"""
+                        QLabel {{
+                            color: {roi_adj_card.value_color};
+                            font-size: 16px;
+                            font-weight: bold;
+                        }}
+                    """)
 
-            
-
-            self.place_dist_ft = data['place_dist']
-            self.place_dist_pre_ft = data.get('place_dist_pre_ft', {})
-            self.place_dist_all = data.get('place_dist_all', {})
+            # Обновляем распределения мест из ViewModel
+            self.place_dist_ft = viewmodel.place_distributions['ft'].place_distribution
+            self.place_dist_pre_ft = viewmodel.place_distributions.get('pre_ft', {}).place_distribution if 'pre_ft' in viewmodel.place_distributions else {}
+            self.place_dist_all = viewmodel.place_distributions.get('all', {}).place_distribution if 'all' in viewmodel.place_distributions else {}
 
             # Сохраняем турниры для возможного перерасчета распределения стеков
             self._current_tournaments = all_tournaments
-            self.ft_stack_dist, self.ft_stack_median = self._calculate_ft_stack_distribution(
-                self._current_tournaments, step=self.ft_stack_step
-            )
+            self.ft_stack_dist, self.ft_stack_median = data['ft_stack_dist'], data['ft_stack_median']
             self.ft_stack_roi_dist, _ = self._calculate_ft_stack_roi_distribution(
                 self._current_tournaments, step=self.ft_stack_step
             )
             self._update_chart(self._get_current_distribution())
-            self.overallStatsChanged.emit(overall_stats)
+            self.overallStatsChanged.emit(viewmodel.overall_stats)
 
         finally:
             # Скрываем индикатор загрузки
@@ -1153,7 +1013,13 @@ class StatsGrid(QtWidgets.QWidget):
         )
 
     def _compute_overall_stats_filtered(self, tournaments, ft_hands):
-        """Вычисляет агрегированную статистику по отфильтрованным данным."""
+        """
+        DEPRECATED: Этот метод больше не используется.
+        Логика перенесена в AppFacade и ViewModel.
+        Оставлен временно для обратной совместимости.
+        
+        Вычисляет агрегированную статистику по отфильтрованным данным.
+        """
         stats = OverallStats()
         stats.total_tournaments = len(tournaments)
         
@@ -1208,7 +1074,7 @@ class StatsGrid(QtWidgets.QWidget):
                 early_ko_count += h.hero_ko_this_hand
             pre_ft_ko_count += h.pre_ft_ko
             
-            if h.table_size == config.FINAL_TABLE_SIZE:
+            if h.table_size == app_config.final_table_size:
                 saved = first_hands.get(h.tournament_id)
                 if saved is None or h.hand_number < saved.hand_number:
                     first_hands[h.tournament_id] = h
@@ -1217,7 +1083,7 @@ class StatsGrid(QtWidgets.QWidget):
         stats.early_ft_ko_per_tournament = early_ko_count / ft_count if ft_count else 0.0
         stats.pre_ft_ko_count = round(pre_ft_ko_count, 1)
         stats.incomplete_ft_count = sum(
-            1 for h in first_hands.values() if h.players_count < config.FINAL_TABLE_SIZE
+            1 for h in first_hands.values() if h.players_count < app_config.final_table_size
         )
         all_places = [t.finish_place for t in tournaments if t.finish_place is not None]
         stats.avg_finish_place = sum(all_places) / len(all_places) if all_places else 0.0
@@ -1233,7 +1099,7 @@ class StatsGrid(QtWidgets.QWidget):
             if not t.reached_final_table and t.finish_place is not None
         ]
         stats.avg_finish_place_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
-        bigko = BigKOStat().compute(tournaments, ft_hands, [], None)
+        bigko = BigKOStat().compute(tournaments, ft_hands, [])
         stats.big_ko_x1_5 = bigko.get("x1.5", 0)
         stats.big_ko_x2 = bigko.get("x2", 0)
         stats.big_ko_x10 = bigko.get("x10", 0)
@@ -1622,6 +1488,10 @@ class StatsGrid(QtWidgets.QWidget):
     
     def _add_percentage_labels(self, chart, place_dist, total_finishes, chart_type=None):
         """Добавляет текстовые метки с процентами над барами."""
+        # Если график ещё не привязан к сцене (например, старый таймер сработал
+        # после обновления), игнорируем вызов
+        if chart.scene() is None:
+            return
         # Удаляем старые метки, если есть
         for label in getattr(self.chart_view, 'chart_labels', []):
             chart.scene().removeItem(label)
@@ -1754,6 +1624,10 @@ class StatsGrid(QtWidgets.QWidget):
 
     def _add_median_line(self, chart, place_dist):
         """Отрисовывает вертикальную линию медианного значения стеков FT."""
+        # Если график больше не находится на сцене (например, пока выполнялся
+        # таймер, была создана новая диаграмма), просто выходим
+        if chart.scene() is None:
+            return
         # Удаляем старую линию, если есть
         for line in getattr(self.chart_view, 'median_lines', []):
             chart.scene().removeItem(line)

@@ -7,7 +7,7 @@
 
 import sqlite3
 from typing import List, Optional, Dict, Any, Tuple
-from db.manager import database_manager # Используем синглтон менеджер БД
+from db.manager import DatabaseManager, database_manager  # Используем синглтон менеджер БД
 from models import Tournament
 from dataclasses import dataclass
 
@@ -25,15 +25,16 @@ class TournamentRepository:
     Хранит и отдает инфу о турнирах только по Hero из таблицы tournaments.
     """
 
-    def __init__(self):
+    def __init__(self, db_manager: DatabaseManager = database_manager):
+        """Initialize repository with the shared database manager."""
         # Репозитории работают с менеджером БД
-        self.db = database_manager # Используем синглтон
+        self.db = db_manager
 
     def add_or_update_tournament(self, tournament: Tournament):
         """
         Добавляет новый турнир или обновляет существующий по tournament_id.
         Использует ON CONFLICT для upsert.
-        Логика мерджа данных из HH и TS происходит в ApplicationService,
+        Логика мерджа данных из HH и TS происходит в ImportService,
         сюда приходит уже подготовленный объект Tournament.
         Если значения всех полей не изменились, обновление пропускается,
         чтобы избежать лишних модификаций базы.
@@ -62,7 +63,7 @@ class TournamentRepository:
                 buyin = COALESCE(excluded.buyin, tournaments.buyin),
                 payout = COALESCE(excluded.payout, tournaments.payout),
                 finish_place = COALESCE(excluded.finish_place, tournaments.finish_place),
-                ko_count = excluded.ko_count, -- ko_count приходит уже объединенный из ApplicationService
+                ko_count = excluded.ko_count, -- ko_count приходит уже объединенный из ImportService
                 session_id = COALESCE(tournaments.session_id, excluded.session_id), -- Сохраняем первый session_id, если новый не установлен
                 reached_final_table = tournaments.reached_final_table OR excluded.reached_final_table, -- Флаг становится TRUE если хоть раз был TRUE
                 final_table_initial_stack_chips = COALESCE(excluded.final_table_initial_stack_chips, tournaments.final_table_initial_stack_chips),
@@ -640,6 +641,100 @@ class TournamentRepository:
         query = "DELETE FROM tournaments WHERE tournament_id = ?"
         self.db.execute_update(query, (tournament_id,))
 
+    def get_all_finish_places(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> List[int]:
+        """
+        Возвращает список всех finish_place для расчета среднего места.
+        Опционально фильтрует по сессии или бай-ину.
+        """
+        query = "SELECT finish_place FROM tournaments WHERE finish_place IS NOT NULL"
+        conditions = []
+        params = []
+
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+
+        if conditions:
+            query += " AND " + " AND ".join(conditions)
+
+        results = self.db.execute_query(query, params)
+        return [row[0] for row in results if row[0] is not None]
+
+    def get_final_table_finish_places(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> List[int]:
+        """
+        Возвращает список finish_place только для турниров с финальным столом.
+        Опционально фильтрует по сессии или бай-ину.
+        """
+        query = """
+            SELECT finish_place 
+            FROM tournaments 
+            WHERE reached_final_table = 1 
+                AND finish_place IS NOT NULL 
+                AND finish_place BETWEEN 1 AND 9
+        """
+        conditions = []
+        params = []
+
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+
+        if conditions:
+            query += " AND " + " AND ".join(conditions)
+
+        results = self.db.execute_query(query, params)
+        return [row[0] for row in results if row[0] is not None]
+
+    def get_final_table_initial_stacks(self, session_id: Optional[str] = None, buyin_filter: Optional[float] = None) -> Dict[str, List[float]]:
+        """
+        Возвращает словарь {'chips': [...], 'bb': [...]} со стеками на старте финалки.
+        Опционально фильтрует по сессии или бай-ину.
+        """
+        query = """
+            SELECT 
+                final_table_initial_stack_chips,
+                final_table_initial_stack_bb
+            FROM tournaments
+            WHERE reached_final_table = 1
+                AND final_table_initial_stack_chips IS NOT NULL
+                AND final_table_initial_stack_bb IS NOT NULL
+        """
+        conditions = []
+        params = []
+
+        if session_id:
+            conditions.append("session_id = ?")
+            params.append(session_id)
+
+        if buyin_filter is not None:
+            conditions.append("buyin = ?")
+            params.append(buyin_filter)
+
+        if conditions:
+            query += " AND " + " AND ".join(conditions)
+
+        results = self.db.execute_query(query, params)
+        
+        stacks = {
+            'chips': [],
+            'bb': []
+        }
+        
+        for row in results:
+            if row[0] is not None and row[1] is not None:
+                stacks['chips'].append(row[0])
+                stacks['bb'].append(row[1])
+        
+        return stacks
+
 
 # Создаем синглтон экземпляр репозитория
-tournament_repository = TournamentRepository()
+tournament_repository = TournamentRepository(database_manager)

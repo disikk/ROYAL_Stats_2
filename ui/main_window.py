@@ -2,7 +2,7 @@
 
 """
 Главное окно приложения Royal Stats (Hero-only).
-Оркестрирует UI компоненты и взаимодействует с ApplicationService.
+Оркестрирует UI компоненты и взаимодействует с ``AppFacade``.
 """
 
 from PyQt6 import QtWidgets, QtGui, QtCore
@@ -12,9 +12,9 @@ import logging
 from typing import List, Optional
 from datetime import datetime
 
-import config
-# Импортируем синглтон ApplicationService
-from application_service import application_service, ApplicationService
+from services.app_config import app_config
+# Импортируем типы для AppFacade
+from services import AppFacade
 
 # Импортируем UI компоненты
 from ui.app_style import apply_dark_theme, format_money, format_percentage, apply_cell_color_by_value
@@ -30,7 +30,7 @@ from models import OverallStats
 from ui.database_management_dialog import DatabaseManagementDialog # Предполагаем, что такой файл будет создан
 
 logger = logging.getLogger('ROYAL_Stats.MainWindow')
-logger.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
+logger.setLevel(logging.DEBUG if app_config.debug else logging.INFO)
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -40,13 +40,13 @@ class MainWindow(QtWidgets.QMainWindow):
     # Сигнал для обновления прогресса импорта
     import_progress_signal = QtCore.pyqtSignal(int, int, str)
 
-    def __init__(self):
+    def __init__(self, app_facade: AppFacade):
         super().__init__()
-        self.setWindowTitle(config.APP_TITLE)
+        self.setWindowTitle(app_config.app_title)
         self.setMinimumSize(1300, 880)
 
-        # ApplicationService уже проинициализирован как синглтон
-        self.app_service = application_service
+        # Используем переданный AppFacade
+        self.app_service = app_facade
         
         # Флаги для отслеживания загруженности вкладок
         self._tab_loaded = {'stats': False, 'tournaments': False, 'sessions': False}
@@ -61,13 +61,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def _load_initial_data(self):
         """Подключает последнюю БД и запускает обновление статистики."""
         try:
-            self.app_service.switch_database(config.LAST_DB_PATH, load_stats=False)
+            self.app_service.switch_database(app_config.current_db_path, load_stats=False)
             self._update_db_label()
             self.statusBar().showMessage(
                 f"Подключена база данных: {os.path.basename(self.app_service.db_path)}"
             )
         except Exception as e:
-            logger.error(f"Ошибка при подключении к последней БД {config.LAST_DB_PATH}: {e}")
+            logger.error(f"Ошибка при подключении к последней БД {app_config.current_db_path}: {e}")
             self.statusBar().showMessage(f"Ошибка подключения к БД: {e}", 5000)
             self.manage_databases()
             return
@@ -167,7 +167,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Метка с именем подключенной базы данных и версией приложения в правой части тулбара
         self.toolbar.addWidget(self.db_status_label)
-        version_label = QtWidgets.QLabel(f"v{config.APP_VERSION}")
+        version_label = QtWidgets.QLabel(f"v{app_config.app_version}")
         version_label.setStyleSheet("color: #777; font-size: 9px; margin-right: 4px;")
         self.toolbar.addWidget(version_label)
 
@@ -176,8 +176,8 @@ class MainWindow(QtWidgets.QMainWindow):
         main_layout.addWidget(self.tabs)
 
         # Создаем экземпляры представлений (Views)
-        # Передаем им ApplicationService или ссылки на репозитории через ApplicationService
-        # Лучше передавать сам ApplicationService, чтобы Views могли запрашивать у него данные
+        # Передаем им AppFacade или ссылки на репозитории через него
+        # Лучше передавать сам AppFacade, чтобы Views могли запрашивать у него данные
         self.stats_grid = StatsGrid(self.app_service)
         self.stats_grid.overallStatsChanged.connect(self._update_toolbar_info)
         self.tournament_view = TournamentView(self.app_service)
@@ -218,7 +218,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if hasattr(self, 'session_view') and self.session_view:
                     self.session_view.hide_loading_overlay()
 
-                config.set_db_path(new_path)
+                app_config.set_current_db_path(new_path)
                 # Сбрасываем кеши и запускаем асинхронную загрузку данных
                 self.invalidate_all_caches()
                 self.refresh_all_data()
@@ -259,7 +259,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "Импорт и обработка файлов...",
             "Отмена",
             0,
-            0, # Установим максимум позже, когда ApplicationService подсчитает файлы
+            0, # Установим максимум позже, когда AppFacade подсчитает файлы
             self
         )
         self.progress_dialog.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
@@ -273,7 +273,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.progress_dialog.canceled.connect(self._cancel_import) # Обработка отмены
 
         # Запускаем импорт в отдельном потоке, чтобы не блокировать UI
-        # ApplicationService сам будет вызывать self.import_progress_signal.emit
+        # AppFacade сам будет вызывать self.import_progress_signal.emit
         self.import_thread = ImportThread(
             self.app_service,
             paths,
@@ -401,6 +401,8 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         logger.info("Запуск полного обновления данных...")
         self._tab_loaded = {'stats': False, 'tournaments': False, 'sessions': False}
+        # Сбрасываем кеши сразу, чтобы избежать отображения устаревших данных
+        self.invalidate_all_caches()
         self._refresh_all_data_async(force_all=True)
 
     def _refresh_all_data_async(self, force_all: bool = False):
@@ -493,6 +495,26 @@ class MainWindow(QtWidgets.QMainWindow):
             self.session_view.reload(show_overlay=show_overlay)
             self._tab_loaded['sessions'] = True
 
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+        """Корректно завершает все фоновые потоки перед закрытием окна."""
+        logger.debug("Закрытие окна, останавливаем фоновые потоки")
+        try:
+            thread_manager.cancel_all()
+        except Exception as e:
+            logger.warning(f"Ошибка при отмене фоновых операций: {e}")
+
+        if hasattr(self, "import_thread") and self.import_thread:
+            if self.import_thread.isRunning():
+                self.import_thread.cancel()
+                self.import_thread.wait()
+
+        if hasattr(self, "refresh_thread") and self.refresh_thread:
+            if self.refresh_thread.isRunning():
+                self.refresh_thread.quit()
+                self.refresh_thread.wait()
+
+        super().closeEvent(event)
+
 
 # Отдельный поток для импорта, чтобы не блокировать GUI
 class ImportThread(QtCore.QThread):
@@ -502,7 +524,7 @@ class ImportThread(QtCore.QThread):
 
     def __init__(
         self,
-        app_service: ApplicationService,
+        app_service: AppFacade,
         paths: List[str],
         session_name: str,
         progress_signal: QtCore.pyqtSignal,
@@ -520,7 +542,7 @@ class ImportThread(QtCore.QThread):
         """Метод, выполняемый в потоке."""
         logger.info(f"Поток импорта запущен для {len(self.paths)} путей.")
         try:
-            # Передаем progress_update и is_cancelled в ApplicationService
+            # Передаем progress_update и is_cancelled в AppFacade
             self.app_service.import_files(
                 self.paths,
                 self.session_name,
@@ -536,9 +558,11 @@ class ImportThread(QtCore.QThread):
             # Явно закрываем SQLite-соединение этого потока,
             # чтобы избежать его закрытия из другого потока при сборке мусора.
             try:
-                self.app_service.db.close_connection()
+                self.app_service.db_manager.close_connection()
             except Exception as e:
                 logger.warning(f"Ошибка при закрытии соединения в потоке импорта: {e}")
+            # Сбрасываем флаг отмены на случай повторного использования потока
+            self._is_canceled = False
 
         logger.info("Поток импорта завершает работу.")
         
@@ -554,7 +578,7 @@ class ImportThread(QtCore.QThread):
     # Метод для установки флага отмены (вызывается из основного потока)
     def cancel(self):
          self._is_canceled = True
-         # TODO: Реализовать проверку флага _is_canceled в ApplicationService.import_files
+         # TODO: Реализовать проверку флага _is_canceled в AppFacade.import_files
          # и парсерах, чтобы корректно прервать выполнение.
 
 
@@ -565,7 +589,7 @@ class RefreshThread(QtCore.QThread):
     finished_update = QtCore.pyqtSignal()     # Сигнал завершения
     error_occurred = QtCore.pyqtSignal(str)   # Сигнал ошибки
     
-    def __init__(self, app_service: ApplicationService):
+    def __init__(self, app_service: AppFacade):
         super().__init__()
         self.app_service = app_service
         
@@ -612,7 +636,7 @@ class RefreshThread(QtCore.QThread):
 # Вот пример его базовой структуры для справки:
 
 # class DatabaseManagementDialog(QtWidgets.QDialog):
-#     def __init__(self, parent=None, app_service: ApplicationService = None):
+#     def __init__(self, parent=None, app_service: AppFacade = None):
 #         super().__init__(parent)
 #         self.app_service = app_service
 #         self.setWindowTitle("Управление базами данных")

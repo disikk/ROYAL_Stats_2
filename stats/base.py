@@ -4,14 +4,17 @@
 Базовый класс для всех стат-плагинов Royal Stats.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 # Импортируем модели, которые могут понадобиться плагинам
-from models import Tournament, FinalTableHand, Session, OverallStats
+from models import Tournament, FinalTableHand, Session
 
 class BaseStat:
     """
     Интерфейс для стат-плагина.
     Все плагины обязаны определить name, description и реализовать compute.
+    
+    Плагины должны быть полностью автономными и рассчитывать
+    все необходимые значения из сырых данных.
     """
 
     # Уникальное имя стата
@@ -22,22 +25,31 @@ class BaseStat:
     def compute(self,
                 tournaments: List[Tournament],
                 final_table_hands: List[FinalTableHand],
-                sessions: List[Session], # Возможно не понадобится для большинства стат
-                overall_stats: OverallStats, # Возможно не понадобится для большинства стат
-                **kwargs: Any # Для дополнительных параметров, например, buyin_filter
+                sessions: Optional[List[Session]] = None,
+                **kwargs: Any
                ) -> Dict[str, Any]:
         """
         Главный метод расчёта стата.
-        На вход подаются:
-            - tournaments: список объектов Tournament (отфильтрованных по сессии/бай-ину, если применимо)
-            - final_table_hands: список объектов FinalTableHand (отфильтрованных по сессии/турнирам, если применимо)
-            - sessions: список объектов Session (может быть использован для сессионной статистики)
-            - overall_stats: объект OverallStats (для доступа к уже посчитанным общим агрегатам)
-            - **kwargs: Дополнительные параметры (например, buyin_filter)
+        
+        Args:
+            tournaments: список объектов Tournament (отфильтрованных по сессии/бай-ину, если применимо)
+            final_table_hands: список объектов FinalTableHand (отфильтрованных по сессии/турнирам)
+            sessions: список объектов Session (опционально, для сессионной статистики)
+            **kwargs: Дополнительные параметры:
+                - buyin_filter: фильтр по бай-ину
+                - precomputed_stats: Dict[str, Any] - предварительно рассчитанные значения
+                  для оптимизации (например, total_buy_in, total_prize и т.д.)
 
-        Возвращает словарь с рассчитанными значениями стата.
-        Ключи словаря будут использоваться для отображения.
-        Значения должны быть примитивными типами (int, float, str, bool).
+        Returns:
+            Словарь с рассчитанными значениями стата.
+            Ключи словаря будут использоваться для отображения.
+            Значения должны быть примитивными типами (int, float, str, bool).
+            
+        Note:
+            Плагины должны самостоятельно рассчитывать все необходимые значения
+            из переданных сырых данных. Для оптимизации можно использовать
+            precomputed_stats из kwargs, но плагин должен корректно работать
+            и без них (fallback на прямые вычисления).
         """
         raise NotImplementedError("Плагин обязан реализовать метод compute()")
 

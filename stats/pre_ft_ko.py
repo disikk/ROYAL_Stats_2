@@ -16,11 +16,12 @@ class PreFTKOStat(BaseStat):
         self,
         tournaments: List[Any],
         final_table_hands: List[FinalTableHand],
-        sessions: List[Any],
-        overall_stats: OverallStats,
+        sessions: List[Any] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Возвращает количество KO перед финальным столом."""
+        overall_stats = kwargs.get('overall_stats')
+        
         if not final_table_hands and not overall_stats:
             return {"pre_ft_ko_count": 0.0}
 

@@ -2,47 +2,49 @@
 
 """
 ROI-плагин для Hero.
-Обновлен для работы с OverallStats.
+Автономный плагин для расчета Return On Investment.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from .base import BaseStat
-from models import OverallStats # Импортируем модель OverallStats
-import math # Для округления
+from models import Tournament, FinalTableHand, Session
 
 class ROIStat(BaseStat):
     name = "ROI"
     description = "Return On Investment (ROI) — средний возврат на вложенный бай-ин для Hero"
 
     def compute(self,
-                tournaments: List[Any], # Не используется напрямую этим плагином
-                final_table_hands: List[Any], # Не используется напрямую этим плагином
-                sessions: List[Any], # Не используется напрямую этим плагином
-                overall_stats: OverallStats, # Используем overall_stats для получения общих сумм
+                tournaments: Optional[List[Tournament]] = None,
+                final_table_hands: Optional[List[FinalTableHand]] = None,
+                sessions: Optional[List[Session]] = None,
+                overall_stats: Optional[Any] = None,
                 **kwargs: Any
                ) -> Dict[str, Any]:
         """
-        Рассчитывает ROI на основе общих бай-инов и выплат из OverallStats.
+        Рассчитывает ROI на основе общих бай-инов и выплат.
 
         Args:
-            overall_stats: Объект OverallStats с общими суммами бай-инов и выплат.
-            **kwargs: Дополнительные параметры.
+            tournaments: Список турниров для расчета
+            final_table_hands: Список рук финального стола (не используется)
+            sessions: Список сессий (не используется)
+            **kwargs: Дополнительные параметры:
+                - precomputed_stats: Dict с предварительно рассчитанными total_buy_in и total_prize
 
         Returns:
-            Словарь с ключом 'roi'.
+            Словарь с ключом 'roi' - процент возврата инвестиций
         """
-        if not tournaments and not overall_stats:
-            return {"roi": 0.0}
-
-        # ROI рассчитывается на основе общих сумм, которые хранятся в OverallStats.
-        # Плагин использует эти агрегированные данные.
-
-        total_buyin = 0.0
-        total_payout = 0.0
-
-        if overall_stats and hasattr(overall_stats, 'total_buy_in') and hasattr(overall_stats, 'total_prize'):
-             total_buyin = overall_stats.total_buy_in
-             total_payout = overall_stats.total_prize
+        # Проверяем наличие предварительно рассчитанных значений для оптимизации
+        tournaments = tournaments or []
+        precomputed_stats = kwargs.get('precomputed_stats', {})
+        
+        if 'total_buy_in' in precomputed_stats and 'total_prize' in precomputed_stats:
+            # Используем предварительно рассчитанные значения
+            total_buyin = precomputed_stats['total_buy_in']
+            total_payout = precomputed_stats['total_prize']
+        else:
+            # Рассчитываем из сырых данных
+            total_buyin = sum(t.buyin for t in tournaments if t.buyin is not None)
+            total_payout = sum(t.payout if t.payout is not None else 0 for t in tournaments)
 
         profit = total_payout - total_buyin
 

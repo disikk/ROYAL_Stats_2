@@ -10,8 +10,7 @@ import os
 import logging
 from typing import Optional, List
 
-import config
-from application_service import ApplicationService
+from services import AppFacade
 
 logger = logging.getLogger('ROYAL_Stats.DatabaseDialog')
 
@@ -19,7 +18,7 @@ logger = logging.getLogger('ROYAL_Stats.DatabaseDialog')
 class DatabaseManagementDialog(QtWidgets.QDialog):
     """Диалог для управления базами данных."""
     
-    def __init__(self, parent=None, app_service: ApplicationService = None):
+    def __init__(self, parent=None, app_service: AppFacade = None):
         super().__init__(parent)
         self.app_service = app_service
         self.selected_db_path = None

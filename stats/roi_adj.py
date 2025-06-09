@@ -19,11 +19,12 @@ class ROIAdjustedStat(BaseStat):
         self,
         tournaments: List[Tournament],
         final_table_hands: List[Any],
-        sessions: List[Any],
-        overall_stats: OverallStats,
+        sessions: List[Any] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Возвращает ROI, скорректированный на KO Luck."""
+        overall_stats = kwargs.get('overall_stats')
+        
         if not tournaments and not overall_stats:
             return {"roi_adj": 0.0}
 

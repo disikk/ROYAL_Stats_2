@@ -10,19 +10,21 @@
 import re
 import logging
 from typing import Dict, Any, Optional
-import config
-from .base_parser import BaseParser # Наследуем от BaseParser
+from services.app_config import app_config
+from .base_plugin import BaseParserPlugin  # Базовый класс плагина-парсера
+from .parse_results import TournamentSummaryResult
 
 logger = logging.getLogger('ROYAL_Stats.TournamentSummaryParser')
-logger.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
+logger.setLevel(logging.DEBUG if app_config.debug else logging.INFO)
 
 
-class TournamentSummaryParser(BaseParser):
-    """
-    Парсер summary-файла турнира только для Hero.
-    """
+class TournamentSummaryParser(BaseParserPlugin[TournamentSummaryResult]):
+    """Плагин-парсер summary-файла турнира только для Hero."""
 
-    def __init__(self, hero_name: str = config.HERO_NAME):
+    name = "tournament_summary_parser"
+    file_type = "ts"
+
+    def __init__(self, hero_name: str = app_config.hero_name):
         super().__init__(hero_name)
         # --- Регулярки для парсинга TS ---
         self.re_tournament_id_title = re.compile(r"Tournament #(\d+)") # Из заголовка (первая строка)
@@ -33,7 +35,7 @@ class TournamentSummaryParser(BaseParser):
         self.re_tournament_name_title = re.compile(r"Tournament #\d+,\s*(.+)") # Название турнира из заголовка (первая строка)
 
 
-    def parse(self, file_content: str, filename: str = "") -> Dict[str, Any]:
+    def parse(self, file_content: str, filename: str = "") -> TournamentSummaryResult:
         """
         Парсит summary-файл, извлекая информацию о турнире для Hero.
 
@@ -131,17 +133,21 @@ class TournamentSummaryParser(BaseParser):
 
         if tournament_id is None:
             logger.warning(f"Не удалось извлечь Tournament ID из файла Summary: {filename}. Файл пропущен.")
-            return {'tournament_id': None} # Пропускаем файл без ID
+            return TournamentSummaryResult(
+                tournament_id=None,
+                tournament_name=None,
+                start_time=None,
+                buyin=None,
+                payout=None,
+                finish_place=None
+            )
 
+        return TournamentSummaryResult(
+            tournament_id=tournament_id,
+            tournament_name=tournament_name,
+            start_time=start_time,
+            buyin=buyin,
+            payout=payout,
+            finish_place=finish_place
+        )
 
-        result = {
-            "tournament_id": tournament_id,
-            "tournament_name": tournament_name,
-            "start_time": start_time,
-            "buyin": buyin,
-            "payout": payout,
-            "finish_place": finish_place,
-        }
-
-
-        return result

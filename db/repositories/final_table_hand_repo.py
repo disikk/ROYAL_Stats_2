@@ -7,9 +7,9 @@
 import sqlite3
 import logging
 from typing import List, Optional
-from db.manager import database_manager # Используем синглтон менеджер БД
+from db.manager import DatabaseManager, database_manager  # Используем синглтон менеджер БД
 from models import FinalTableHand
-import config
+from services.app_config import app_config
 
 logger = logging.getLogger('ROYAL_Stats.FinalTableHandRepository')
 logger.setLevel(logging.DEBUG)
@@ -19,8 +19,9 @@ class FinalTableHandRepository:
     Репозиторий для хранения и получения данных раздач финального стола Hero.
     """
 
-    def __init__(self):
-        self.db = database_manager # Используем синглтон
+    def __init__(self, db_manager: DatabaseManager = database_manager):
+        """Initialize repository with the shared database manager."""
+        self.db = db_manager
 
     def add_hand(self, hand: FinalTableHand):
         """
@@ -28,8 +29,13 @@ class FinalTableHandRepository:
         Использует ON CONFLICT(tournament_id, hand_id) DO NOTHING
         для игнорирования дубликатов при повторном парсинге тех же файлов.
         """
-        logger.info(f"=== ОТЛАДКА add_hand ===")
-        logger.info(f"Попытка сохранить руку: tournament_id={hand.tournament_id}, hand_id={hand.hand_id}, table_size={hand.table_size}")
+        logger.debug("=== ОТЛАДКА add_hand ===")
+        logger.debug(
+            "Попытка сохранить руку: tournament_id=%s, hand_id=%s, table_size=%s",
+            hand.tournament_id,
+            hand.hand_id,
+            hand.table_size,
+        )
         
         query = """
             INSERT INTO hero_final_table_hands (
@@ -55,7 +61,7 @@ class FinalTableHandRepository:
         )
         
         result = self.db.execute_update(query, params)
-        logger.info(f"Результат execute_update: {result} строк изменено")
+        logger.debug("Результат execute_update: %s строк изменено", result)
 
 
     def get_hands_by_tournament(self, tournament_id: str) -> List[FinalTableHand]:
@@ -166,23 +172,76 @@ class FinalTableHandRepository:
         return [FinalTableHand.from_dict(dict(row)) for row in results]
 
     def get_first_final_table_hand_for_tournament(self, tournament_id: str) -> Optional[FinalTableHand]:
-         """
-         Возвращает первую раздачу 9-max стола (по hand_number) для указанного турнира.
-         Это соответствует старту финалки.
-         """
-         # Ищем раздачу с минимальным номером, которая является 9-max
-         # (полагаемся на то, что 9-max стол появляется один раз и с него начинается финалка)
-         query = """
+        """Возвращает первую раздачу 9-max стола для указанного турнира."""
+        query = """
             SELECT
                 id, tournament_id, hand_id, hand_number, table_size, bb,
                 hero_stack, players_count, hero_ko_this_hand, pre_ft_ko,
                 hero_ko_attempts, session_id, is_early_final
             FROM hero_final_table_hands
-             WHERE tournament_id = ? AND table_size = ? -- Ищем именно 9-max стол
-             ORDER BY hand_number ASC
-             LIMIT 1
-         """
-         result = self.db.execute_query(query, (tournament_id, config.FINAL_TABLE_SIZE))
-         if result:
-             return FinalTableHand.from_dict(dict(result[0]))
-         return None
+            WHERE tournament_id = ? AND table_size = ?
+            ORDER BY hand_number ASC
+            LIMIT 1
+        """
+        result = self.db.execute_query(
+            query,
+            (tournament_id, app_config.final_table_size)
+        )
+        if result:
+            return FinalTableHand.from_dict(dict(result[0]))
+        return None
+    
+    def get_ko_counts_for_tournaments(self, tournament_ids: List[str]) -> dict[str, float]:
+        """
+        Эффективно получает суммарное количество KO для списка турниров одним запросом.
+        Возвращает словарь {tournament_id: total_ko}.
+        """
+        if not tournament_ids:
+            return {}
+        
+        placeholders = ','.join(['?' for _ in tournament_ids])
+        query = f"""
+            SELECT tournament_id, SUM(hero_ko_this_hand) as total_ko
+            FROM hero_final_table_hands
+            WHERE tournament_id IN ({placeholders})
+            GROUP BY tournament_id
+        """
+        
+        results = self.db.execute_query(query, tournament_ids)
+        return {row[0]: row[1] if row[1] is not None else 0.0 for row in results}
+    
+    def get_early_ft_ko_count(self, tournament_ids: Optional[List[str]] = None) -> float:
+        """
+        Получает общее количество KO в ранней стадии финального стола.
+        Оптимизирован для инкрементального обновления с возможностью фильтрации по турнирам.
+        """
+        query = """
+            SELECT SUM(hero_ko_this_hand) 
+            FROM hero_final_table_hands 
+            WHERE is_early_final = 1
+        """
+        params = []
+        
+        if tournament_ids:
+            placeholders = ','.join(['?' for _ in tournament_ids])
+            query += f" AND tournament_id IN ({placeholders})"
+            params.extend(tournament_ids)
+        
+        result = self.db.execute_query(query, params)
+        return result[0][0] if result and result[0][0] is not None else 0.0
+    
+    def get_pre_ft_ko_sum(self, tournament_ids: Optional[List[str]] = None) -> float:
+        """
+        Получает сумму Pre-FT KO.
+        Оптимизирован для инкрементального обновления.
+        """
+        query = "SELECT SUM(pre_ft_ko) FROM hero_final_table_hands"
+        params = []
+        
+        if tournament_ids:
+            placeholders = ','.join(['?' for _ in tournament_ids])
+            query += f" WHERE tournament_id IN ({placeholders})"
+            params.extend(tournament_ids)
+        
+        result = self.db.execute_query(query, params)
+        return result[0][0] if result and result[0][0] is not None else 0.0

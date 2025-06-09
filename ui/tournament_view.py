@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 from ui.app_style import setup_table_widget, format_money, apply_cell_color_by_value, format_percentage
-from application_service import ApplicationService
+from services import AppFacade
 from models import Tournament
 from ui.background import thread_manager
 from db.repositories.tournament_repo import PaginationResult  # Импортируем новый класс
@@ -22,7 +22,7 @@ logger.setLevel(logging.DEBUG)
 class TournamentView(QtWidgets.QWidget):
     """Виджет для отображения списка турниров с фильтрами."""
     
-    def __init__(self, app_service: ApplicationService, parent=None):
+    def __init__(self, app_service: AppFacade, parent=None):
         super().__init__(parent)
         self.app_service = app_service
         self.tournaments: List[Tournament] = []
@@ -311,8 +311,13 @@ class TournamentView(QtWidgets.QWidget):
         self.session_mapping.clear()
         
     def reload(self, show_overlay: bool = True):
-        """Перезагружает данные из ApplicationService."""
+        """Перезагружает данные через AppFacade."""
         self._show_overlay = show_overlay
+        # При каждой перезагрузке обновляем дату "По" на текущее время,
+        # иначе новые турниры с временем старше предыдущего значения
+        # не будут отображаться, пока приложение не перезапустится.
+        self.current_date_to = datetime.now()
+        self.date_to_edit.setDateTime(QtCore.QDateTime.currentDateTime())
         if show_overlay:
             self.show_loading_overlay()
         def load_filter_data(is_cancelled_callback=None):
@@ -346,7 +351,7 @@ class TournamentView(QtWidgets.QWidget):
             buyin_filter = float(buyin) if buyin and buyin != "Все" else None
             result_filter = result_filter_map.get(self.result_filter.currentText())
             session_id = self.session_filter.currentData()
-            return self.app_service.tournament_repo.get_tournaments_paginated(
+            return self.app_service.get_tournaments_paginated(
                 page=self.current_page,
                 page_size=int(self.page_size_combo.currentText()),
                 session_id=session_id,
@@ -544,7 +549,7 @@ class TournamentView(QtWidgets.QWidget):
 
             def delete_tournament(is_cancelled_callback=None):
                 self.app_service.delete_tournament(tournament.tournament_id)
-                self.app_service._update_all_statistics(None)
+                self.app_service.update_all_statistics(progress_callback=None)
                 return tournament.tournament_id
 
             thread_manager.run_in_thread(

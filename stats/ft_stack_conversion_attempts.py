@@ -6,7 +6,7 @@ from statistics import median
 
 from .base import BaseStat
 from models import Tournament, OverallStats, FinalTableHand
-import config
+from services.app_config import app_config
 
 
 class FTStackConversionAttemptsStat(BaseStat):
@@ -32,10 +32,11 @@ class FTStackConversionAttemptsStat(BaseStat):
         self,
         tournaments: List[Tournament],
         final_table_hands: List[Any],
-        sessions: List[Any],
-        overall_stats: OverallStats,
+        sessions: List[Any] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
+        overall_stats = kwargs.get('overall_stats')
+        
         if not tournaments and not overall_stats:
             return {
                 "ft_stack_conversion_attempts": 0.0,

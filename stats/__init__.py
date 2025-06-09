@@ -7,14 +7,17 @@
 
 import pkgutil
 import importlib
-import os # ИМПОРТИРУЕМ OS
-import logging # Импортируем logging для использования в обработке ошибок импорта плагинов
+import os
+import logging
+from typing import List, Type
+
+from plugins import discover_plugins as _discover_external_plugins
 
 from .base import BaseStat
 # Импортируем базовый класс явно
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG) # Уровень логирования для инициализации плагинов
+logger.setLevel(logging.DEBUG)  # Уровень логирования для инициализации плагинов
 
 # Автоматический импорт всех модулей в папке stats, кроме base и __init__
 __all__ = []
@@ -44,5 +47,24 @@ for loader, module_name, is_pkg in pkgutil.iter_modules([package_dir]):
         except Exception as e:
             # Логируем ошибку импорта плагина, но не прерываем работу
             logger.error(f"Ошибка при импорте стат-плагина '{module_name}': {e}")
+
+
+def discover_plugins(entry_point_group: str = "royal_stats") -> List[Type[BaseStat]]:
+    """Возвращает все классы стат-плагинов из пакета и entry points."""
+    plugins: List[Type[BaseStat]] = []
+
+    # Сначала добавляем плагины из пакета stats
+    for name in __all__:
+        attr = globals().get(name)
+        if isinstance(attr, type) and issubclass(attr, BaseStat) and attr is not BaseStat:
+            plugins.append(attr)
+
+    # Затем пробуем загрузить плагины через plugin_manager
+    discovered = _discover_external_plugins(entry_point_group)
+    for plugin_cls in discovered.get("stats", []):
+        if isinstance(plugin_cls, type) and issubclass(plugin_cls, BaseStat):
+            plugins.append(plugin_cls)
+
+    return plugins
 
 

@@ -9,7 +9,7 @@ import logging
 from typing import List, Optional
 
 from ui.app_style import setup_table_widget, format_money, apply_cell_color_by_value
-from application_service import ApplicationService
+from services import AppFacade
 from models import Session
 from ui.background import thread_manager
 
@@ -20,7 +20,7 @@ logger.setLevel(logging.DEBUG)
 class SessionView(QtWidgets.QWidget):
     """Виджет для отображения списка игровых сессий."""
     
-    def __init__(self, app_service: ApplicationService, parent=None):
+    def __init__(self, app_service: AppFacade, parent=None):
         super().__init__(parent)
         self.app_service = app_service
         self.sessions: List[Session] = []
@@ -181,7 +181,7 @@ class SessionView(QtWidgets.QWidget):
         self._data_cache.clear()
         
     def reload(self, show_overlay: bool = True):
-        """Перезагружает данные из ApplicationService."""
+        """Перезагружает данные через AppFacade."""
         self._show_overlay = show_overlay
         if show_overlay:
             self.show_loading_overlay()
@@ -217,7 +217,7 @@ class SessionView(QtWidgets.QWidget):
         )
             
     def _load_data(self):
-        """Загружает данные из ApplicationService в кеш."""
+        """Загружает данные через AppFacade в кеш."""
         
         # Загружаем все сессии
         self.sessions = self.app_service.get_all_sessions()
@@ -346,7 +346,7 @@ class SessionView(QtWidgets.QWidget):
             self.loading_label.setText("Удаление сессии...")
             def delete_session(is_cancelled_callback=None):
                 self.app_service.delete_session(session.session_id)
-                self.app_service._update_all_statistics(None)
+                self.app_service.update_all_statistics(progress_callback=None)
                 return session.session_name
             thread_manager.run_in_thread(
                 widget_id=f"{id(self)}_delete",
