@@ -7,7 +7,7 @@
 
 import sqlite3
 from typing import List, Optional, Dict, Any, Tuple
-from db.manager import database_manager # Используем синглтон менеджер БД
+from db.manager import DatabaseManager, database_manager  # Используем синглтон менеджер БД
 from models import Tournament
 from dataclasses import dataclass
 
@@ -25,10 +25,10 @@ class TournamentRepository:
     Хранит и отдает инфу о турнирах только по Hero из таблицы tournaments.
     """
 
-    def __init__(self):
+    def __init__(self, db_manager: DatabaseManager = database_manager):
         """Initialize repository with the shared database manager."""
         # Репозитории работают с менеджером БД
-        self.db = database_manager  # Используем синглтон
+        self.db = db_manager
 
     def add_or_update_tournament(self, tournament: Tournament):
         """
@@ -737,4 +737,4 @@ class TournamentRepository:
 
 
 # Создаем синглтон экземпляр репозитория
-tournament_repository = TournamentRepository()
+tournament_repository = TournamentRepository(database_manager)

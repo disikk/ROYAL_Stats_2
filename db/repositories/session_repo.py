@@ -7,7 +7,7 @@
 
 import uuid
 from typing import List, Optional
-from db.manager import database_manager # Используем синглтон менеджер БД
+from db.manager import DatabaseManager, database_manager  # Используем синглтон менеджер БД
 from models import Session
 
 class SessionRepository:
@@ -15,9 +15,9 @@ class SessionRepository:
     Репозиторий для хранения агрегированной инфы о сессиях Hero из таблицы sessions.
     """
 
-    def __init__(self):
+    def __init__(self, db_manager: DatabaseManager = database_manager):
         """Initialize repository with the shared database manager."""
-        self.db = database_manager  # Используем синглтон
+        self.db = db_manager
 
     def create_session(self, session_name: str) -> Session:
         """
@@ -185,4 +185,4 @@ class SessionRepository:
         return stats
 
 # Создаем синглтон экземпляр репозитория
-session_repository = SessionRepository()
+session_repository = SessionRepository(database_manager)

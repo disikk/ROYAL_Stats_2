@@ -5,7 +5,7 @@
 """
 
 from typing import Optional
-from db.manager import database_manager # Используем синглтон менеджер БД
+from db.manager import DatabaseManager, database_manager  # Используем синглтон менеджер БД
 from models import OverallStats
 from datetime import datetime # Импортируем для метки времени
 
@@ -15,9 +15,9 @@ class OverallStatsRepository:
     Предполагается, что таблица содержит ровно одну запись с id=1.
     """
 
-    def __init__(self):
+    def __init__(self, db_manager: DatabaseManager = database_manager):
         """Initialize repository with the shared database manager."""
-        self.db = database_manager  # Используем синглтон
+        self.db = db_manager
 
     def get_overall_stats(self) -> OverallStats:
         """
