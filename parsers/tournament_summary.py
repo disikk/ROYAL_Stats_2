@@ -10,12 +10,12 @@
 import re
 import logging
 from typing import Dict, Any, Optional
-import config
+from services import app_config
 from .base_parser import BaseParser # Наследуем от BaseParser
 from .parse_results import TournamentSummaryResult
 
 logger = logging.getLogger('ROYAL_Stats.TournamentSummaryParser')
-logger.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
+logger.setLevel(logging.DEBUG if app_config.debug else logging.INFO)
 
 
 class TournamentSummaryParser(BaseParser[TournamentSummaryResult]):
@@ -23,7 +23,7 @@ class TournamentSummaryParser(BaseParser[TournamentSummaryResult]):
     Парсер summary-файла турнира только для Hero.
     """
 
-    def __init__(self, hero_name: str = config.HERO_NAME):
+    def __init__(self, hero_name: str = app_config.hero_name):
         super().__init__(hero_name)
         # --- Регулярки для парсинга TS ---
         self.re_tournament_id_title = re.compile(r"Tournament #(\d+)") # Из заголовка (первая строка)

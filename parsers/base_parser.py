@@ -6,7 +6,7 @@
 """
 from abc import ABC, abstractmethod
 from typing import Any, TypeVar, Generic
-import config  # Для имени Hero
+from services import app_config  # Для имени Hero
 
 # Тип для результата парсера
 T = TypeVar('T')
@@ -18,7 +18,7 @@ class BaseParser(ABC, Generic[T]):
     Теперь типизирован для возврата конкретных моделей.
     """
 
-    def __init__(self, hero_name: str = config.HERO_NAME):
+    def __init__(self, hero_name: str = app_config.hero_name):
         # Имя Hero берется из конфигурации
         self.hero_name = hero_name
 

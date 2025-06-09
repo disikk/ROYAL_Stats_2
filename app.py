@@ -20,7 +20,8 @@ from services import (
     ImportService,
     StatisticsService,
     EventBus,
-    get_event_bus
+    get_event_bus,
+    app_config,
 )
 from db.manager import database_manager
 from db.repositories import (
@@ -81,14 +82,8 @@ class DependencyContainer:
         self.app_facade = self._create_app_facade()
     
     def _create_config(self) -> AppConfig:
-        """Создает конфигурацию приложения."""
-        try:
-            # Пытаемся создать из существующего config.py
-            return AppConfig.from_legacy_config()
-        except Exception:
-            # Если не удалось, создаем дефолтную
-            logger.warning("Не удалось загрузить legacy config, используем дефолтную конфигурацию")
-            return AppConfig()
+        """Возвращает глобальную конфигурацию приложения."""
+        return app_config
     
     def _create_import_service(self) -> ImportService:
         """Создает сервис импорта с зависимостями."""

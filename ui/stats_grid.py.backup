@@ -21,7 +21,7 @@ import math
 from statistics import median
 from datetime import datetime
 
-import config
+from services import app_config
 from application_service import ApplicationService
 from models import OverallStats
 
@@ -60,7 +60,7 @@ from stats import (
 from ui.background import thread_manager
 
 logger = logging.getLogger('ROYAL_Stats.StatsGrid')
-logger.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
+logger.setLevel(logging.DEBUG if app_config.debug else logging.INFO)
 
 
 class StatCard(QtWidgets.QFrame):
@@ -1208,7 +1208,7 @@ class StatsGrid(QtWidgets.QWidget):
                 early_ko_count += h.hero_ko_this_hand
             pre_ft_ko_count += h.pre_ft_ko
             
-            if h.table_size == config.FINAL_TABLE_SIZE:
+            if h.table_size == app_config.final_table_size:
                 saved = first_hands.get(h.tournament_id)
                 if saved is None or h.hand_number < saved.hand_number:
                     first_hands[h.tournament_id] = h
@@ -1217,7 +1217,7 @@ class StatsGrid(QtWidgets.QWidget):
         stats.early_ft_ko_per_tournament = early_ko_count / ft_count if ft_count else 0.0
         stats.pre_ft_ko_count = round(pre_ft_ko_count, 1)
         stats.incomplete_ft_count = sum(
-            1 for h in first_hands.values() if h.players_count < config.FINAL_TABLE_SIZE
+            1 for h in first_hands.values() if h.players_count < app_config.final_table_size
         )
         all_places = [t.finish_place for t in tournaments if t.finish_place is not None]
         stats.avg_finish_place = sum(all_places) / len(all_places) if all_places else 0.0

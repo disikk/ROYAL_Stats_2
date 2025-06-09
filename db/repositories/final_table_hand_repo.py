@@ -7,9 +7,9 @@
 import sqlite3
 import logging
 from typing import List, Optional
-from db.manager import database_manager # Используем синглтон менеджер БД
+from db.manager import database_manager  # Используем синглтон менеджер БД
 from models import FinalTableHand
-import config
+from services import app_config
 
 logger = logging.getLogger('ROYAL_Stats.FinalTableHandRepository')
 logger.setLevel(logging.DEBUG)
@@ -167,26 +167,19 @@ class FinalTableHandRepository:
         return [FinalTableHand.from_dict(dict(row)) for row in results]
 
     def get_first_final_table_hand_for_tournament(self, tournament_id: str) -> Optional[FinalTableHand]:
-         """
-         Возвращает первую раздачу 9-max стола (по hand_number) для указанного турнира.
-         Это соответствует старту финалки.
-         """
-         # Ищем раздачу с минимальным номером, которая является 9-max
-         # (полагаемся на то, что 9-max стол появляется один раз и с него начинается финалка)
-         query = """
-            SELECT
-                id, tournament_id, hand_id, hand_number, table_size, bb,
-                hero_stack, players_count, hero_ko_this_hand, pre_ft_ko,
-                hero_ko_attempts, session_id, is_early_final
-            FROM hero_final_table_hands
-             WHERE tournament_id = ? AND table_size = ? -- Ищем именно 9-max стол
-             ORDER BY hand_number ASC
-             LIMIT 1
-         """
-         result = self.db.execute_query(query, (tournament_id, config.FINAL_TABLE_SIZE))
-         if result:
-             return FinalTableHand.from_dict(dict(result[0]))
-         return None
+        """Возвращает первую раздачу 9-max стола для указанного турнира."""
+        query = (
+            "SELECT id, tournament_id, hand_id, hand_number, table_size, bb, "
+            "hero_stack, players_count, hero_ko_this_hand, pre_ft_ko, "
+            "hero_ko_attempts, session_id, is_early_final "
+            "FROM hero_final_table_hands "
+            "WHERE tournament_id = ? AND table_size = ? "
+            "ORDER BY hand_number ASC LIMIT 1"
+        )
+        result = self.db.execute_query(query, (tournament_id, app_config.final_table_size))
+        if result:
+            return FinalTableHand.from_dict(dict(result[0]))
+        return None
     
     def get_ko_counts_for_tournaments(self, tournament_ids: List[str]) -> dict[str, float]:
         """

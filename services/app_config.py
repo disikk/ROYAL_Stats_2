@@ -5,6 +5,7 @@
 """
 
 import os
+import configparser
 from dataclasses import dataclass, field
 from typing import Dict
 
@@ -107,29 +108,77 @@ class AppConfig:
         """Возвращает строку подключения к текущей БД."""
         return f"sqlite:///{self.current_db_path}"
     
+
     @classmethod
-    def from_legacy_config(cls) -> 'AppConfig':
-        """
-        Создает AppConfig из существующего config.py.
-        Используется для миграции со старой системы конфигурации.
-        """
-        # Импортируем старый config для получения значений
-        import config as legacy_config
-        
+    def from_ini(cls, path: str) -> 'AppConfig':
+        """Создает AppConfig из INI-файла."""
+        parser = configparser.ConfigParser()
+        parser.read(path, encoding="utf-8")
+        base_dir = os.path.dirname(os.path.abspath(path))
+
+        ko_coeff = {int(k): float(v) for k, v in parser.items("ko_coeff")} if parser.has_section("ko_coeff") else None
+        buyin_avg = {float(k): float(v) for k, v in parser.items("buyin_avg_ko_map")} if parser.has_section("buyin_avg_ko_map") else None
+
         return cls(
-            hero_name=legacy_config.HERO_NAME,
-            app_version=legacy_config.APP_VERSION,
-            app_title=legacy_config.APP_TITLE,
-            base_dir=legacy_config.BASE_DIR,
-            default_db_name=legacy_config.DEFAULT_DB_NAME,
-            final_table_size=legacy_config.FINAL_TABLE_SIZE,
-            early_ft_min_players=legacy_config.EARLY_FT_MIN_PLAYERS,
-            min_ko_blind_level_bb=legacy_config.MIN_KO_BLIND_LEVEL_BB,
-            ko_coeff=legacy_config.KO_COEFF.copy(),
-            buyin_avg_ko_map=legacy_config.BUYIN_AVG_KO_MAP.copy(),
-            theme=legacy_config.THEME,
-            lang=legacy_config.LANG,
-            ui_scale=legacy_config.UI_SCALE,
-            chart_type=legacy_config.CHART_TYPE,
-            debug=legacy_config.DEBUG,
+            hero_name=parser.get("app", "hero_name", fallback="Hero"),
+            app_version=parser.get("app", "app_version", fallback="0.1.0"),
+            app_title=parser.get("app", "app_title", fallback="MBR Stats by disikk"),
+            base_dir=base_dir,
+            default_db_name=parser.get("paths", "default_db_name", fallback="royal_stats.db"),
+            final_table_size=parser.getint("game", "final_table_size", fallback=9),
+            early_ft_min_players=parser.getint("game", "early_ft_min_players", fallback=6),
+            min_ko_blind_level_bb=parser.getint("game", "min_ko_blind_level_bb", fallback=0),
+            ko_coeff=ko_coeff if ko_coeff is not None else {
+                8: 0.40,
+                7: 0.50,
+                6: 0.60,
+                5: 0.60,
+                4: 0.65,
+                3: 0.70,
+                2: 0.70,
+            },
+            buyin_avg_ko_map=buyin_avg if buyin_avg is not None else {
+                0.25: 0.23,
+                1.0: 0.93,
+                3.0: 2.79,
+                10.0: 9.28,
+                25.0: 23.18,
+            },
+            theme=parser.get("interface", "theme", fallback="dark"),
+            lang=parser.get("interface", "lang", fallback="ru"),
+            ui_scale=parser.getfloat("interface", "ui_scale", fallback=1.0),
+            chart_type=parser.get("interface", "chart_type", fallback="bar"),
+            debug=parser.getboolean("app", "debug", fallback=False),
         )
+
+    def save_to_ini(self, path: str) -> None:
+        """Сохраняет публичную часть конфигурации в INI-файл."""
+        parser = configparser.ConfigParser()
+
+        parser["game"] = {
+            "final_table_size": str(self.final_table_size),
+            "early_ft_min_players": str(self.early_ft_min_players),
+            "min_ko_blind_level_bb": str(self.min_ko_blind_level_bb),
+        }
+
+        parser["ko_coeff"] = {str(k): str(v) for k, v in self.ko_coeff.items()}
+        parser["buyin_avg_ko_map"] = {str(k): str(v) for k, v in self.buyin_avg_ko_map.items()}
+
+        with open(path, "w", encoding="utf-8") as f:
+            parser.write(f)
+
+
+# --- Глобальный экземпляр конфигурации ---
+
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.ini")
+
+try:
+    app_config = AppConfig.from_ini(CONFIG_PATH)
+except Exception:
+    app_config = AppConfig()
+    try:
+        app_config.save_to_ini(CONFIG_PATH)
+    except Exception:
+        pass
+
+

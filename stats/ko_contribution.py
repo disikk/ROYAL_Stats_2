@@ -6,7 +6,7 @@
 from typing import Dict, Any, List
 from .base import BaseStat
 from models import Tournament
-from config import BUYIN_AVG_KO_MAP
+from services import app_config
 
 
 class KOContributionStat(BaseStat):
@@ -39,8 +39,8 @@ class KOContributionStat(BaseStat):
             total_payout += payout
             if t.finish_place in regular:
                 regular_sum += regular[t.finish_place] * buyin
-            if buyin in BUYIN_AVG_KO_MAP and t.ko_count > 0:
-                expected_ko += t.ko_count * BUYIN_AVG_KO_MAP[buyin]
+            if buyin in app_config.buyin_avg_ko_map and t.ko_count > 0:
+                expected_ko += t.ko_count * app_config.buyin_avg_ko_map[buyin]
 
         ko_payout = total_payout - regular_sum
         actual = (ko_payout / total_payout * 100.0) if total_payout > 0 else 0.0
