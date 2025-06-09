@@ -7,11 +7,11 @@
 
 import pkgutil
 import importlib
-import os  # ИМПОРТИРУЕМ OS
-import logging  # Импортируем logging для использования в обработке ошибок импорта плагинов
+import os
+import logging
 from typing import List, Type
 
-from importlib import metadata
+from plugins import discover_plugins as _discover_external_plugins
 
 from .base import BaseStat
 # Импортируем базовый класс явно
@@ -49,7 +49,7 @@ for loader, module_name, is_pkg in pkgutil.iter_modules([package_dir]):
             logger.error(f"Ошибка при импорте стат-плагина '{module_name}': {e}")
 
 
-def discover_plugins(entry_point_group: str = "royal_stats.plugins") -> List[Type[BaseStat]]:
+def discover_plugins(entry_point_group: str = "royal_stats") -> List[Type[BaseStat]]:
     """Возвращает все классы стат-плагинов из пакета и entry points."""
     plugins: List[Type[BaseStat]] = []
 
@@ -59,19 +59,11 @@ def discover_plugins(entry_point_group: str = "royal_stats.plugins") -> List[Typ
         if isinstance(attr, type) and issubclass(attr, BaseStat) and attr is not BaseStat:
             plugins.append(attr)
 
-    # Затем пробуем загрузить плагины из entry points
-    try:
-        eps = metadata.entry_points()
-        selected = eps.select(group=entry_point_group) if hasattr(eps, "select") else eps.get(entry_point_group, [])
-        for ep in selected:
-            try:
-                plugin_class = ep.load()
-                if isinstance(plugin_class, type) and issubclass(plugin_class, BaseStat):
-                    plugins.append(plugin_class)
-            except Exception as e:  # pragma: no cover - защитная логика
-                logger.error(f"Ошибка загрузки плагина из entry point {ep.name}: {e}")
-    except Exception as e:  # pragma: no cover - защитная логика
-        logger.error(f"Ошибка при получении entry points: {e}")
+    # Затем пробуем загрузить плагины через plugin_manager
+    discovered = _discover_external_plugins(entry_point_group)
+    for plugin_cls in discovered.get("stats", []):
+        if isinstance(plugin_cls, type) and issubclass(plugin_cls, BaseStat):
+            plugins.append(plugin_cls)
 
     return plugins
 
