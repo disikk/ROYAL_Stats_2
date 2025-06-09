@@ -776,6 +776,10 @@ class StatsGrid(QtWidgets.QWidget):
     def reload(self, show_overlay: bool = True):
         """Перезагружает все данные из ApplicationService."""
         self._show_overlay = show_overlay
+        # Аналогично TournamentView обновляем верхнюю границу диапазона дат,
+        # чтобы статистика учитывала недавно добавленные турниры.
+        self.current_date_to = datetime.now()
+        self.date_to_edit.setDateTime(QtCore.QDateTime.currentDateTime())
         if show_overlay:
             self.show_loading_overlay()
 
