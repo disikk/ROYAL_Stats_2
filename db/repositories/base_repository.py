@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, TypeVar, Generic, List, Any
 import logging
 
-from db.manager import database_manager
+from db.manager import DatabaseManager, database_manager
 
 logger = logging.getLogger('ROYAL_Stats.BaseRepository')
 
@@ -23,9 +23,9 @@ class BaseRepository(ABC, Generic[T]):
     Предоставляет общий функционал для работы с БД.
     """
     
-    def __init__(self):
+    def __init__(self, db_manager: DatabaseManager = database_manager):
         """Инициализация базового репозитория."""
-        self._db_manager = database_manager
+        self._db_manager = db_manager
         self._logger = logging.getLogger(f'ROYAL_Stats.{self.__class__.__name__}')
     
     @property

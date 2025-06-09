@@ -78,12 +78,12 @@ class DependencyContainer:
         self.db_manager = database_manager
         self.db_manager.set_db_path(self.config.current_db_path)
         
-        # Создаем репозитории
-        self.tournament_repo = TournamentRepository()
-        self.session_repo = SessionRepository()
-        self.overall_stats_repo = OverallStatsRepository()
-        self.place_dist_repo = PlaceDistributionRepository()
-        self.ft_hand_repo = FinalTableHandRepository()
+        # Создаем репозитории, передавая единый менеджер БД
+        self.tournament_repo = TournamentRepository(self.db_manager)
+        self.session_repo = SessionRepository(self.db_manager)
+        self.overall_stats_repo = OverallStatsRepository(self.db_manager)
+        self.place_dist_repo = PlaceDistributionRepository(self.db_manager)
+        self.ft_hand_repo = FinalTableHandRepository(self.db_manager)
         
         # Создаем парсеры
         self.hh_parser = HandHistoryParser(self.config.hero_name)

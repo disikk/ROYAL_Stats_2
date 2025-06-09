@@ -70,8 +70,8 @@ class AppFacade:
         self.statistics_service = statistics_service
         
         # Репозитории для прямого доступа к данным
-        self._tournament_repo = TournamentRepository()
-        self._session_repo = SessionRepository()
+        self._tournament_repo = TournamentRepository(db_manager)
+        self._session_repo = SessionRepository(db_manager)
         
         logger.info("AppFacade инициализирован")
     
@@ -455,14 +455,14 @@ class AppFacade:
         if buyin_filter is not None:
             # Если есть фильтр по байину, получаем список tournament_id
             tournament_ids = [t.tournament_id for t in tournaments]
-            ft_hand_repo = FinalTableHandRepository()
+            ft_hand_repo = FinalTableHandRepository(self.db_manager)
             ft_hands = ft_hand_repo.get_hands_by_filters(
                 session_id=session_id,
                 tournament_ids=tournament_ids if tournament_ids else None
             )
         else:
             # Если нет фильтра по байину, фильтруем только по сессии
-            ft_hand_repo = FinalTableHandRepository()
+            ft_hand_repo = FinalTableHandRepository(self.db_manager)
             ft_hands = ft_hand_repo.get_hands_by_filters(session_id=session_id)
         
         # Вычисляем общую статистику для отфильтрованных данных

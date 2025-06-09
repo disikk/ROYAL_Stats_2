@@ -124,11 +124,11 @@ class ApplicationService:
 
     def __init__(self):
         self.db = database_manager
-        self._tournament_repo = TournamentRepository()
-        self.session_repo = SessionRepository()
-        self.overall_stats_repo = OverallStatsRepository()
-        self.place_dist_repo = PlaceDistributionRepository()
-        self.ft_hand_repo = FinalTableHandRepository()
+        self._tournament_repo = TournamentRepository(self.db)
+        self.session_repo = SessionRepository(self.db)
+        self.overall_stats_repo = OverallStatsRepository(self.db)
+        self.place_dist_repo = PlaceDistributionRepository(self.db)
+        self.ft_hand_repo = FinalTableHandRepository(self.db)
 
         # Кеш статистики по БД. Ключ - путь к БД, значение - OverallStats
         self._overall_stats_cache: Dict[str, OverallStats] = {}

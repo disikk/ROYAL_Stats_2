@@ -7,7 +7,7 @@
 import sqlite3
 import logging
 from typing import List, Optional
-from db.manager import database_manager # Используем синглтон менеджер БД
+from db.manager import DatabaseManager, database_manager  # Используем синглтон менеджер БД
 from models import FinalTableHand
 import config
 
@@ -19,8 +19,8 @@ class FinalTableHandRepository:
     Репозиторий для хранения и получения данных раздач финального стола Hero.
     """
 
-    def __init__(self):
-        self.db = database_manager # Используем синглтон
+    def __init__(self, db_manager: DatabaseManager = database_manager):
+        self.db = db_manager  # Используем переданный менеджер
 
     def add_hand(self, hand: FinalTableHand):
         """
