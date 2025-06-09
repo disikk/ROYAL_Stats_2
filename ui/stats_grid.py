@@ -778,6 +778,16 @@ class StatsGrid(QtWidgets.QWidget):
         """Сбрасывает кеш данных."""
         self._cache_valid = False
         self._data_cache.clear()
+        # Сбрасываем отображаемые значения карточек
+        for card in self.cards.values():
+            card.update_value("-")
+        for card in self.bigko_cards.values():
+            card.update_value("-")
+        # Очищаем график
+        self._clear_chart_overlays()
+        empty_chart = QChart()
+        empty_chart.setTheme(QChart.ChartTheme.ChartThemeDark)
+        self.chart_view.setChart(empty_chart)
         
     def reload(self, show_overlay: bool = True):
         """Перезагружает все данные через AppFacade."""
