@@ -609,6 +609,26 @@ class RefreshThread(QtCore.QThread):
                 else:
                     self.progress_update.emit("Обновление статистики сессий...")
 
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+        """Корректно завершает все фоновые потоки перед закрытием окна."""
+        logger.debug("Закрытие окна, останавливаем фоновые потоки")
+        try:
+            thread_manager.cancel_all()
+        except Exception as e:
+            logger.warning(f"Ошибка при отмене фоновых операций: {e}")
+
+        if hasattr(self, "import_thread") and self.import_thread:
+            if self.import_thread.isRunning():
+                self.import_thread.cancel()
+                self.import_thread.wait()
+
+        if hasattr(self, "refresh_thread") and self.refresh_thread:
+            if self.refresh_thread.isRunning():
+                self.refresh_thread.quit()
+                self.refresh_thread.wait()
+
+        super().closeEvent(event)
+
 
 # Предполагаем, что DatabaseManagementDialog.py будет создан отдельно
 # Вот пример его базовой структуры для справки:
