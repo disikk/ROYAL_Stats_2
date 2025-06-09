@@ -29,8 +29,13 @@ class FinalTableHandRepository:
         Использует ON CONFLICT(tournament_id, hand_id) DO NOTHING
         для игнорирования дубликатов при повторном парсинге тех же файлов.
         """
-        logger.info(f"=== ОТЛАДКА add_hand ===")
-        logger.info(f"Попытка сохранить руку: tournament_id={hand.tournament_id}, hand_id={hand.hand_id}, table_size={hand.table_size}")
+        logger.debug("=== ОТЛАДКА add_hand ===")
+        logger.debug(
+            "Попытка сохранить руку: tournament_id=%s, hand_id=%s, table_size=%s",
+            hand.tournament_id,
+            hand.hand_id,
+            hand.table_size,
+        )
         
         query = """
             INSERT INTO hero_final_table_hands (
@@ -56,7 +61,7 @@ class FinalTableHandRepository:
         )
         
         result = self.db.execute_update(query, params)
-        logger.info(f"Результат execute_update: {result} строк изменено")
+        logger.debug("Результат execute_update: %s строк изменено", result)
 
 
     def get_hands_by_tournament(self, tournament_id: str) -> List[FinalTableHand]:

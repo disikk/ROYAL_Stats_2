@@ -72,7 +72,7 @@ class AppFacade:
         self._tournament_repo = TournamentRepository(db_manager)
         self._session_repo = SessionRepository(db_manager)
         
-        logger.info("AppFacade инициализирован")
+        logger.debug("AppFacade инициализирован")
     
     # === Управление базами данных ===
     
