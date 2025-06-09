@@ -31,7 +31,6 @@ from db.repositories import (
     PlaceDistributionRepository,
     FinalTableHandRepository,
 )
-from parsers import HandHistoryParser, TournamentSummaryParser
 
 
 # Настройка базового логгирования
@@ -76,10 +75,6 @@ class DependencyContainer:
         self.place_dist_repo = PlaceDistributionRepository(self.db_manager)
         self.ft_hand_repo = FinalTableHandRepository(self.db_manager)
 
-        # Создаем парсеры
-        self.hh_parser = HandHistoryParser(self.config.hero_name)
-        self.ts_parser = TournamentSummaryParser(self.config.hero_name)
-
         # Создаем сервисы
         self.import_service = self._create_import_service()
         self.statistics_service = self._create_statistics_service()
@@ -104,8 +99,7 @@ class DependencyContainer:
             tournament_repo=self.tournament_repo,
             session_repo=self.session_repo,
             ft_hand_repo=self.ft_hand_repo,
-            hh_parser=self.hh_parser,
-            ts_parser=self.ts_parser,
+            parser_plugins=None,
             event_bus=self.event_bus,
         )
 

@@ -8,12 +8,15 @@
 
 import os
 import logging
-from typing import List, Dict, Any, Optional, Callable
+from typing import List, Dict, Any, Optional, Callable, TYPE_CHECKING
 from datetime import datetime
 
 from models import Tournament, Session, FinalTableHand
-from parsers import HandHistoryParser, TournamentSummaryParser
 from parsers.file_classifier import FileClassifier
+
+if TYPE_CHECKING:
+    from parsers.base_plugin import BaseParserPlugin
+    from parsers import discover_plugins
 from db.repositories import (
     TournamentRepository,
     SessionRepository,
@@ -36,8 +39,7 @@ class ImportService:
         tournament_repo: TournamentRepository,
         session_repo: SessionRepository,
         ft_hand_repo: FinalTableHandRepository,
-        hh_parser: HandHistoryParser,
-        ts_parser: TournamentSummaryParser,
+        parser_plugins: Optional[List['BaseParserPlugin']] = None,
         event_bus: Optional[EventBus] = None
     ):
         """
@@ -47,16 +49,29 @@ class ImportService:
             tournament_repo: Репозиторий для работы с турнирами
             session_repo: Репозиторий для работы с сессиями
             ft_hand_repo: Репозиторий для работы с руками финального стола
-            hh_parser: Парсер истории рук
-            ts_parser: Парсер сводок турниров
+            parser_plugins: Список парсеров или None для автозагрузки
             event_bus: Шина событий для публикации событий импорта
         """
         self.tournament_repo = tournament_repo
         self.session_repo = session_repo
         self.ft_hand_repo = ft_hand_repo
-        self.hh_parser = hh_parser
-        self.ts_parser = ts_parser
         self.event_bus = event_bus
+
+        self.parsers = self._init_parsers(parser_plugins)
+
+    def _init_parsers(self, parser_plugins: Optional[List['BaseParserPlugin']]) -> Dict[str, 'BaseParserPlugin']:
+        """Загружает парсеры из переданного списка или через plugin_manager."""
+        if parser_plugins is None:
+            from parsers import discover_plugins
+            parser_plugins = [cls() for cls in discover_plugins()]
+
+        parsers: Dict[str, 'BaseParserPlugin'] = {}
+        for plugin in parser_plugins:
+            try:
+                parsers[plugin.file_type] = plugin
+            except Exception as exc:  # pragma: no cover - защитная логика
+                logger.error("Не удалось инициализировать парсер %s: %s", plugin, exc)
+        return parsers
     
     def import_files(
         self,
@@ -379,24 +394,32 @@ class ImportService:
             return
         
         # Обрабатываем файл соответствующим парсером
+        parser = self.parsers.get(file_type)
+        if not parser:
+            logger.warning(f"Не найден парсер для типа {file_type} (файл {file_path})")
+            return
+
         if file_type == 'hh':
             self._parse_hand_history(
-                content, 
-                file_path, 
-                session_id, 
-                parsed_tournaments_data, 
+                parser,
+                content,
+                file_path,
+                session_id,
+                parsed_tournaments_data,
                 all_final_table_hands_data
             )
         elif file_type == 'ts':
             self._parse_tournament_summary(
-                content, 
-                file_path, 
-                session_id, 
+                parser,
+                content,
+                file_path,
+                session_id,
                 parsed_tournaments_data
             )
     
     def _parse_hand_history(
         self,
+        parser: 'BaseParserPlugin',
         content: str,
         file_path: str,
         session_id: str,
@@ -404,7 +427,7 @@ class ImportService:
         all_final_table_hands_data: List[Dict[str, Any]]
     ):
         """Обрабатывает файл истории рук."""
-        hh_result = self.hh_parser.parse(content, filename=os.path.basename(file_path))
+        hh_result = parser.parse(content, filename=os.path.basename(file_path))
         tourney_id = hh_result.tournament_id
         
         logger.debug(f"Tournament ID: {tourney_id}")
@@ -442,13 +465,14 @@ class ImportService:
     
     def _parse_tournament_summary(
         self,
+        parser: 'BaseParserPlugin',
         content: str,
         file_path: str,
         session_id: str,
         parsed_tournaments_data: Dict[str, Dict[str, Any]]
     ):
         """Обрабатывает файл сводки турнира."""
-        ts_result = self.ts_parser.parse(content, filename=os.path.basename(file_path))
+        ts_result = parser.parse(content, filename=os.path.basename(file_path))
         tourney_id = ts_result.tournament_id
         
         if tourney_id:

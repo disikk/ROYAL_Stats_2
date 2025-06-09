@@ -15,7 +15,7 @@ import logging
 from typing import Dict, List, Set, Tuple, Optional, Any
 from services.app_config import app_config
 from models import Tournament, FinalTableHand # Импортируем модели
-from .base_parser import BaseParser # ИМПОРТИРУЕМ BaseParser
+from .base_plugin import BaseParserPlugin  # Базовый класс плагина-парсера
 from .parse_results import HandHistoryResult
 
 logger = logging.getLogger('ROYAL_Stats.HandHistoryParser')
@@ -77,7 +77,11 @@ class HandData:
         self.players = list(seats.keys())  # Список игроков за столом в этой раздаче
         self.eliminated_players = set()  # Игроки, выбывшие в этой раздаче
 
-class HandHistoryParser(BaseParser[HandHistoryResult]):
+class HandHistoryParser(BaseParserPlugin[HandHistoryResult]):
+    """Плагин-парсер hand history."""
+
+    name = "hand_history_parser"
+    file_type = "hh"
     def __init__(self, hero_name: str = app_config.hero_name):
         super().__init__(hero_name)
         self._tournament_id: Optional[str] = None
