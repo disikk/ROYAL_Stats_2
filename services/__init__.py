@@ -15,7 +15,7 @@ from .events import (
     TournamentDeletedEvent,
     CacheInvalidatedEvent
 )
-from .app_config import AppConfig
+from .app_config import AppConfig, app_config
 from .app_facade import AppFacade
 
 __all__ = [
@@ -31,5 +31,6 @@ __all__ = [
     'TournamentDeletedEvent',
     'CacheInvalidatedEvent',
     'AppConfig',
+    'app_config',
     'AppFacade',
 ]

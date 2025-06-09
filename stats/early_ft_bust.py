@@ -6,7 +6,7 @@
 from typing import Dict, Any, List
 from .base import BaseStat
 from models import Tournament, OverallStats
-import config
+from services.app_config import app_config
 
 
 class EarlyFTBustStat(BaseStat):
@@ -17,8 +17,8 @@ class EarlyFTBustStat(BaseStat):
     @property
     def description(self) -> str:
         return (
-            f"Количество вылетов Hero на ранней стадии финального стола ({config.EARLY_FT_MIN_PLAYERS}-"
-            f"{config.FINAL_TABLE_SIZE} место)"
+            f"Количество вылетов Hero на ранней стадии финального стола ({app_config.early_ft_min_players}-"
+            f"{app_config.final_table_size} место)"
         )
 
     def compute(
@@ -46,7 +46,7 @@ class EarlyFTBustStat(BaseStat):
                 for t in ft_tournaments
                 if (
                     t.finish_place is not None
-                    and config.EARLY_FT_MIN_PLAYERS <= t.finish_place <= config.FINAL_TABLE_SIZE
+                    and app_config.early_ft_min_players <= t.finish_place <= app_config.final_table_size
                 )
             )
             total_final_tables = len(ft_tournaments)

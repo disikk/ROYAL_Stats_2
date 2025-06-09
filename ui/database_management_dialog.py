@@ -10,7 +10,6 @@ import os
 import logging
 from typing import Optional, List
 
-import config
 from services import AppFacade
 
 logger = logging.getLogger('ROYAL_Stats.DatabaseDialog')

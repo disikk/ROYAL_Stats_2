@@ -15,6 +15,7 @@ from ui.app_style import apply_dark_theme
 
 # Импорты для DI контейнера
 from services import (
+    app_config,
     AppConfig,
     AppFacade,
     ImportService,
@@ -81,14 +82,8 @@ class DependencyContainer:
         self.app_facade = self._create_app_facade()
     
     def _create_config(self) -> AppConfig:
-        """Создает конфигурацию приложения."""
-        try:
-            # Пытаемся создать из существующего config.py
-            return AppConfig.from_legacy_config()
-        except Exception:
-            # Если не удалось, создаем дефолтную
-            logger.warning("Не удалось загрузить legacy config, используем дефолтную конфигурацию")
-            return AppConfig()
+        """Возвращает глобальную конфигурацию приложения."""
+        return app_config
     
     def _create_import_service(self) -> ImportService:
         """Создает сервис импорта с зависимостями."""
