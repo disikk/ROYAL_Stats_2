@@ -87,11 +87,19 @@ class ImportService:
         """
         logger.info(f"=== НАЧАЛО ИМПОРТА ===")
         logger.debug(f"is_canceled_callback передан: {is_canceled_callback is not None}")
+
+        def _cancelled() -> bool:
+            """Проверяет, запрошена ли отмена импорта."""
+            return bool(is_canceled_callback and is_canceled_callback())
         
         # Инициализируем прогресс-бар и оцениваем количество файлов
         if progress_callback:
             progress_callback(0, 0, "Подготовка файлов...")
-        
+
+        if _cancelled():
+            logger.info("Импорт отменен пользователем перед подсчетом файлов.")
+            return None
+
         # Подсчет общего количества файлов-кандидатов
         total_candidates = self._count_candidate_files(paths, is_canceled_callback)
         if total_candidates == 0:
@@ -99,20 +107,32 @@ class ImportService:
             if progress_callback:
                 progress_callback(0, 0, "Нет файлов для обработки")
             return None
+
+        if _cancelled():
+            logger.info("Импорт отменен пользователем после подсчета файлов.")
+            if progress_callback:
+                progress_callback(0, 0, "Импорт отменен")
+            return None
         
         # Сбор и фильтрация покерных файлов
         all_files_to_process, filtered_count = self._collect_poker_files(
             paths, total_candidates, progress_callback, is_canceled_callback
         )
-        
+
         if filtered_count > 0:
             logger.debug(f"Отфильтровано {filtered_count} файлов без покерных шаблонов")
-        
+
         total_files = len(all_files_to_process)
         if total_files == 0:
             logger.info("Нет файлов для обработки.")
             if progress_callback:
                 progress_callback(0, 0, "Нет файлов для обработки")
+            return None
+
+        if _cancelled():
+            logger.info("Импорт отменен пользователем после подготовки файлов.")
+            if progress_callback:
+                progress_callback(0, 0, "Импорт отменен")
             return None
         
         # Рассчитываем веса этапов для прогресса
@@ -133,6 +153,10 @@ class ImportService:
             if progress_callback:
                 progress_callback(0, total_steps, "Ошибка: не удалось создать сессию")
             return None
+
+        if _cancelled():
+            logger.info("Импорт отменен пользователем после создания сессии.")
+            return None
         
         session_id = current_session.session_id
         
@@ -149,6 +173,10 @@ class ImportService:
         
         if not parsed_data:
             return None  # Импорт был отменен
+
+        if _cancelled():
+            logger.info("Импорт отменен пользователем после парсинга файлов.")
+            return None
         
         current_progress = PARSING_WEIGHT
         
@@ -165,9 +193,13 @@ class ImportService:
         
         if not saved_data:
             return None  # Импорт был отменен или произошла ошибка
+
+        if _cancelled():
+            logger.info("Импорт отменен пользователем после сохранения данных.")
+            return None
         
         # Публикуем событие об успешном импорте
-        if self.event_bus:
+        if self.event_bus and not _cancelled():
             imported_tournament_ids = list(parsed_data['tournaments'].keys())
             self.event_bus.publish(DataImportedEvent(
                 timestamp=datetime.now(),
@@ -180,7 +212,7 @@ class ImportService:
             ))
         
         # Завершение импорта
-        if progress_callback:
+        if progress_callback and not _cancelled():
             progress_callback(total_steps, total_steps, "Импорт завершен успешно!")
         
         logger.info(f"=== ИМПОРТ ЗАВЕРШЕН ===")
