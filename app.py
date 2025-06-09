@@ -31,23 +31,7 @@ from db.repositories import (
     FinalTableHandRepository,
 )
 from parsers import HandHistoryParser, TournamentSummaryParser
-from stats import (
-    BaseStat,
-    BigKOStat,
-    ITMStat,
-    ROIStat,
-    TotalKOStat,
-    AvgKOPerTournamentStat,
-    FinalTableReachStat,
-    AvgFTInitialStackStat,
-    EarlyFTKOStat,
-    EarlyFTBustStat,
-    PreFTKOStat,
-    AvgFinishPlaceStat,
-    AvgFinishPlaceFTStat,
-    AvgFinishPlaceNoFTStat,
-    FTStackConversionStat,
-)
+
 
 # Настройка базового логгирования
 logging.basicConfig(
@@ -119,24 +103,6 @@ class DependencyContainer:
     
     def _create_statistics_service(self) -> StatisticsService:
         """Создает сервис статистики с зависимостями."""
-        # Создаем плагины статистики
-        stat_plugins = [
-            TotalKOStat(),
-            ITMStat(),
-            ROIStat(),
-            BigKOStat(),
-            AvgKOPerTournamentStat(),
-            FinalTableReachStat(),
-            AvgFTInitialStackStat(),
-            EarlyFTKOStat(),
-            EarlyFTBustStat(),
-            PreFTKOStat(),
-            AvgFinishPlaceStat(),
-            AvgFinishPlaceFTStat(),
-            AvgFinishPlaceNoFTStat(),
-            FTStackConversionStat(),
-        ]
-        
         return StatisticsService(
             tournament_repo=self.tournament_repo,
             session_repo=self.session_repo,
@@ -144,7 +110,7 @@ class DependencyContainer:
             place_dist_repo=self.place_dist_repo,
             ft_hand_repo=self.ft_hand_repo,
             cache_file_path=self.config.stats_cache_file,
-            stat_plugins=stat_plugins,
+            stat_plugins=None,
             event_bus=self.event_bus
         )
     

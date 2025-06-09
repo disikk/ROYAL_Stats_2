@@ -22,23 +22,7 @@ from db.repositories import (
     PlaceDistributionRepository,
     FinalTableHandRepository,
 )
-from stats import (
-    BaseStat,
-    BigKOStat,
-    ITMStat,
-    ROIStat,
-    TotalKOStat,
-    AvgKOPerTournamentStat,
-    FinalTableReachStat,
-    AvgFTInitialStackStat,
-    EarlyFTKOStat,
-    EarlyFTBustStat,
-    PreFTKOStat,
-    AvgFinishPlaceStat,
-    AvgFinishPlaceFTStat,
-    AvgFinishPlaceNoFTStat,
-    FTStackConversionStat,
-)
+from stats import BaseStat, discover_plugins
 from .event_bus import EventBus
 from .events import StatisticsUpdatedEvent, CacheInvalidatedEvent
 
@@ -71,7 +55,8 @@ class StatisticsService:
             place_dist_repo: Репозиторий распределения мест
             ft_hand_repo: Репозиторий рук финального стола
             cache_file_path: Путь к файлу кеша (по умолчанию из config)
-            stat_plugins: Список плагинов статистики (по умолчанию создаются стандартные)
+            stat_plugins: Список плагинов статистики. Если None, плагины
+                автоматически загружаются из пакета ``stats`` и entry points
             event_bus: Шина событий для публикации событий статистики
         """
         self.tournament_repo = tournament_repo
@@ -105,22 +90,13 @@ class StatisticsService:
     
     def _get_default_stat_plugins(self) -> List[BaseStat]:
         """Возвращает список стандартных плагинов статистики."""
-        return [
-            TotalKOStat(),
-            ITMStat(),
-            ROIStat(),
-            BigKOStat(),
-            AvgKOPerTournamentStat(),
-            FinalTableReachStat(),
-            AvgFTInitialStackStat(),
-            EarlyFTKOStat(),
-            EarlyFTBustStat(),
-            PreFTKOStat(),
-            AvgFinishPlaceStat(),
-            AvgFinishPlaceFTStat(),
-            AvgFinishPlaceNoFTStat(),
-            FTStackConversionStat(),
-        ]
+        plugins = []
+        for plugin_cls in discover_plugins():
+            try:
+                plugins.append(plugin_cls())
+            except Exception as e:  # pragma: no cover - защитная логика
+                logger.error(f"Не удалось инициализировать плагин {plugin_cls}: {e}")
+        return plugins
     
     def calculate_stats_with_plugins(
         self,
