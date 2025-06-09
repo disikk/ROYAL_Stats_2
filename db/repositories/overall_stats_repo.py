@@ -16,7 +16,8 @@ class OverallStatsRepository:
     """
 
     def __init__(self):
-        self.db = database_manager # Используем синглтон
+        """Initialize repository with the shared database manager."""
+        self.db = database_manager  # Используем синглтон
 
     def get_overall_stats(self) -> OverallStats:
         """
