@@ -6,16 +6,16 @@
 
 import sqlite3
 from typing import Dict
-from db.manager import database_manager # Используем синглтон менеджер БД
+from db.manager import DatabaseManager, database_manager  # Используем синглтон менеджер БД
 
 class PlaceDistributionRepository:
     """
     Репозиторий для хранения и получения распределения мест Hero на финальном столе (1-9).
     """
 
-    def __init__(self):
+    def __init__(self, db_manager: DatabaseManager = database_manager):
         """Initialize repository with the shared database manager."""
-        self.db = database_manager  # Используем синглтон
+        self.db = db_manager
 
     def get_distribution(self) -> Dict[int, int]:
         """
