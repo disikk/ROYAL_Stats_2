@@ -319,7 +319,11 @@ class StatsGrid(QtWidgets.QWidget):
         self.date_from_edit.setCalendarPopup(True)
         self.date_from_edit.setDisplayFormat("dd.MM.yyyy HH:mm")
         # Значение по умолчанию — начало 2024 года
-        self.date_from_edit.setDateTime(QtCore.QDateTime.fromString("2024-01-01 00:00:00", "yyyy-MM-dd HH:mm:ss"))
+        self.date_from_edit.blockSignals(True)
+        self.date_from_edit.setDateTime(
+            QtCore.QDateTime.fromString("2024-01-01 00:00:00", "yyyy-MM-dd HH:mm:ss")
+        )
+        self.date_from_edit.blockSignals(False)
         self.date_from_edit.dateTimeChanged.connect(self._on_filter_changed)
         from_layout.addWidget(from_label)
         from_layout.addWidget(self.date_from_edit)
@@ -333,7 +337,9 @@ class StatsGrid(QtWidgets.QWidget):
         self.date_to_edit = QtWidgets.QDateTimeEdit()
         self.date_to_edit.setCalendarPopup(True)
         self.date_to_edit.setDisplayFormat("dd.MM.yyyy HH:mm")
+        self.date_to_edit.blockSignals(True)
         self.date_to_edit.setDateTime(QtCore.QDateTime.currentDateTime())
+        self.date_to_edit.blockSignals(False)
         self.date_to_edit.dateTimeChanged.connect(self._on_filter_changed)
         to_layout.addWidget(to_label)
         to_layout.addWidget(self.date_to_edit)
@@ -779,7 +785,11 @@ class StatsGrid(QtWidgets.QWidget):
         # Аналогично TournamentView обновляем верхнюю границу диапазона дат,
         # чтобы статистика учитывала недавно добавленные турниры.
         self.current_date_to = datetime.now()
+        # Блокируем сигналы, чтобы изменение даты не вызывало повторный
+        # запуск таймера фильтра и рекурсивный вызов reload
+        self.date_to_edit.blockSignals(True)
         self.date_to_edit.setDateTime(QtCore.QDateTime.currentDateTime())
+        self.date_to_edit.blockSignals(False)
         if show_overlay:
             self.show_loading_overlay()
 
