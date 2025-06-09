@@ -181,7 +181,7 @@ class SessionView(QtWidgets.QWidget):
         self._data_cache.clear()
         
     def reload(self, show_overlay: bool = True):
-        """Перезагружает данные из ApplicationService."""
+        """Перезагружает данные через AppFacade."""
         self._show_overlay = show_overlay
         if show_overlay:
             self.show_loading_overlay()
@@ -217,7 +217,7 @@ class SessionView(QtWidgets.QWidget):
         )
             
     def _load_data(self):
-        """Загружает данные из ApplicationService в кеш."""
+        """Загружает данные через AppFacade в кеш."""
         
         # Загружаем все сессии
         self.sessions = self.app_service.get_all_sessions()

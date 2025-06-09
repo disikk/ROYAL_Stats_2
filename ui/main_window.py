@@ -2,7 +2,7 @@
 
 """
 Главное окно приложения Royal Stats (Hero-only).
-Оркестрирует UI компоненты и взаимодействует с ApplicationService.
+Оркестрирует UI компоненты и взаимодействует с ``AppFacade``.
 """
 
 from PyQt6 import QtWidgets, QtGui, QtCore
@@ -176,8 +176,8 @@ class MainWindow(QtWidgets.QMainWindow):
         main_layout.addWidget(self.tabs)
 
         # Создаем экземпляры представлений (Views)
-        # Передаем им ApplicationService или ссылки на репозитории через ApplicationService
-        # Лучше передавать сам ApplicationService, чтобы Views могли запрашивать у него данные
+        # Передаем им AppFacade или ссылки на репозитории через него
+        # Лучше передавать сам AppFacade, чтобы Views могли запрашивать у него данные
         self.stats_grid = StatsGrid(self.app_service)
         self.stats_grid.overallStatsChanged.connect(self._update_toolbar_info)
         self.tournament_view = TournamentView(self.app_service)
@@ -259,7 +259,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "Импорт и обработка файлов...",
             "Отмена",
             0,
-            0, # Установим максимум позже, когда ApplicationService подсчитает файлы
+            0, # Установим максимум позже, когда AppFacade подсчитает файлы
             self
         )
         self.progress_dialog.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
@@ -273,7 +273,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.progress_dialog.canceled.connect(self._cancel_import) # Обработка отмены
 
         # Запускаем импорт в отдельном потоке, чтобы не блокировать UI
-        # ApplicationService сам будет вызывать self.import_progress_signal.emit
+        # AppFacade сам будет вызывать self.import_progress_signal.emit
         self.import_thread = ImportThread(
             self.app_service,
             paths,
@@ -520,7 +520,7 @@ class ImportThread(QtCore.QThread):
         """Метод, выполняемый в потоке."""
         logger.info(f"Поток импорта запущен для {len(self.paths)} путей.")
         try:
-            # Передаем progress_update и is_cancelled в ApplicationService
+            # Передаем progress_update и is_cancelled в AppFacade
             self.app_service.import_files(
                 self.paths,
                 self.session_name,
@@ -554,7 +554,7 @@ class ImportThread(QtCore.QThread):
     # Метод для установки флага отмены (вызывается из основного потока)
     def cancel(self):
          self._is_canceled = True
-         # TODO: Реализовать проверку флага _is_canceled в ApplicationService.import_files
+         # TODO: Реализовать проверку флага _is_canceled в AppFacade.import_files
          # и парсерах, чтобы корректно прервать выполнение.
 
 
@@ -612,7 +612,7 @@ class RefreshThread(QtCore.QThread):
 # Вот пример его базовой структуры для справки:
 
 # class DatabaseManagementDialog(QtWidgets.QDialog):
-#     def __init__(self, parent=None, app_service: ApplicationService = None):
+#     def __init__(self, parent=None, app_service: AppFacade = None):
 #         super().__init__(parent)
 #         self.app_service = app_service
 #         self.setWindowTitle("Управление базами данных")

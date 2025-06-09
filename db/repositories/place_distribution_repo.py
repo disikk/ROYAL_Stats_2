@@ -68,7 +68,7 @@ class PlaceDistributionRepository:
         self.db.execute_update(query)
 
 
-# Пример использования (в ApplicationService)
+# Пример использования (в AppFacade)
 # from db.repositories import PlaceDistributionRepository
 # place_repo = PlaceDistributionRepository()
 # dist = place_repo.get_distribution()
