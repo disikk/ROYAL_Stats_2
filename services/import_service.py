@@ -319,7 +319,7 @@ class ImportService:
         else:
             try:
                 current_session = self.session_repo.create_session(session_name or "")
-                logger.info(f"Создана новая сессия для импорта: {current_session.session_id}")
+                logger.debug(f"Создана новая сессия для импорта: {current_session.session_id}")
             except Exception as e:
                 logger.error(f"Не удалось создать сессию для импорта: {e}")
                 return None
@@ -548,7 +548,7 @@ class ImportService:
         saved_tournaments.extend(tournament_objects)
         updated_tournament_ids.extend(updated_ids)
         
-        logger.info(f"Сохранено/обновлено {tournaments_saved} турниров.")
+        logger.debug(f"Сохранено/обновлено {tournaments_saved} турниров.")
         
         # Сохраняем руки финального стола
         hands_saved, hand_objects = self._save_final_table_hands(
