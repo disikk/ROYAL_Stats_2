@@ -1454,6 +1454,10 @@ class StatsGrid(QtWidgets.QWidget):
     
     def _add_percentage_labels(self, chart, place_dist, total_finishes, chart_type=None):
         """Добавляет текстовые метки с процентами над барами."""
+        # Если график ещё не привязан к сцене (например, старый таймер сработал
+        # после обновления), игнорируем вызов
+        if chart.scene() is None:
+            return
         # Удаляем старые метки, если есть
         for label in getattr(self.chart_view, 'chart_labels', []):
             chart.scene().removeItem(label)
@@ -1586,6 +1590,10 @@ class StatsGrid(QtWidgets.QWidget):
 
     def _add_median_line(self, chart, place_dist):
         """Отрисовывает вертикальную линию медианного значения стеков FT."""
+        # Если график больше не находится на сцене (например, пока выполнялся
+        # таймер, была создана новая диаграмма), просто выходим
+        if chart.scene() is None:
+            return
         # Удаляем старую линию, если есть
         for line in getattr(self.chart_view, 'median_lines', []):
             chart.scene().removeItem(line)
