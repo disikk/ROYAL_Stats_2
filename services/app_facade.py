@@ -20,7 +20,6 @@ from db.repositories import (
     PlaceDistributionRepository,
     FinalTableHandRepository,
 )
-from parsers import HandHistoryParser, TournamentSummaryParser
 
 from .import_service import ImportService
 from .statistics_service import StatisticsService

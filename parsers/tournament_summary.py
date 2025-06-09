@@ -11,17 +11,18 @@ import re
 import logging
 from typing import Dict, Any, Optional
 from services.app_config import app_config
-from .base_parser import BaseParser # Наследуем от BaseParser
+from .base_plugin import BaseParserPlugin  # Базовый класс плагина-парсера
 from .parse_results import TournamentSummaryResult
 
 logger = logging.getLogger('ROYAL_Stats.TournamentSummaryParser')
 logger.setLevel(logging.DEBUG if app_config.debug else logging.INFO)
 
 
-class TournamentSummaryParser(BaseParser[TournamentSummaryResult]):
-    """
-    Парсер summary-файла турнира только для Hero.
-    """
+class TournamentSummaryParser(BaseParserPlugin[TournamentSummaryResult]):
+    """Плагин-парсер summary-файла турнира только для Hero."""
+
+    name = "tournament_summary_parser"
+    file_type = "ts"
 
     def __init__(self, hero_name: str = app_config.hero_name):
         super().__init__(hero_name)
@@ -149,3 +150,4 @@ class TournamentSummaryParser(BaseParser[TournamentSummaryResult]):
             payout=payout,
             finish_place=finish_place
         )
+
