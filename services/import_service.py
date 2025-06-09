@@ -94,6 +94,9 @@ class ImportService:
         
         # Подсчет общего количества файлов-кандидатов
         total_candidates = self._count_candidate_files(paths, is_canceled_callback)
+        if is_canceled_callback and is_canceled_callback():
+            logger.info("Импорт отменен пользователем при подсчете файлов.")
+            return None
         if total_candidates == 0:
             logger.info("Нет файлов для обработки.")
             if progress_callback:
@@ -104,6 +107,9 @@ class ImportService:
         all_files_to_process, filtered_count = self._collect_poker_files(
             paths, total_candidates, progress_callback, is_canceled_callback
         )
+        if is_canceled_callback and is_canceled_callback():
+            logger.info("Импорт отменен пользователем при подготовке файлов.")
+            return None
         
         if filtered_count > 0:
             logger.debug(f"Отфильтровано {filtered_count} файлов без покерных шаблонов")
@@ -129,6 +135,9 @@ class ImportService:
         
         # Создание или получение сессии
         current_session = self._get_or_create_session(session_id, session_name)
+        if is_canceled_callback and is_canceled_callback():
+            logger.info("Импорт отменен пользователем до создания сессии.")
+            return None
         if not current_session:
             if progress_callback:
                 progress_callback(0, total_steps, "Ошибка: не удалось создать сессию")
@@ -138,7 +147,7 @@ class ImportService:
         
         # Парсинг файлов
         parsed_data = self._parse_files(
-            all_files_to_process, 
+            all_files_to_process,
             session_id,
             current_progress,
             total_steps,
@@ -146,7 +155,6 @@ class ImportService:
             progress_callback,
             is_canceled_callback
         )
-        
         if not parsed_data:
             return None  # Импорт был отменен
         
@@ -162,7 +170,6 @@ class ImportService:
             progress_callback,
             is_canceled_callback
         )
-        
         if not saved_data:
             return None  # Импорт был отменен или произошла ошибка
         
@@ -487,7 +494,8 @@ class ImportService:
             current_progress,
             total_steps,
             saving_weight * 0.4,
-            progress_callback
+            progress_callback,
+            is_canceled_callback
         )
         saved_tournaments.extend(tournament_objects)
         updated_tournament_ids.extend(updated_ids)
@@ -500,7 +508,8 @@ class ImportService:
             current_progress + int(saving_weight * 0.4),
             total_steps,
             saving_weight * 0.4,
-            progress_callback
+            progress_callback,
+            is_canceled_callback
         )
         saved_hands.extend(hand_objects)
         
@@ -512,7 +521,8 @@ class ImportService:
             current_progress + int(saving_weight * 0.8),
             total_steps,
             saving_weight * 0.2,
-            progress_callback
+            progress_callback,
+            is_canceled_callback
         )
         
         logger.info(f"Сохранено/обновлено {tournaments_saved} турниров. "
@@ -530,7 +540,8 @@ class ImportService:
         current_progress: int,
         total_steps: int,
         weight: float,
-        progress_callback: Optional[Callable[[int, int, str], None]]
+        progress_callback: Optional[Callable[[int, int, str], None]],
+        is_canceled_callback: Optional[Callable[[], bool]]
     ) -> tuple[int, List[Tournament], List[str]]:
         """
         Сохраняет или обновляет турниры в БД.
@@ -544,6 +555,9 @@ class ImportService:
         updated_ids = []
         
         for tourney_id, data in parsed_tournaments_data.items():
+            if is_canceled_callback and is_canceled_callback():
+                logger.warning("=== ИМПОРТ ОТМЕНЕН при сохранении турниров ===")
+                return tournaments_saved, saved_objects, updated_ids
             try:
                 # Запрашиваем текущий турнир для merge
                 existing_tourney = self.tournament_repo.get_tournament_by_id(tourney_id)
@@ -607,7 +621,8 @@ class ImportService:
         current_progress: int,
         total_steps: int,
         weight: float,
-        progress_callback: Optional[Callable[[int, int, str], None]]
+        progress_callback: Optional[Callable[[int, int, str], None]],
+        is_canceled_callback: Optional[Callable[[], bool]]
     ) -> tuple[int, List[FinalTableHand]]:
         """
         Сохраняет руки финального стола в БД.
@@ -622,6 +637,9 @@ class ImportService:
         saved_objects = []
         
         for hand_data in all_final_table_hands_data:
+            if is_canceled_callback and is_canceled_callback():
+                logger.warning("=== ИМПОРТ ОТМЕНЕН при сохранении рук ===")
+                return hands_saved, saved_objects
             try:
                 hand = FinalTableHand.from_dict(hand_data)
                 self.ft_hand_repo.add_hand(hand)
@@ -648,7 +666,8 @@ class ImportService:
         current_progress: int,
         total_steps: int,
         weight: float,
-        progress_callback: Optional[Callable[[int, int, str], None]]
+        progress_callback: Optional[Callable[[int, int, str], None]],
+        is_canceled_callback: Optional[Callable[[], bool]]
     ):
         """Обновляет ko_count для турниров на основе сохраненных рук."""
         logger.debug("Подсчет ko_count для турниров...")
@@ -657,8 +676,11 @@ class ImportService:
         
         tournaments_processed = 0
         total_tournaments = len(parsed_tournaments_data)
-        
+
         for tourney_id in parsed_tournaments_data:
+            if is_canceled_callback and is_canceled_callback():
+                logger.warning("=== ИМПОРТ ОТМЕНЕН при подсчете KO ===")
+                return
             try:
                 # Получаем все руки финального стола для этого турнира из БД
                 tournament_ft_hands = self.ft_hand_repo.get_hands_by_tournament(tourney_id)
@@ -676,3 +698,5 @@ class ImportService:
                         
             except Exception as e:
                 logger.error(f"Ошибка подсчета KO для турнира {tourney_id}: {e}")
+
+        # Метод ничего не возвращает

@@ -540,6 +540,9 @@ class ImportThread(QtCore.QThread):
             except Exception as e:
                 logger.warning(f"Ошибка при закрытии соединения в потоке импорта: {e}")
 
+            # Сбрасываем флаг отмены на случай повторного использования потока
+            self._is_canceled = False
+
         logger.info("Поток импорта завершает работу.")
         
     def _is_import_canceled(self):
@@ -553,9 +556,8 @@ class ImportThread(QtCore.QThread):
 
     # Метод для установки флага отмены (вызывается из основного потока)
     def cancel(self):
+         """Устанавливает флаг отмены для текущего импорта."""
          self._is_canceled = True
-         # TODO: Реализовать проверку флага _is_canceled в ApplicationService.import_files
-         # и парсерах, чтобы корректно прервать выполнение.
 
 
 class RefreshThread(QtCore.QThread):
