@@ -7,6 +7,7 @@
 import os
 from dataclasses import dataclass, field
 from typing import Dict
+import configparser
 
 
 @dataclass
@@ -106,6 +107,48 @@ class AppConfig:
     def get_db_connection_string(self) -> str:
         """Возвращает строку подключения к текущей БД."""
         return f"sqlite:///{self.current_db_path}"
+
+    @classmethod
+    def from_ini(cls, ini_path: str | None = None) -> "AppConfig":
+        """Создает конфигурацию из INI-файла."""
+        parser = configparser.ConfigParser()
+        if ini_path and os.path.exists(ini_path):
+            parser.read(ini_path, encoding="utf-8")
+        base = cls()
+
+        hero_name = parser.get("game", "hero_name", fallback=base.hero_name)
+        final_table_size = parser.getint(
+            "game", "final_table_size", fallback=base.final_table_size
+        )
+        early_ft_min_players = parser.getint(
+            "game", "early_ft_min_players", fallback=base.early_ft_min_players
+        )
+        min_ko_blind_level_bb = parser.getint(
+            "game", "min_ko_blind_level_bb", fallback=base.min_ko_blind_level_bb
+        )
+
+        ko_coeff = base.ko_coeff.copy()
+        if parser.has_section("ko_coeff"):
+            ko_coeff = {
+                int(k): parser.getfloat("ko_coeff", k)
+                for k in parser["ko_coeff"]
+            }
+
+        buyin_avg_ko_map = base.buyin_avg_ko_map.copy()
+        if parser.has_section("buyin_avg_ko_map"):
+            buyin_avg_ko_map = {
+                float(k): parser.getfloat("buyin_avg_ko_map", k)
+                for k in parser["buyin_avg_ko_map"]
+            }
+
+        return cls(
+            hero_name=hero_name,
+            final_table_size=final_table_size,
+            early_ft_min_players=early_ft_min_players,
+            min_ko_blind_level_bb=min_ko_blind_level_bb,
+            ko_coeff=ko_coeff,
+            buyin_avg_ko_map=buyin_avg_ko_map,
+        )
     
     @classmethod
     def from_legacy_config(cls) -> 'AppConfig':
@@ -133,3 +176,9 @@ class AppConfig:
             chart_type=legacy_config.CHART_TYPE,
             debug=legacy_config.DEBUG,
         )
+
+# Путь к конфигурационному файлу по умолчанию
+CONFIG_INI_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.ini")
+
+# Глобальный объект конфигурации
+app_config = AppConfig.from_ini(CONFIG_INI_PATH)

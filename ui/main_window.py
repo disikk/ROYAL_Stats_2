@@ -12,7 +12,7 @@ import logging
 from typing import List, Optional
 from datetime import datetime
 
-import config
+from services.app_config import app_config
 # Импортируем типы для AppFacade
 from services import AppFacade
 
@@ -30,7 +30,7 @@ from models import OverallStats
 from ui.database_management_dialog import DatabaseManagementDialog # Предполагаем, что такой файл будет создан
 
 logger = logging.getLogger('ROYAL_Stats.MainWindow')
-logger.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
+logger.setLevel(logging.DEBUG if app_config.debug else logging.INFO)
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -42,7 +42,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def __init__(self, app_facade: AppFacade):
         super().__init__()
-        self.setWindowTitle(config.APP_TITLE)
+        self.setWindowTitle(app_config.app_title)
         self.setMinimumSize(1300, 880)
 
         # Используем переданный AppFacade
@@ -61,13 +61,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def _load_initial_data(self):
         """Подключает последнюю БД и запускает обновление статистики."""
         try:
-            self.app_service.switch_database(config.LAST_DB_PATH, load_stats=False)
+            self.app_service.switch_database(app_config.current_db_path, load_stats=False)
             self._update_db_label()
             self.statusBar().showMessage(
                 f"Подключена база данных: {os.path.basename(self.app_service.db_path)}"
             )
         except Exception as e:
-            logger.error(f"Ошибка при подключении к последней БД {config.LAST_DB_PATH}: {e}")
+            logger.error(f"Ошибка при подключении к последней БД {app_config.current_db_path}: {e}")
             self.statusBar().showMessage(f"Ошибка подключения к БД: {e}", 5000)
             self.manage_databases()
             return
@@ -167,7 +167,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Метка с именем подключенной базы данных и версией приложения в правой части тулбара
         self.toolbar.addWidget(self.db_status_label)
-        version_label = QtWidgets.QLabel(f"v{config.APP_VERSION}")
+        version_label = QtWidgets.QLabel(f"v{app_config.app_version}")
         version_label.setStyleSheet("color: #777; font-size: 9px; margin-right: 4px;")
         self.toolbar.addWidget(version_label)
 
@@ -218,7 +218,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if hasattr(self, 'session_view') and self.session_view:
                     self.session_view.hide_loading_overlay()
 
-                config.set_db_path(new_path)
+                app_config.set_current_db_path(new_path)
                 # Сбрасываем кеши и запускаем асинхронную загрузку данных
                 self.invalidate_all_caches()
                 self.refresh_all_data()

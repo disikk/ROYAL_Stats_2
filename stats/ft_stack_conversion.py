@@ -6,7 +6,7 @@ from statistics import median
 
 from .base import BaseStat
 from models import Tournament, OverallStats
-import config
+from services.app_config import app_config
 
 
 class FTStackConversionStat(BaseStat):

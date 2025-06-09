@@ -13,13 +13,13 @@
 import re
 import logging
 from typing import Dict, List, Set, Tuple, Optional, Any
-import config
+from services.app_config import app_config
 from models import Tournament, FinalTableHand # Импортируем модели
 from .base_parser import BaseParser # ИМПОРТИРУЕМ BaseParser
 from .parse_results import HandHistoryResult
 
 logger = logging.getLogger('ROYAL_Stats.HandHistoryParser')
-logger.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
+logger.setLevel(logging.DEBUG if app_config.debug else logging.INFO)
 
 # --- Регулярки для парсинга HH ---
 RE_HAND_START = re.compile(r'^Poker Hand #(?P<hand_id>[A-Za-z0-9]+): Tournament #(?P<tournament_id>\d+),') # Адаптировано для GG формата
@@ -67,7 +67,7 @@ class HandData:
         self.pots: List[Pot] = []
         self.final_stacks: Dict[str, int] = {}  # final_stack для каждого игрока
         self.all_in_players: Set[str] = set()  # игроки, которые пошли all-in
-        self.hero_stack = seats.get(config.HERO_NAME) # Стек Hero в начале раздачи
+        self.hero_stack = seats.get(app_config.hero_name) # Стек Hero в начале раздачи
         self.players_count = len(seats)
         self.hero_ko_this_hand = 0 # KO Hero в этой раздаче
         self.pre_ft_ko = 0.0
@@ -78,7 +78,7 @@ class HandData:
         self.eliminated_players = set()  # Игроки, выбывшие в этой раздаче
 
 class HandHistoryParser(BaseParser[HandHistoryResult]):
-    def __init__(self, hero_name: str = config.HERO_NAME):
+    def __init__(self, hero_name: str = app_config.hero_name):
         super().__init__(hero_name)
         self._tournament_id: Optional[str] = None
         self._start_time: Optional[str] = None
@@ -174,19 +174,19 @@ class HandHistoryParser(BaseParser[HandHistoryResult]):
 
                     if not final_table_started:
                         # Проверяем условия старта финального стола
-                        if hand_data.table_size == config.FINAL_TABLE_SIZE:
+                        if hand_data.table_size == app_config.final_table_size:
                             final_table_started = True
                             # Если финальный стол начинается неполным составом, учитываем KO из предыдущей раздачи
-                            if prev_hand_data and actual_players_count < config.FINAL_TABLE_SIZE:
+                            if prev_hand_data and actual_players_count < app_config.final_table_size:
                                 prev_ko = self._count_ko_in_hand_from_data(prev_hand_data)
-                                coeff = config.KO_COEFF.get(actual_players_count, 0)
+                                coeff = app_config.ko_coeff.get(actual_players_count, 0)
                                 hand_data.pre_ft_ko = prev_ko * coeff
                                 hand_data.hero_ko_this_hand += hand_data.pre_ft_ko
 
                             self._final_table_hands.append(hand_data)
                             first_ft_hand_data = hand_data
 
-                            if 6 <= actual_players_count <= config.FINAL_TABLE_SIZE:
+                            if 6 <= actual_players_count <= app_config.final_table_size:
                                 hand_data.is_early_final = True
                     else:
                         # Финальный стол уже начался - добавляем все последующие раздачи
@@ -324,7 +324,7 @@ class HandHistoryParser(BaseParser[HandHistoryResult]):
                 name, stack_str = m_seat.groups()
                 player_name = NAME(name)
                 seats[player_name] = CHIP(stack_str)
-                if player_name == config.HERO_NAME:
+                if player_name == app_config.hero_name:
                     hero_participated = True
                     
             idx += 1
@@ -606,7 +606,7 @@ class HandHistoryParser(BaseParser[HandHistoryResult]):
         Подсчитывает количество нокаутов Hero в данной раздаче.
         Логика: если игрок выбыл И Hero выиграл пот с его фишками = KO
         """
-        if config.HERO_NAME not in hand.seats:
+        if app_config.hero_name not in hand.seats:
             return 0
 
         ko_count = 0
@@ -625,7 +625,7 @@ class HandHistoryParser(BaseParser[HandHistoryResult]):
         
         # Проходим по всем выбывшим игрокам
         for knocked_out_player in hand.eliminated_players:
-            if knocked_out_player == config.HERO_NAME:
+            if knocked_out_player == app_config.hero_name:
                 continue
 
             # Находим поты, в которых участвовал выбывший
@@ -638,11 +638,11 @@ class HandHistoryParser(BaseParser[HandHistoryResult]):
             # Последний пот, где были фишки выбывшего – именно он определяет выбившего
             last_pot = relevant_pots[-1]
 
-            if config.HERO_NAME in last_pot.winners:
+            if app_config.hero_name in last_pot.winners:
                 ko_count += 1
                 # Подробный лог сохраняем только в режиме DEBUG
                 logger.debug(
-                    f"*** KO! {config.HERO_NAME} knocked out {knocked_out_player} ***"
+                    f"*** KO! {app_config.hero_name} knocked out {knocked_out_player} ***"
                 )
             else:
                 # Логируем кто выбил, если не Hero
@@ -661,14 +661,14 @@ class HandHistoryParser(BaseParser[HandHistoryResult]):
         4. Оппонент олл-ин + Hero фолдит = НЕ попытка
         5. Авто олл-ины (стек <= анте) + Hero не фолдит = попытка
         """
-        if config.HERO_NAME not in hand.seats:
+        if app_config.hero_name not in hand.seats:
             return 0
         
         ko_attempts = 0
-        hero_stack = hand.seats[config.HERO_NAME]
+        hero_stack = hand.seats[app_config.hero_name]
 
         # Получаем действия Hero один раз
-        hero_actions = detailed_actions.get(config.HERO_NAME, [])
+        hero_actions = detailed_actions.get(app_config.hero_name, [])
         hero_folded = any(action == 'folds' for _, action, _, _, _ in hero_actions)
         
         # Если Hero сфолдил, не может быть попыток
@@ -685,7 +685,7 @@ class HandHistoryParser(BaseParser[HandHistoryResult]):
         if hero_all_in_index is not None:
             # Hero пошел олл-ин/пуш
             for opp_name, opp_stack in hand.seats.items():
-                if opp_name == config.HERO_NAME:
+                if opp_name == app_config.hero_name:
                     continue
                 if hero_stack < opp_stack:
                     continue
@@ -703,7 +703,7 @@ class HandHistoryParser(BaseParser[HandHistoryResult]):
         else:
             # Hero не делал олл-ин, учитываем олл-ины оппонентов, которые он коллировал/рейзил
             for opponent in hand.all_in_players:
-                if opponent == config.HERO_NAME:
+                if opponent == app_config.hero_name:
                     continue
 
                 opp_stack = hand.seats.get(opponent, 0)
