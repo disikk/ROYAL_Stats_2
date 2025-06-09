@@ -313,6 +313,11 @@ class TournamentView(QtWidgets.QWidget):
     def reload(self, show_overlay: bool = True):
         """Перезагружает данные из ApplicationService."""
         self._show_overlay = show_overlay
+        # При каждой перезагрузке обновляем дату "По" на текущее время,
+        # иначе новые турниры с временем старше предыдущего значения
+        # не будут отображаться, пока приложение не перезапустится.
+        self.current_date_to = datetime.now()
+        self.date_to_edit.setDateTime(QtCore.QDateTime.currentDateTime())
         if show_overlay:
             self.show_loading_overlay()
         def load_filter_data(is_cancelled_callback=None):
