@@ -4,10 +4,10 @@
 import unittest
 import tempfile
 import os
-import config
+from services.app_config import app_config
 
 # Временно устанавливаем имя Hero для тестов
-config.HERO_NAME = "TestHero"
+app_config.hero_name = "TestHero"
 
 from parsers.hand_history import HandHistoryParser, HandData
 

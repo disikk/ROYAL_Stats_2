@@ -1,17 +1,17 @@
 import unittest
 from parsers.hand_history import HandHistoryParser
-import config
+from services.app_config import app_config
 
 class TestKOCounting(unittest.TestCase):
     def setUp(self):
         self.parser = HandHistoryParser("Hero")
         # Save original hero name and set it for tests
-        self.original_hero = config.HERO_NAME
-        config.HERO_NAME = "Hero"
+        self.original_hero = app_config.hero_name
+        app_config.hero_name = "Hero"
     
     def tearDown(self):
         # Restore original hero name
-        config.HERO_NAME = self.original_hero
+        app_config.hero_name = self.original_hero
     
     def test_ko_with_ante_sb_raise_allin(self):
         """Test knockout detection when player posts ante, SB, raises and goes all-in"""
