@@ -903,9 +903,11 @@ class StatsGrid(QtWidgets.QWidget):
             # Обновляем карточки Big KO из ViewModel
             for tier, big_ko_vm in viewmodel.big_ko_cards.items():
                 if tier in self.bigko_cards:
-                    self.bigko_cards[tier].update_value(str(big_ko_vm.count), big_ko_vm.subtitle or "")
-                    
-                    # Применяем цвет если указан
+                    value_text = str(big_ko_vm.count)
+                    if big_ko_vm.emoji:
+                        value_text += f" {big_ko_vm.emoji}"
+                    self.bigko_cards[tier].update_value(value_text, big_ko_vm.subtitle or "")
+
                     if big_ko_vm.value_color:
                         self.bigko_cards[tier].value_label.setStyleSheet(f"""
                             QLabel {{
@@ -914,6 +916,14 @@ class StatsGrid(QtWidgets.QWidget):
                                 font-weight: bold;
                                 background-color: transparent;
                             }}
+                        """)
+                    else:
+                        self.bigko_cards[tier].value_label.setStyleSheet("""
+                            QLabel {
+                                font-size: 16px;
+                                font-weight: bold;
+                                background-color: transparent;
+                            }
                         """)
             
             # Текст над карточкой KO x10 больше не отображается
