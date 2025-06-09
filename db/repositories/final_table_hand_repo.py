@@ -20,7 +20,8 @@ class FinalTableHandRepository:
     """
 
     def __init__(self):
-        self.db = database_manager # Используем синглтон
+        """Initialize repository with the shared database manager."""
+        self.db = database_manager  # Используем синглтон
 
     def add_hand(self, hand: FinalTableHand):
         """

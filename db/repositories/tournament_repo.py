@@ -26,8 +26,9 @@ class TournamentRepository:
     """
 
     def __init__(self):
+        """Initialize repository with the shared database manager."""
         # Репозитории работают с менеджером БД
-        self.db = database_manager # Используем синглтон
+        self.db = database_manager  # Используем синглтон
 
     def add_or_update_tournament(self, tournament: Tournament):
         """
