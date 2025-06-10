@@ -596,65 +596,63 @@ class ImportService:
         """
         tournaments_saved = 0
         total_tournaments = len(parsed_tournaments_data)
-        saved_objects = []
-        updated_ids = []
-        
+        saved_objects: List[Tournament] = []
+        updated_ids: List[str] = []
+        tournaments_to_save: List[Tournament] = []
+
         for tourney_id, data in parsed_tournaments_data.items():
             try:
-                # Запрашиваем текущий турнир для merge
                 existing_tourney = self.tournament_repo.get_tournament_by_id(tourney_id)
-                
-                # Объединяем данные: TS > HH > Existing
-                final_tourney_data = {}
+
+                final_tourney_data: Dict[str, Any] = {}
                 if existing_tourney:
                     final_tourney_data.update(existing_tourney.as_dict())
-                
+
                 final_tourney_data.update(data)
-                
-                # Специальная логика для полей, которые должны объединяться
+
                 if existing_tourney and existing_tourney.reached_final_table:
                     final_tourney_data['reached_final_table'] = True
-                
-                # Сохраняем initial_stack только если он еще не был сохранен
+
                 if existing_tourney and existing_tourney.final_table_initial_stack_chips is not None:
                     final_tourney_data['final_table_initial_stack_chips'] = existing_tourney.final_table_initial_stack_chips
                     final_tourney_data['final_table_initial_stack_bb'] = existing_tourney.final_table_initial_stack_bb
-                
-                # Сохраняем start_players только если еще не было сохранено
+
                 if existing_tourney and existing_tourney.final_table_start_players is not None:
                     final_tourney_data['final_table_start_players'] = existing_tourney.final_table_start_players
-                
-                # Сохраняем первый session_id
+
                 if existing_tourney and existing_tourney.session_id:
                     final_tourney_data['session_id'] = existing_tourney.session_id
-                
-                # Если финишное место в топ-9, устанавливаем флаг финального стола
+
                 finish_place = final_tourney_data.get('finish_place')
                 if finish_place is not None and 1 <= finish_place <= 9:
                     final_tourney_data['reached_final_table'] = True
-                
-                # Создаем объект Tournament из объединенных данных
+
                 merged_tournament = Tournament.from_dict(final_tourney_data)
-                self.tournament_repo.add_or_update_tournament(merged_tournament)
-                tournaments_saved += 1
-                
-                # Добавляем в список сохраненных объектов
-                if existing_tourney is None:
-                    # Новый турнир
-                    saved_objects.append(merged_tournament)
-                else:
-                    # Обновленный турнир
+
+                if existing_tourney:
+                    def _strip(t: Tournament) -> dict:
+                        d = t.as_dict()
+                        d.pop("id", None)
+                        return d
+
+                    if _strip(existing_tourney) == _strip(merged_tournament):
+                        continue
                     updated_ids.append(tourney_id)
-                
-                # Обновляем прогресс
-                if tournaments_saved % 5 == 0 or tournaments_saved == total_tournaments:
-                    save_progress = current_progress + int((tournaments_saved / max(total_tournaments, 1)) * weight)
-                    if progress_callback:
-                        progress_callback(save_progress, total_steps, f"Сохранено турниров: {tournaments_saved}/{total_tournaments}")
-                
+                else:
+                    saved_objects.append(merged_tournament)
+
+                tournaments_to_save.append(merged_tournament)
+                tournaments_saved += 1
             except Exception as e:
                 logger.error(f"Ошибка сохранения/обновления турнира {tourney_id}: {e}")
-        
+
+        if tournaments_to_save:
+            self.tournament_repo.add_or_update_many(tournaments_to_save)
+
+        if progress_callback:
+            progress_callback(current_progress + int(weight), total_steps,
+                             f"Сохранено турниров: {tournaments_saved}/{total_tournaments}")
+
         return tournaments_saved, saved_objects, updated_ids
     
     def _save_final_table_hands(
@@ -674,29 +672,25 @@ class ImportService:
         logger.debug(f"Начинаем сохранение {len(all_final_table_hands_data)} рук финального стола")
         
         total_hands_to_save = len(all_final_table_hands_data)
-        hands_saved = 0
-        saved_objects = []
-        
+        saved_objects: List[FinalTableHand] = []
+
         for hand_data in all_final_table_hands_data:
             try:
-                hand = FinalTableHand.from_dict(hand_data)
-                self.ft_hand_repo.add_hand(hand)
-                hands_saved += 1
-                saved_objects.append(hand)
-                
-                # Обновляем прогресс для сохранения рук
-                if hands_saved % 10 == 0 or hands_saved == total_hands_to_save:
-                    hands_progress = current_progress + int((hands_saved / max(total_hands_to_save, 1)) * weight)
-                    if progress_callback:
-                        progress_callback(hands_progress, total_steps, f"Сохранено рук: {hands_saved}/{total_hands_to_save}")
-                        
+                saved_objects.append(FinalTableHand.from_dict(hand_data))
             except Exception as e:
-                logger.error(f"Ошибка сохранения финальной раздачи {hand_data.get('hand_id')} "
-                           f"турнира {hand_data.get('tournament_id')}: {e}")
-                import traceback
-                logger.error(f"Traceback: {traceback.format_exc()}")
-        
-        return hands_saved, saved_objects
+                logger.error(
+                    f"Ошибка подготовки финальной раздачи {hand_data.get('hand_id')} "
+                    f"турнира {hand_data.get('tournament_id')}: {e}"
+                )
+
+        if saved_objects:
+            self.ft_hand_repo.add_hands(saved_objects)
+
+        if progress_callback:
+            progress_callback(current_progress + int(weight), total_steps,
+                             f"Сохранено рук: {len(saved_objects)}/{total_hands_to_save}")
+
+        return len(saved_objects), saved_objects
     
     def _update_ko_counts(
         self,

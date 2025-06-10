@@ -63,6 +63,48 @@ class FinalTableHandRepository:
         result = self.db.execute_update(query, params)
         logger.debug("Результат execute_update: %s строк изменено", result)
 
+    def add_hands(self, hands: List[FinalTableHand]):
+        """Добавляет сразу несколько раздач финального стола."""
+        if not hands:
+            return 0
+
+        query = """
+            INSERT INTO hero_final_table_hands (
+                tournament_id, hand_id, hand_number, table_size, bb,
+                hero_stack, players_count, hero_ko_this_hand, pre_ft_ko,
+                hero_ko_attempts, session_id, is_early_final
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(tournament_id, hand_id) DO NOTHING
+        """
+
+        params_list = [
+            (
+                hand.tournament_id,
+                hand.hand_id,
+                hand.hand_number,
+                hand.table_size,
+                hand.bb,
+                hand.hero_stack,
+                hand.players_count,
+                hand.hero_ko_this_hand,
+                hand.pre_ft_ko,
+                hand.hero_ko_attempts,
+                hand.session_id,
+                hand.is_early_final,
+            )
+            for hand in hands
+        ]
+
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            cursor.executemany(query, params_list)
+            conn.commit()
+            return cursor.rowcount
+        except Exception as e:
+            logger.error(f"Ошибка пакетного сохранения рук: {e}")
+            raise
+
 
     def get_hands_by_tournament(self, tournament_id: str) -> List[FinalTableHand]:
         """
