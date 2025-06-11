@@ -39,9 +39,9 @@ class BigKOCardViewModel:
             ratio = total_knockouts / count
             if ratio <= 25:
                 return "#00FF00"  # Ярко-зеленый
-            elif 26 <= ratio <= 29:
+            elif ratio <= 29:
                 return "#10B981"  # Зеленый
-            elif 30 <= ratio <= 33:
+            elif ratio <= 33:
                 return "#F59E0B"  # Оранжевый
             else:
                 return "#EF4444"  # Красный
