@@ -35,8 +35,9 @@ class WinningsFromITMStat(BaseStat):
             **kwargs: Дополнительные параметры
 
         Returns:
-            Словарь с ключом:
-            - 'value': общая сумма выигрыша от ITM
+            Словарь с ключами:
+            - 'winnings_from_itm': общая сумма выигрыша от ITM
+            - 'value': то же значение для обратной совместимости
         """
         tournaments = tournaments or []
         total_itm_winnings = 0.0
@@ -54,6 +55,8 @@ class WinningsFromITMStat(BaseStat):
 
         total_itm_winnings = round(total_itm_winnings, 2)
 
+        # Возвращаем значение под ожидаемым ключом, сохраняя "value" для совместимости
         return {
+            "winnings_from_itm": total_itm_winnings,
             "value": total_itm_winnings
         }
