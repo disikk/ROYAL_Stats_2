@@ -160,7 +160,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.total_ko_label.setStyleSheet("font-weight: bold; margin: 0 10px;")
         self.toolbar.addWidget(self.total_ko_label)
 
-        self.pre_ft_chipev_label = QtWidgets.QLabel("Rush chips/t: -")
+        self.pre_ft_chipev_label = QtWidgets.QLabel("Rush chips / T: -")
         self.pre_ft_chipev_label.setStyleSheet("font-weight: bold; margin: 0 10px;")
         self.toolbar.addWidget(self.pre_ft_chipev_label)
 
@@ -475,7 +475,7 @@ class MainWindow(QtWidgets.QMainWindow):
         apply_cell_color_by_value(self.total_profit_label, stats.total_prize - stats.total_buy_in) # Применяем цвет
         self.total_ko_label.setText(f"KO: {stats.total_knockouts:.1f}")
         chipev_value = stats.pre_ft_chipev if stats.pre_ft_chipev is not None else 0.0
-        self.pre_ft_chipev_label.setText(f"preFT: {chipev_value:.0f}")
+        self.pre_ft_chipev_label.setText(f"Rush chips / T: {chipev_value:.0f}")
         apply_cell_color_by_value(self.pre_ft_chipev_label, chipev_value)
         if chipev_value == 0:
             self.pre_ft_chipev_label.setStyleSheet("font-weight: bold; margin: 0 10px; color: white;")
