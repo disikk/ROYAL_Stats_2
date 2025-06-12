@@ -2,15 +2,19 @@
 
 """
 Плагин для расчёта стата "Выигрыш от KO".
-Использует количество нокаутов в турнирах и умножает его на
-средний размер нокаута для соответствующего бай-ина.
-Значения средних нокаутов берутся из ``config.ini``.
+
+Ранее размер выигрыша от нокаутов вычислялся как произведение
+количества KO на усреднённое значение из ``config.ini``. Такой
+подход давал заметную погрешность.
+
+Теперь сумма выигрыша от KO определяется как разница между общей
+выплатой за турнир и призом за ITM (если он был). Так мы получаем
+суммарную стоимость всех нокаутов в каждом турнире.
 """
 
 from typing import Dict, Any, List, Optional
 from .base import BaseStat
 from models import Tournament, FinalTableHand, Session
-from services.app_config import app_config
 
 class WinningsFromKOStat(BaseStat):
     name = "Выигрыш от KO"
@@ -31,8 +35,7 @@ class WinningsFromKOStat(BaseStat):
             final_table_hands: Не используется
             sessions: Не используется
             overall_stats: Не используется
-            **kwargs: Дополнительные параметры. Можно передать ``buyin_avg_ko_map``
-                для переопределения значений из конфигурации.
+            **kwargs: Дополнительные параметры (не используются)
 
         Returns:
             Словарь с ключами:
@@ -42,12 +45,22 @@ class WinningsFromKOStat(BaseStat):
         """
 
         tournaments = tournaments or []
-        buyin_avg_ko_map = kwargs.get('buyin_avg_ko_map', app_config.buyin_avg_ko_map)
 
         total_ko_amount = 0.0
         for t in tournaments:
-            if t.buyin in buyin_avg_ko_map and t.ko_count:
-                total_ko_amount += t.ko_count * buyin_avg_ko_map[t.buyin]
+            if t.payout is None or t.payout <= 0:
+                continue
+
+            itm_payout = 0.0
+            if t.finish_place == 1:
+                itm_payout = 4 * t.buyin
+            elif t.finish_place == 2:
+                itm_payout = 3 * t.buyin
+            elif t.finish_place == 3:
+                itm_payout = 2 * t.buyin
+
+            ko_amount = t.payout - itm_payout
+            total_ko_amount += ko_amount
 
         total_ko_amount = round(total_ko_amount, 2)
 
