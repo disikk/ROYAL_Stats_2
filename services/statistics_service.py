@@ -772,7 +772,9 @@ class StatisticsService:
         ft_stack_sum = sum(all_ft_stacks['chips']) if all_ft_stacks['chips'] else 0.0
         not_ft_count = current_stats.total_tournaments - current_stats.total_final_tables
         if current_stats.total_tournaments > 0:
-            current_stats.pre_ft_chipev = (ft_stack_sum - not_ft_count * 1000) / current_stats.total_tournaments
+            current_stats.pre_ft_chipev = (
+                ft_stack_sum - not_ft_count * 1000
+            ) / current_stats.total_tournaments
         else:
             current_stats.pre_ft_chipev = 0.0
         

@@ -568,6 +568,7 @@ class AppFacade:
             if t.final_table_initial_stack_chips is not None
         )
         not_ft_count = stats.total_tournaments - stats.total_final_tables
+        # Усредняем результат до финального стола
         if stats.total_tournaments > 0:
             stats.pre_ft_chipev = (
                 ft_stack_sum - not_ft_count * 1000
