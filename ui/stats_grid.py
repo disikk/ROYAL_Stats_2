@@ -368,11 +368,11 @@ class StatsGrid(QtWidgets.QWidget):
             'avg_place_ft': StatCard("Среднее место (FT)", "-"),
             'avg_place_no_ft': StatCard("Среднее место (не FT)", "-"),
             'pre_ft_ko': StatCard("KO до FT", "-"),
-            'ko_roi_contribution': StatCard("KO вклад в ROI", "-"),
+            'winnings_from_ko': StatCard("Выигрыш от KO", "-"),
+            'winnings_from_itm': StatCard("Выигрыш от ITM", "-"),
             'ko_stage_2_3': StatCard("KO 2-3 игрока", "-"),
             'ko_stage_4_5': StatCard("KO 4-5 игроков", "-"),
             'ko_stage_6_9': StatCard("KO 6-9 игроков", "-"),
-            'itm_roi_contribution': StatCard("ITM вклад в ROI", "-"),
         }
         
         # Словарь с описаниями для тултипов
@@ -392,11 +392,11 @@ class StatsGrid(QtWidgets.QWidget):
             'avg_place_ft': "Среднее место среди турниров с достижением финального стола",
             'avg_place_no_ft': "Среднее место среди турниров без достижения финального стола",
             'pre_ft_ko': "Количество нокаутов до выхода на финальный стол",
-            'ko_roi_contribution': "Процент вклада нокаутов в общий ROI",
+            'winnings_from_ko': "Сумма, полученная от нокаутов",
+            'winnings_from_itm': "Сумма, полученная от попадания в регулярные призы (1-3 места).\n1 место = 4 бай-ина, 2 место = 3 бай-ина, 3 место = 2 бай-ина",
             'ko_stage_2_3': "Количество нокаутов в стадии 2-3 человека (хедз-ап и 3-макс)",
             'ko_stage_4_5': "Количество нокаутов в стадии 4-5 человек",
             'ko_stage_6_9': "Количество нокаутов в стадии 6-9 человек (ранняя стадия финального стола)",
-            'itm_roi_contribution': "Процент вклада призовых за места 1-3 в общий ROI"
         }
         
         # Устанавливаем тултипы для карточек
@@ -409,7 +409,7 @@ class StatsGrid(QtWidgets.QWidget):
             ('tournaments', 0, 0), ('roi', 0, 1), ('itm', 0, 2), ('knockouts', 0, 3), ('avg_ko', 0, 4),
             ('ft_reach', 1, 0), ('avg_ft_stack', 1, 1), ('early_ft_ko', 1, 2), ('ft_stack_conv', 1, 3), ('pre_ft_ko', 1, 4),
             ('avg_place_all', 2, 0), ('avg_place_ft', 2, 1), ('avg_place_no_ft', 2, 2), ('early_ft_bust', 2, 3), ('ko_contribution', 2, 4),
-            ('ko_roi_contribution', 3, 0), ('itm_roi_contribution', 3, 1), ('ko_stage_2_3', 3, 2), ('ko_stage_4_5', 3, 3), ('ko_stage_6_9', 3, 4),
+            ('winnings_from_ko', 3, 0), ('winnings_from_itm', 3, 1), ('ko_stage_2_3', 3, 2), ('ko_stage_4_5', 3, 3), ('ko_stage_6_9', 3, 4),
         ]
         
         for key, row, col in positions:
