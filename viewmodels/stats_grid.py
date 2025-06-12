@@ -16,7 +16,9 @@ from stats import (
     AvgKOPerTournamentStat, FinalTableReachStat,
     AvgFTInitialStackStat, EarlyFTKOStat, EarlyFTBustStat,
     FTStackConversionStat, FTStackConversionAttemptsStat,
-    PreFTKOStat, KOLuckStat, ROIAdjustedStat, KOContributionStat
+    PreFTKOStat, KOLuckStat, ROIAdjustedStat, KOContributionStat,
+    KORoiContributionStat, KOStage23Stat, KOStage45Stat, 
+    KOStage69Stat, ITMRoiContributionStat
 )
 
 
@@ -165,6 +167,22 @@ class StatsGridViewModel:
         early_bust_count = early_bust_res.get('early_ft_bust_count', 0)
         early_bust_per = early_bust_res.get('early_ft_bust_per_tournament', 0.0)
         
+        # Новые статистики
+        ko_roi_contrib_res = KORoiContributionStat().compute(tournaments, final_table_hands, precomputed_stats=precomputed_stats)
+        ko_roi_contrib = ko_roi_contrib_res.get('ko_roi_contribution', 0.0)
+        
+        ko_stage_2_3_res = KOStage23Stat().compute(tournaments, final_table_hands)
+        ko_stage_2_3 = ko_stage_2_3_res.get('ko_stage_2_3', 0)
+        
+        ko_stage_4_5_res = KOStage45Stat().compute(tournaments, final_table_hands)
+        ko_stage_4_5 = ko_stage_4_5_res.get('ko_stage_4_5', 0)
+        
+        ko_stage_6_9_res = KOStage69Stat().compute(tournaments, final_table_hands)
+        ko_stage_6_9 = ko_stage_6_9_res.get('ko_stage_6_9', 0)
+        
+        itm_roi_contrib_res = ITMRoiContributionStat().compute(tournaments, final_table_hands, precomputed_stats=precomputed_stats)
+        itm_roi_contrib = itm_roi_contrib_res.get('itm_roi_contribution', 0.0)
+        
         # Расчет средних мест
         all_places = [t.finish_place for t in tournaments if t.finish_place is not None]
         avg_all = sum(all_places) / len(all_places) if all_places else 0.0
@@ -231,6 +249,31 @@ class StatsGridViewModel:
                 value=StatCardViewModel.format_percentage(roi_adj_value),
                 value_color=StatCardViewModel.get_value_color(roi_adj_value),
                 tooltip="ROI с поправкой на удачу в нокаутах"
+            ),
+            'ko_roi_contribution': StatCardViewModel(
+                title="KO вклад в ROI",
+                value=f"{ko_roi_contrib:.1f}%",
+                tooltip="Процент вклада нокаутов в общий ROI"
+            ),
+            'ko_stage_2_3': StatCardViewModel(
+                title="KO 2-3 игрока",
+                value=str(ko_stage_2_3),
+                tooltip="Количество нокаутов в стадии 2-3 человека"
+            ),
+            'ko_stage_4_5': StatCardViewModel(
+                title="KO 4-5 игроков",
+                value=str(ko_stage_4_5),
+                tooltip="Количество нокаутов в стадии 4-5 человек"
+            ),
+            'ko_stage_6_9': StatCardViewModel(
+                title="KO 6-9 игроков",
+                value=str(ko_stage_6_9),
+                tooltip="Количество нокаутов в стадии 6-9 человек"
+            ),
+            'itm_roi_contribution': StatCardViewModel(
+                title="ITM вклад в ROI",
+                value=f"{itm_roi_contrib:.1f}%",
+                tooltip="Процент вклада призовых за места 1-3 в общий ROI"
             ),
         }
         
