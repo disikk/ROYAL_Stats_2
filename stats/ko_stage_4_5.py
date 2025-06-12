@@ -32,6 +32,8 @@ class KOStage45Stat(BaseStat):
             Словарь с ключами:
             - 'ko_stage_4_5': количество KO в стадии 4-5 человек
             - 'ko_stage_4_5_amount': сумма KO в стадии 4-5 человек
+            - 'ko_stage_4_5_attempts_per_tournament': среднее число попыток
+              нокаутов в турнирах с финальным столом
         """
         final_table_hands = final_table_hands or []
         
@@ -41,10 +43,16 @@ class KOStage45Stat(BaseStat):
             if hand.players_count >= 4 and hand.players_count <= 5
         ]
         
-        # Подсчитываем KO
+        # Подсчитываем KO и количество попыток
         ko_total = sum(hand.hero_ko_this_hand for hand in stage_4_5_hands)
+        attempts_total = sum(hand.hero_ko_attempts for hand in stage_4_5_hands)
+
+        ft_ids = {hand.tournament_id for hand in final_table_hands}
+        ft_count = len(ft_ids)
+        avg_attempts = attempts_total / ft_count if ft_count else 0.0
 
         return {
             "ko_stage_4_5": round(ko_total, 2),
-            "ko_stage_4_5_amount": round(ko_total, 2)
+            "ko_stage_4_5_amount": round(ko_total, 2),
+            "ko_stage_4_5_attempts_per_tournament": round(avg_attempts, 2),
         }
