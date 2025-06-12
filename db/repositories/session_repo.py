@@ -145,7 +145,7 @@ class SessionRepository:
                 SUM(CASE WHEN payout IS NOT NULL THEN payout ELSE 0 END) as total_prize,
                 SUM(CASE WHEN buyin IS NOT NULL THEN buyin ELSE 0 END) as total_buy_in
             FROM tournaments
-            WHERE session_id = ?
+            WHERE session_id = ? AND has_ts = 1
         """
         
         # Получаем количество KO

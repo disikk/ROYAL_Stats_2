@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS tournaments (
     finish_place INTEGER,
     ko_count REAL DEFAULT 0,
     session_id TEXT,
+    has_ts BOOLEAN DEFAULT 0,
+    has_hh BOOLEAN DEFAULT 0,
     reached_final_table BOOLEAN DEFAULT 0,
     final_table_initial_stack_chips REAL,
     final_table_initial_stack_bb REAL,
