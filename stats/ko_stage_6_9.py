@@ -42,15 +42,9 @@ class KOStage69Stat(BaseStat):
         ]
         
         # Подсчитываем KO
-        ko_count = 0
-        ko_amount = 0.0
-        
-        for hand in stage_6_9_hands:
-            if hand.hero_ko_this_hand > 0:
-                ko_count += 1
-                ko_amount += hand.hero_ko_this_hand
-        
+        ko_total = sum(hand.hero_ko_this_hand for hand in stage_6_9_hands)
+
         return {
-            "ko_stage_6_9": ko_count,
-            "ko_stage_6_9_amount": round(ko_amount, 2)
+            "ko_stage_6_9": round(ko_total, 2),
+            "ko_stage_6_9_amount": round(ko_total, 2)
         }
