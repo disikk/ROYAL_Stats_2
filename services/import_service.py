@@ -623,10 +623,10 @@ class ImportService:
                 if existing_tourney and existing_tourney.session_id:
                     final_tourney_data['session_id'] = existing_tourney.session_id
 
-                finish_place = final_tourney_data.get('finish_place')
-                if finish_place is not None and 1 <= finish_place <= 9:
-                    final_tourney_data['reached_final_table'] = True
-
+                # Не устанавливаем reached_final_table автоматически по месту!
+                # Этот флаг должен устанавливаться только при наличии Hand History
+                # с реальными данными о финальном столе (9-max)
+                
                 merged_tournament = Tournament.from_dict(final_tourney_data)
 
                 if existing_tourney:

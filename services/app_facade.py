@@ -249,7 +249,9 @@ class AppFacade:
     
     def get_overall_stats(self) -> OverallStats:
         """Возвращает общую статистику."""
-        return self.statistics_service.get_overall_stats(self.db_path)
+        stats = self.statistics_service.get_overall_stats(self.db_path)
+        logger.info(f"AppFacade.get_overall_stats: pre_ft_chipev = {stats.pre_ft_chipev}")
+        return stats
     
     def get_all_tournaments(self, buyin_filter: Optional[float] = None) -> List[Tournament]:
         """Возвращает список всех турниров."""
@@ -562,19 +564,10 @@ class AppFacade:
         # Pre-FT KO
         stats.pre_ft_ko_count = sum(hand.pre_ft_ko for hand in ft_hands)
 
-        # Средний результат до финального стола (ChipEV)
-        ft_stack_sum = sum(
-            t.final_table_initial_stack_chips for t in tournaments
-            if t.final_table_initial_stack_chips is not None
-        )
-        not_ft_count = stats.total_tournaments - stats.total_final_tables
-        if stats.total_tournaments > 0:
-            stats.pre_ft_chipev = (
-                ft_stack_sum - not_ft_count * 1000
-            ) / stats.total_tournaments
-        else:
-            stats.pre_ft_chipev = 0.0
-        stats.pre_ft_chipev = round(stats.pre_ft_chipev, 2)
+        # Pre-FT ChipEV через плагин
+        from stats import PreFTChipEVStat
+        chipev_res = PreFTChipEVStat().compute(tournaments, ft_hands)
+        stats.pre_ft_chipev = chipev_res.get("pre_ft_chipev", 0.0)
         
         return stats
 

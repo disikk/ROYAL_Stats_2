@@ -501,18 +501,7 @@ class StatisticsService:
         # KO в последней 5-max раздаче перед финальным столом
         stats.pre_ft_ko_count = sum(hand.pre_ft_ko for hand in all_ft_hands)
 
-        # Средний результат до финального стола (ChipEV)
-        ft_stack_sum = sum(
-            t.final_table_initial_stack_chips for t in final_table_tournaments
-            if t.final_table_initial_stack_chips is not None
-        )
-        not_ft_count = stats.total_tournaments - stats.total_final_tables
-        if stats.total_tournaments > 0:
-            stats.pre_ft_chipev = (
-                ft_stack_sum - not_ft_count * 1000
-            ) / stats.total_tournaments
-        else:
-            stats.pre_ft_chipev = 0.0
+        # Pre-FT ChipEV будет рассчитан плагином
         
         # Логируем статистику по выплатам для отладки
         tournaments_with_payout = sum(1 for t in all_tournaments if t.payout is not None and t.payout > 0)
@@ -532,7 +521,6 @@ class StatisticsService:
             'early_ft_ko_count': stats.early_ft_ko_count,
             'early_ft_ko_per_tournament': stats.early_ft_ko_per_tournament,
             'pre_ft_ko_count': stats.pre_ft_ko_count,
-            'pre_ft_chipev': stats.pre_ft_chipev,
             'avg_finish_place': stats.avg_finish_place,
             'avg_finish_place_ft': stats.avg_finish_place_ft,
             'avg_finish_place_no_ft': stats.avg_finish_place_no_ft,
@@ -562,6 +550,14 @@ class StatisticsService:
             stats.big_ko_x100 = big_ko_results.get("x100", 0)
             stats.big_ko_x1000 = big_ko_results.get("x1000", 0)
             stats.big_ko_x10000 = big_ko_results.get("x10000", 0)
+        
+        # Обработка результатов Pre-FT ChipEV
+        if 'Pre-FT ChipEV' in plugin_results:
+            pre_ft_chipev_results = plugin_results['Pre-FT ChipEV']
+            stats.pre_ft_chipev = pre_ft_chipev_results.get("pre_ft_chipev", 0.0)
+            logger.info(f"Pre-FT ChipEV из плагина: {stats.pre_ft_chipev}")
+        else:
+            logger.warning("Плагин Pre-FT ChipEV не найден в результатах!")
         
         # Среднее место когда НЕ дошел до финалки
         no_ft_places = [t.finish_place for t in all_tournaments 
