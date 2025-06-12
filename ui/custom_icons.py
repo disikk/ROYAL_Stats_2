@@ -126,8 +126,13 @@ class CustomIcons:
     def screenshot_icon(color: str = "#E4E4E7") -> QtGui.QIcon:
         """Иконка скриншота."""
         svg = '''<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
-            <line x1="12" y1="8" x2="12" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            <line x1="8" y1="12" x2="16" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M4 5V8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M5 4H8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M16 4H19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M19 5V8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M19 16V19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M16 19H19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M4 16V19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M5 19H8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </svg>'''
         return CustomIcons.create_icon_from_svg(svg, color)
