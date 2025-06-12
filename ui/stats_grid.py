@@ -373,9 +373,9 @@ class StatsGrid(QtWidgets.QWidget):
             'ko_stage_2_3': SpecialStatCard("KO 2-3 игрока", "-"),
             'ko_stage_4_5': SpecialStatCard("KO 4-5 игроков", "-"),
             'ko_stage_6_9': StatCard("KO 6-9 игроков", "-"),
-            'deep_ft_reach': StatCard("% Проход <=5", "-"),
-            'deep_ft_stack': StatCard("Стек при <=5", "-"),
-            'deep_ft_roi': StatCard("ROI <=5", "-"),
+            'deep_ft_reach': StatCard("% Проход в 5max", "-"),
+            'deep_ft_stack': StatCard("Стек проходки в 5max", "-"),
+            'deep_ft_roi': StatCard("ROI при проходе в 5max", "-"),
         }
         
         # Словарь с описаниями для тултипов

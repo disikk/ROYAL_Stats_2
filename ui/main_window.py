@@ -44,7 +44,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, app_facade: AppFacade):
         super().__init__()
         self.setWindowTitle(app_config.app_title)
-        self.setMinimumSize(1300, 880)
+        self.setMinimumSize(1300, 910)
 
         # Используем переданный AppFacade
         self.app_service = app_facade

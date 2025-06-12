@@ -287,12 +287,12 @@ class StatsGridViewModel:
             'deep_ft_reach': StatCardViewModel(
                 title="% Reach \u22645",
                 value=f"{deep_ft_reach:.1f}%",
-                tooltip="Процент финалок, где Hero дошел до 5 игроков и меньше"
+                tooltip="Процент финалок, где Hero дошел до \u22645 игроков"
             ),
             'deep_ft_stack': StatCardViewModel(
                 title="Stack \u22645",
-                value=f"{StatCardViewModel.format_number(deep_ft_stack_chips, decimals=0)} фишек / {deep_ft_stack_bb:.1f} BB",
-                tooltip="Средний стек при \u22645 игроках на финальном столе"
+                value=f"{StatCardViewModel.format_number(deep_ft_stack_chips, decimals=0)}/{deep_ft_stack_bb:.1f}",
+                tooltip="Средний стек проходки в стадию \u22645 игроков на финальном столе"
             ),
             'deep_ft_roi': StatCardViewModel(
                 title="ROI \u22645",
