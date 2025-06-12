@@ -253,6 +253,7 @@ class StatsGridViewModel:
             'winnings_from_ko': StatCardViewModel(
                 title="Выигрыш от KO",
                 value=f"${winnings_from_ko:.0f}",
+                subtitle=f"{avg_attempts:.2f} попыток за турнир с FT",
                 tooltip="Сумма, полученная от нокаутов"
             ),
             'ko_stage_2_3': StatCardViewModel(
@@ -273,6 +274,7 @@ class StatsGridViewModel:
             'winnings_from_itm': StatCardViewModel(
                 title="Выигрыш от ITM",
                 value=f"${winnings_from_itm:.0f}",
+                subtitle=f"{avg_attempts:.2f} попыток за турнир с FT",
                 tooltip="Сумма, полученная от попадания в призы (места 1-3)"
             ),
         }
