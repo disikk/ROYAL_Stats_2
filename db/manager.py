@@ -274,6 +274,13 @@ class DatabaseManager:
             if 'hero_ko_attempts' not in columns:
                 cursor.execute("ALTER TABLE hero_final_table_hands ADD COLUMN hero_ko_attempts INTEGER DEFAULT 0")
                 logger.debug("Добавлена колонка hero_ko_attempts в таблицу hero_final_table_hands")
+
+            # Проверяем наличие колонки pre_ft_chipev в таблице overall_stats
+            cursor.execute("PRAGMA table_info(overall_stats)")
+            columns = [col[1] for col in cursor.fetchall()]
+            if 'pre_ft_chipev' not in columns:
+                cursor.execute("ALTER TABLE overall_stats ADD COLUMN pre_ft_chipev REAL DEFAULT 0")
+                logger.debug("Добавлена колонка pre_ft_chipev в таблицу overall_stats")
             
             # Обновление индексов для существующих БД
             self._update_indexes(cursor)

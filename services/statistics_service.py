@@ -500,6 +500,19 @@ class StatisticsService:
         
         # KO в последней 5-max раздаче перед финальным столом
         stats.pre_ft_ko_count = sum(hand.pre_ft_ko for hand in all_ft_hands)
+
+        # Средний результат до финального стола (ChipEV)
+        ft_stack_sum = sum(
+            t.final_table_initial_stack_chips for t in final_table_tournaments
+            if t.final_table_initial_stack_chips is not None
+        )
+        not_ft_count = stats.total_tournaments - stats.total_final_tables
+        if stats.total_tournaments > 0:
+            stats.pre_ft_chipev = (
+                ft_stack_sum - not_ft_count * 1000
+            ) / stats.total_tournaments
+        else:
+            stats.pre_ft_chipev = 0.0
         
         # Логируем статистику по выплатам для отладки
         tournaments_with_payout = sum(1 for t in all_tournaments if t.payout is not None and t.payout > 0)
@@ -519,6 +532,7 @@ class StatisticsService:
             'early_ft_ko_count': stats.early_ft_ko_count,
             'early_ft_ko_per_tournament': stats.early_ft_ko_per_tournament,
             'pre_ft_ko_count': stats.pre_ft_ko_count,
+            'pre_ft_chipev': stats.pre_ft_chipev,
             'avg_finish_place': stats.avg_finish_place,
             'avg_finish_place_ft': stats.avg_finish_place_ft,
             'avg_finish_place_no_ft': stats.avg_finish_place_no_ft,
@@ -565,6 +579,7 @@ class StatisticsService:
         stats.early_ft_bust_per_tournament = round(stats.early_ft_bust_per_tournament, 2)
         stats.final_table_reach_percent = round(stats.final_table_reach_percent, 2)
         stats.pre_ft_ko_count = round(stats.pre_ft_ko_count, 2)
+        stats.pre_ft_chipev = round(stats.pre_ft_chipev, 2)
         
         logger.debug(
             f"Итоговая статистика: tournaments={stats.total_tournaments}, "
@@ -751,6 +766,15 @@ class StatisticsService:
                 current_stats.avg_ft_initial_stack_chips = sum(all_ft_stacks['chips']) / len(all_ft_stacks['chips'])
             if all_ft_stacks['bb']:
                 current_stats.avg_ft_initial_stack_bb = sum(all_ft_stacks['bb']) / len(all_ft_stacks['bb'])
+
+        # Пересчитываем средний ChipEV до финалки
+        all_ft_stacks = self.tournament_repo.get_final_table_initial_stacks()
+        ft_stack_sum = sum(all_ft_stacks['chips']) if all_ft_stacks['chips'] else 0.0
+        not_ft_count = current_stats.total_tournaments - current_stats.total_final_tables
+        if current_stats.total_tournaments > 0:
+            current_stats.pre_ft_chipev = (ft_stack_sum - not_ft_count * 1000) / current_stats.total_tournaments
+        else:
+            current_stats.pre_ft_chipev = 0.0
         
         # Обновляем статистику Big KO через плагин
         all_tournaments = list(added_tournaments)  # Только новые для инкрементального расчета
@@ -780,7 +804,8 @@ class StatisticsService:
         current_stats.early_ft_ko_per_tournament = round(current_stats.early_ft_ko_per_tournament, 2)
         current_stats.early_ft_bust_per_tournament = round(current_stats.early_ft_bust_per_tournament, 2)
         current_stats.final_table_reach_percent = round(current_stats.final_table_reach_percent, 2)
-        
+        current_stats.pre_ft_chipev = round(current_stats.pre_ft_chipev, 2)
+
         return current_stats
     
     def update_statistics_incremental(

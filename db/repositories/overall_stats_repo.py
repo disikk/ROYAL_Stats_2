@@ -80,6 +80,7 @@ class OverallStatsRepository:
                 early_ft_bust_count = ?,
                 early_ft_bust_per_tournament = ?,
                 pre_ft_ko_count = ?,
+                pre_ft_chipev = ?,
                 incomplete_ft_count = ?,
                 incomplete_ft_percent = ?,
                 last_updated = ?
@@ -108,6 +109,7 @@ class OverallStatsRepository:
             stats.early_ft_bust_count,
             stats.early_ft_bust_per_tournament,
             stats.pre_ft_ko_count,
+            stats.pre_ft_chipev,
             stats.incomplete_ft_count,
             stats.incomplete_ft_percent,
             datetime.now().isoformat(), # Обновляем метку времени
