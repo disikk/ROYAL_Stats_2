@@ -173,9 +173,11 @@ class StatsGridViewModel:
         
         ko_stage_2_3_res = KOStage23Stat().compute(tournaments, final_table_hands)
         ko_stage_2_3 = ko_stage_2_3_res.get('ko_stage_2_3', 0)
-        
+        attempts_stage_2_3 = ko_stage_2_3_res.get('ko_stage_2_3_attempts_per_tournament', 0.0)
+
         ko_stage_4_5_res = KOStage45Stat().compute(tournaments, final_table_hands)
         ko_stage_4_5 = ko_stage_4_5_res.get('ko_stage_4_5', 0)
+        attempts_stage_4_5 = ko_stage_4_5_res.get('ko_stage_4_5_attempts_per_tournament', 0.0)
         
         ko_stage_6_9_res = KOStage69Stat().compute(tournaments, final_table_hands)
         ko_stage_6_9 = ko_stage_6_9_res.get('ko_stage_6_9', 0)
@@ -253,17 +255,17 @@ class StatsGridViewModel:
             'winnings_from_ko': StatCardViewModel(
                 title="Выигрыш от KO",
                 value=f"${winnings_from_ko:.0f}",
-                subtitle=f"{avg_attempts:.2f} попыток за турнир с FT",
-                tooltip="Сумма, полученная от нокаутов"
             ),
             'ko_stage_2_3': StatCardViewModel(
                 title="KO 2-3 игрока",
                 value=str(ko_stage_2_3),
+                subtitle=f"{attempts_stage_2_3:.2f} попыток за турнир с FT",
                 tooltip="Количество нокаутов в стадии 2-3 человека"
             ),
             'ko_stage_4_5': StatCardViewModel(
                 title="KO 4-5 игроков",
                 value=str(ko_stage_4_5),
+                subtitle=f"{attempts_stage_4_5:.2f} попыток за турнир с FT",
                 tooltip="Количество нокаутов в стадии 4-5 человек"
             ),
             'ko_stage_6_9': StatCardViewModel(
@@ -274,7 +276,6 @@ class StatsGridViewModel:
             'winnings_from_itm': StatCardViewModel(
                 title="Выигрыш от ITM",
                 value=f"${winnings_from_itm:.0f}",
-                subtitle=f"{avg_attempts:.2f} попыток за турнир с FT",
                 tooltip="Сумма, полученная от попадания в призы (места 1-3)"
             ),
         }

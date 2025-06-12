@@ -32,6 +32,8 @@ class KOStage23Stat(BaseStat):
             Словарь с ключами:
             - 'ko_stage_2_3': количество KO в стадии 2-3 человека
             - 'ko_stage_2_3_amount': сумма KO в стадии 2-3 человека
+            - 'ko_stage_2_3_attempts_per_tournament': среднее число попыток
+              нокаутов в турнирах с финальным столом
         """
         final_table_hands = final_table_hands or []
         
@@ -41,11 +43,17 @@ class KOStage23Stat(BaseStat):
             if hand.players_count >= 2 and hand.players_count <= 3
         ]
         
-        # Подсчитываем KO. В hero_ko_this_hand может быть дробное
-        # значение, если награда разделена между несколькими игроками.
+        # Подсчитываем KO и количество попыток
         ko_total = sum(hand.hero_ko_this_hand for hand in stage_2_3_hands)
+        attempts_total = sum(hand.hero_ko_attempts for hand in stage_2_3_hands)
+
+        # Количество финальных столов определяем по уникальным ID турниров
+        ft_ids = {hand.tournament_id for hand in final_table_hands}
+        ft_count = len(ft_ids)
+        avg_attempts = attempts_total / ft_count if ft_count else 0.0
 
         return {
             "ko_stage_2_3": round(ko_total, 2),
-            "ko_stage_2_3_amount": round(ko_total, 2)
+            "ko_stage_2_3_amount": round(ko_total, 2),
+            "ko_stage_2_3_attempts_per_tournament": round(avg_attempts, 2),
         }
