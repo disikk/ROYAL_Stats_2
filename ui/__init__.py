@@ -10,7 +10,8 @@ from .stats_grid import StatsGrid
 from .tournament_view import TournamentView
 from .session_view import SessionView
 from .session_select_dialog import SessionSelectDialog
-from .app_style import apply_dark_theme # Удобно импортировать напрямую для использования в app.py
+from .app_style import apply_dark_theme  # Удобно импортировать напрямую для использования в app.py
+from .gradient_label import GradientLabel
 
 # Добавляй свои компоненты, если будут новые
 
@@ -21,4 +22,5 @@ __all__ = [
     'SessionView',
     'SessionSelectDialog',
     'apply_dark_theme',
+    'GradientLabel',
 ]

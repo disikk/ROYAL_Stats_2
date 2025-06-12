@@ -25,6 +25,7 @@ from ui.session_select_dialog import SessionSelectDialog
 from ui.custom_icons import CustomIcons  # Импортируем кастомные иконки
 from ui.background import thread_manager
 from models import OverallStats
+from ui.gradient_label import GradientLabel
 
 # Импортируем диалог управления БД
 from ui.database_management_dialog import DatabaseManagementDialog # Предполагаем, что такой файл будет создан
@@ -90,8 +91,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.statusBar().setSizeGripEnabled(False)
 
         # Метка с информацией о текущей БД (будет размещена в тулбаре)
-        self.db_status_label = QtWidgets.QLabel("")
-        self.db_status_label.setStyleSheet("color: #777; margin-right: 8px;")
+        # Используем градиентный текст и увеличиваем размер на 50%
+        self.db_status_label = GradientLabel("")
+        self.db_status_label.setStyleSheet(
+            "font-weight: bold; font-size: 150%; margin-right: 8px;"
+        )
 
         # Панель инструментов
         self.toolbar = self.addToolBar("Панель инструментов")

@@ -29,7 +29,10 @@ class DeepFTStat(BaseStat):
         tournaments = tournaments or []
         final_table_hands = final_table_hands or []
 
-        # Сохраняем первую руку, где игроков 5 или меньше
+        # Сохраняем первую руку, где игроков 5 или меньше.
+        # Это обеспечивает, что стек берется в момент, когда Hero
+        # впервые попадает в стадию \u22645 игроков, независимо от
+        # того, сколько игроков было до этого перехода.
         first_hands: dict[str, FinalTableHand] = {}
         for hand in final_table_hands:
             if hand.players_count <= 5:

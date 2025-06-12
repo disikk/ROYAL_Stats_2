@@ -291,8 +291,7 @@ class StatsGridViewModel:
             ),
             'deep_ft_stack': StatCardViewModel(
                 title="Stack \u22645",
-                value=StatCardViewModel.format_number(deep_ft_stack_chips, decimals=0),
-                subtitle=f"{StatCardViewModel.format_number(deep_ft_stack_chips, decimals=0)} фишек / {deep_ft_stack_bb:.1f} BB",
+                value=f"{StatCardViewModel.format_number(deep_ft_stack_chips, decimals=0)} фишек / {deep_ft_stack_bb:.1f} BB",
                 tooltip="Средний стек при \u22645 игроках на финальном столе"
             ),
             'deep_ft_roi': StatCardViewModel(
