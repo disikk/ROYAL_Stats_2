@@ -28,5 +28,7 @@ class Tournament(BaseModel):
     final_table_initial_stack_chips: Optional[float] = None # Стек на старте финалки в фишках
     final_table_initial_stack_bb: Optional[float] = None # Стек на старте финалки в BB
     final_table_start_players: Optional[int] = None # Количество игроков в первой руке финального стола
+    has_ts: bool = False  # Есть ли данные из Tournament Summary
+    has_hh: bool = False  # Есть ли данные из Hand History
     id: Optional[int] = None # ID из БД, опционально
 

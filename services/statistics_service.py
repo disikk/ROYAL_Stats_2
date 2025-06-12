@@ -429,25 +429,32 @@ class StatisticsService:
         logger.debug(
             f"_calculate_overall_stats: Загружено {len(all_ft_hands)} рук финального стола"
         )
-        
+
         stats = OverallStats()
-        
+
         stats.total_tournaments = len(all_tournaments)
-        
-        # Фильтруем турниры, достигшие финального стола
-        final_table_tournaments = [t for t in all_tournaments if t.reached_final_table]
+
+        tournaments_ts = [t for t in all_tournaments if t.has_ts]
+        tournaments_hh = [t for t in all_tournaments if t.has_hh]
+
+        # Фильтруем турниры, достигшие финального стола и имеющие HH
+        final_table_tournaments = [t for t in tournaments_hh if t.reached_final_table]
         stats.total_final_tables = len(final_table_tournaments)
         
         # Расчеты, основанные на турнирах:
-        stats.total_buy_in = sum(t.buyin for t in all_tournaments if t.buyin is not None)
-        stats.total_prize = sum(t.payout if t.payout is not None else 0 for t in all_tournaments)
+        stats.total_buy_in = sum(t.buyin for t in tournaments_ts if t.buyin is not None)
+        stats.total_prize = sum(t.payout if t.payout is not None else 0 for t in tournaments_ts)
         
         # Среднее место по всем турнирам (включая не финалку)
-        all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
+        all_places = [t.finish_place for t in tournaments_ts if t.finish_place is not None]
         stats.avg_finish_place = sum(all_places) / len(all_places) if all_places else 0.0
         
         # Среднее место только на финалке (1-9)
-        ft_places = [t.finish_place for t in final_table_tournaments if t.finish_place is not None and 1 <= t.finish_place <= 9]
+        ft_places = [
+            t.finish_place
+            for t in final_table_tournaments
+            if t.has_ts and t.finish_place is not None and 1 <= t.finish_place <= 9
+        ]
         stats.avg_finish_place_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
         
         # Общее количество KO
@@ -458,13 +465,23 @@ class StatisticsService:
         stats.avg_ko_per_tournament = stats.total_knockouts / stats.total_tournaments if stats.total_tournaments > 0 else 0.0
         
         # % Reach FT
-        stats.final_table_reach_percent = (stats.total_final_tables / stats.total_tournaments * 100) if stats.total_tournaments > 0 else 0.0
+        stats.final_table_reach_percent = (
+            stats.total_final_tables / len(tournaments_hh) * 100
+        ) if tournaments_hh else 0.0
         
         # Средний стек на старте финалки (чипсы и BB)
-        ft_initial_stacks_chips = [t.final_table_initial_stack_chips for t in final_table_tournaments if t.final_table_initial_stack_chips is not None]
+        ft_initial_stacks_chips = [
+            t.final_table_initial_stack_chips
+            for t in final_table_tournaments
+            if t.final_table_initial_stack_chips is not None
+        ]
         stats.avg_ft_initial_stack_chips = sum(ft_initial_stacks_chips) / len(ft_initial_stacks_chips) if ft_initial_stacks_chips else 0.0
         
-        ft_initial_stacks_bb = [t.final_table_initial_stack_bb for t in final_table_tournaments if t.final_table_initial_stack_bb is not None]
+        ft_initial_stacks_bb = [
+            t.final_table_initial_stack_bb
+            for t in final_table_tournaments
+            if t.final_table_initial_stack_bb is not None
+        ]
         stats.avg_ft_initial_stack_bb = sum(ft_initial_stacks_bb) / len(ft_initial_stacks_bb) if ft_initial_stacks_bb else 0.0
         
         # Расчеты для "ранней стадии финалки" (9-6 игроков)
@@ -478,7 +495,7 @@ class StatisticsService:
         stats.early_ft_bust_count = sum(
             1
             for t in final_table_tournaments
-            if t.finish_place is not None and 6 <= t.finish_place <= 9
+            if t.has_ts and t.finish_place is not None and 6 <= t.finish_place <= 9
         )
         stats.early_ft_bust_per_tournament = (
             stats.early_ft_bust_count / stats.total_final_tables if stats.total_final_tables > 0 else 0.0
@@ -504,8 +521,12 @@ class StatisticsService:
         # Pre-FT ChipEV будет рассчитан плагином
         
         # Логируем статистику по выплатам для отладки
-        tournaments_with_payout = sum(1 for t in all_tournaments if t.payout is not None and t.payout > 0)
-        tournaments_without_payout = sum(1 for t in all_tournaments if t.payout is None or t.payout == 0)
+        tournaments_with_payout = sum(
+            1 for t in tournaments_ts if t.payout is not None and t.payout > 0
+        )
+        tournaments_without_payout = sum(
+            1 for t in tournaments_ts if t.payout is None or t.payout == 0
+        )
         logger.debug(
             f"Турниры с выплатами: {tournaments_with_payout}, без выплат: {tournaments_without_payout}"
         )
@@ -560,8 +581,11 @@ class StatisticsService:
             logger.warning("Плагин Pre-FT ChipEV не найден в результатах!")
         
         # Среднее место когда НЕ дошел до финалки
-        no_ft_places = [t.finish_place for t in all_tournaments 
-                       if not t.reached_final_table and t.finish_place is not None]
+        no_ft_places = [
+            t.finish_place
+            for t in tournaments_ts
+            if not t.reached_final_table and t.finish_place is not None
+        ]
         stats.avg_finish_place_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
         stats.avg_finish_place_no_ft = round(stats.avg_finish_place_no_ft, 2)
         
@@ -695,18 +719,18 @@ class StatisticsService:
         current_stats.total_tournaments += delta_tournaments
         
         # Обновляем счетчики финальных столов
-        added_ft = [t for t in added_tournaments if t.reached_final_table]
-        removed_ft = [t for t in removed_tournaments if t.reached_final_table]
+        added_ft = [t for t in added_tournaments if t.reached_final_table and t.has_hh]
+        removed_ft = [t for t in removed_tournaments if t.reached_final_table and t.has_hh]
         delta_ft = len(added_ft) - len(removed_ft)
         current_stats.total_final_tables += delta_ft
         
         # Обновляем суммы байинов и выплат
-        added_buyin = sum(t.buyin for t in added_tournaments if t.buyin is not None)
-        removed_buyin = sum(t.buyin for t in removed_tournaments if t.buyin is not None)
+        added_buyin = sum(t.buyin for t in added_tournaments if t.has_ts and t.buyin is not None)
+        removed_buyin = sum(t.buyin for t in removed_tournaments if t.has_ts and t.buyin is not None)
         current_stats.total_buy_in += added_buyin - removed_buyin
         
-        added_prize = sum(t.payout if t.payout is not None else 0 for t in added_tournaments)
-        removed_prize = sum(t.payout if t.payout is not None else 0 for t in removed_tournaments)
+        added_prize = sum(t.payout if t.payout is not None else 0 for t in added_tournaments if t.has_ts)
+        removed_prize = sum(t.payout if t.payout is not None else 0 for t in removed_tournaments if t.has_ts)
         current_stats.total_prize += added_prize - removed_prize
         
         # Обновляем количество нокаутов
@@ -746,8 +770,14 @@ class StatisticsService:
             current_stats.early_ft_ko_per_tournament = current_stats.early_ft_ko_count / current_stats.total_final_tables
             
             # Early FT bust
-            early_bust_count = len([t for t in added_ft if t.finish_place is not None and 6 <= t.finish_place <= 9])
-            early_bust_count -= len([t for t in removed_ft if t.finish_place is not None and 6 <= t.finish_place <= 9])
+            early_bust_count = len([
+                t for t in added_ft
+                if t.has_ts and t.finish_place is not None and 6 <= t.finish_place <= 9
+            ])
+            early_bust_count -= len([
+                t for t in removed_ft
+                if t.has_ts and t.finish_place is not None and 6 <= t.finish_place <= 9
+            ])
             current_stats.early_ft_bust_count += early_bust_count
             current_stats.early_ft_bust_per_tournament = current_stats.early_ft_bust_count / current_stats.total_final_tables
         

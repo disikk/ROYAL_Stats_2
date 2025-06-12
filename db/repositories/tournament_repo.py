@@ -54,8 +54,8 @@ class TournamentRepository:
                 tournament_id, tournament_name, start_time, buyin, payout,
                 finish_place, ko_count, session_id, reached_final_table,
                 final_table_initial_stack_chips, final_table_initial_stack_bb,
-                final_table_start_players
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                final_table_start_players, has_ts, has_hh
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(tournament_id)
             DO UPDATE SET
                 tournament_name = COALESCE(excluded.tournament_name, tournaments.tournament_name),
@@ -68,7 +68,9 @@ class TournamentRepository:
                 reached_final_table = tournaments.reached_final_table OR excluded.reached_final_table, -- Флаг становится TRUE если хоть раз был TRUE
                 final_table_initial_stack_chips = COALESCE(excluded.final_table_initial_stack_chips, tournaments.final_table_initial_stack_chips),
                 final_table_initial_stack_bb = COALESCE(excluded.final_table_initial_stack_bb, tournaments.final_table_initial_stack_bb),
-                final_table_start_players = COALESCE(excluded.final_table_start_players, tournaments.final_table_start_players)
+                final_table_start_players = COALESCE(excluded.final_table_start_players, tournaments.final_table_start_players),
+                has_ts = tournaments.has_ts OR excluded.has_ts,
+                has_hh = tournaments.has_hh OR excluded.has_hh
         """
 
         params = (
@@ -84,6 +86,8 @@ class TournamentRepository:
             tournament.final_table_initial_stack_chips,
             tournament.final_table_initial_stack_bb,
             tournament.final_table_start_players,
+            tournament.has_ts,
+            tournament.has_hh,
         )
 
         self.db.execute_update(query, params)
@@ -98,8 +102,8 @@ class TournamentRepository:
                 tournament_id, tournament_name, start_time, buyin, payout,
                 finish_place, ko_count, session_id, reached_final_table,
                 final_table_initial_stack_chips, final_table_initial_stack_bb,
-                final_table_start_players
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                final_table_start_players, has_ts, has_hh
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(tournament_id)
             DO UPDATE SET
                 tournament_name = COALESCE(excluded.tournament_name, tournaments.tournament_name),
@@ -112,7 +116,9 @@ class TournamentRepository:
                 reached_final_table = tournaments.reached_final_table OR excluded.reached_final_table,
                 final_table_initial_stack_chips = COALESCE(excluded.final_table_initial_stack_chips, tournaments.final_table_initial_stack_chips),
                 final_table_initial_stack_bb = COALESCE(excluded.final_table_initial_stack_bb, tournaments.final_table_initial_stack_bb),
-                final_table_start_players = COALESCE(excluded.final_table_start_players, tournaments.final_table_start_players)
+                final_table_start_players = COALESCE(excluded.final_table_start_players, tournaments.final_table_start_players),
+                has_ts = tournaments.has_ts OR excluded.has_ts,
+                has_hh = tournaments.has_hh OR excluded.has_hh
         """
 
         params_list = [
@@ -129,6 +135,8 @@ class TournamentRepository:
                 t.final_table_initial_stack_chips,
                 t.final_table_initial_stack_bb,
                 t.final_table_start_players,
+                t.has_ts,
+                t.has_hh,
             )
             for t in tournaments
         ]
@@ -153,7 +161,7 @@ class TournamentRepository:
                 id, tournament_id, tournament_name, start_time, buyin, payout,
                 finish_place, ko_count, session_id, reached_final_table,
                 final_table_initial_stack_chips, final_table_initial_stack_bb,
-                final_table_start_players
+                final_table_start_players, has_ts, has_hh
             FROM tournaments
             WHERE tournament_id=?
         """
@@ -179,7 +187,7 @@ class TournamentRepository:
                 id, tournament_id, tournament_name, start_time, buyin, payout,
                 finish_place, ko_count, session_id, reached_final_table,
                 final_table_initial_stack_chips, final_table_initial_stack_bb,
-                final_table_start_players
+                final_table_start_players, has_ts, has_hh
             FROM tournaments
         """
         conditions = []

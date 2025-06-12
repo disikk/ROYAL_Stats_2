@@ -438,10 +438,12 @@ class ImportService:
             # Инициализируем запись в словаре, если ее нет
             if tourney_id not in parsed_tournaments_data:
                 parsed_tournaments_data[tourney_id] = {
-                    'tournament_id': tourney_id, 
-                    'session_id': session_id, 
-                    'ko_count': 0, 
-                    'reached_final_table': False
+                    'tournament_id': tourney_id,
+                    'session_id': session_id,
+                    'ko_count': 0,
+                    'reached_final_table': False,
+                    'has_hh': False,
+                    'has_ts': False
                 }
             
             # Добавляем данные из HH к временной записи турнира
@@ -456,6 +458,8 @@ class ImportService:
                 parsed_tournaments_data[tourney_id]['final_table_initial_stack_chips'] = hh_result.final_table_initial_stack_chips
                 parsed_tournaments_data[tourney_id]['final_table_initial_stack_bb'] = hh_result.final_table_initial_stack_bb
                 parsed_tournaments_data[tourney_id]['final_table_start_players'] = hh_result.final_table_start_players
+
+            parsed_tournaments_data[tourney_id]['has_hh'] = True
             
             # Собираем данные финальных раздач
             ft_hands_data = hh_result.final_table_hands_data
@@ -479,10 +483,12 @@ class ImportService:
             # Инициализируем запись, если ее нет
             if tourney_id not in parsed_tournaments_data:
                 parsed_tournaments_data[tourney_id] = {
-                    'tournament_id': tourney_id, 
-                    'session_id': session_id, 
-                    'ko_count': 0, 
-                    'reached_final_table': False
+                    'tournament_id': tourney_id,
+                    'session_id': session_id,
+                    'ko_count': 0,
+                    'reached_final_table': False,
+                    'has_hh': False,
+                    'has_ts': False
                 }
             
             # Обновляем временные данные турнира из TS (TS имеет приоритет)
@@ -503,9 +509,10 @@ class ImportService:
                 parsed_tournaments_data[tourney_id].get('payout')
             )
             parsed_tournaments_data[tourney_id]['finish_place'] = (
-                ts_result.finish_place or 
+                ts_result.finish_place or
                 parsed_tournaments_data[tourney_id].get('finish_place')
             )
+            parsed_tournaments_data[tourney_id]['has_ts'] = True
     
     def _save_parsed_data(
         self,
@@ -609,6 +616,17 @@ class ImportService:
                     final_tourney_data.update(existing_tourney.as_dict())
 
                 final_tourney_data.update(data)
+
+                if existing_tourney:
+                    final_tourney_data['has_ts'] = (
+                        existing_tourney.has_ts or data.get('has_ts', False)
+                    )
+                    final_tourney_data['has_hh'] = (
+                        existing_tourney.has_hh or data.get('has_hh', False)
+                    )
+                else:
+                    final_tourney_data.setdefault('has_ts', False)
+                    final_tourney_data.setdefault('has_hh', False)
 
                 if existing_tourney and existing_tourney.reached_final_table:
                     final_tourney_data['reached_final_table'] = True

@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS tournaments (
     final_table_initial_stack_chips REAL,
     final_table_initial_stack_bb REAL,
     final_table_start_players INTEGER,
+    has_ts BOOLEAN DEFAULT 0,
+    has_hh BOOLEAN DEFAULT 0,
     FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
 )
 """
