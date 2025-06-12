@@ -374,7 +374,7 @@ class StatsGrid(QtWidgets.QWidget):
             'ko_stage_4_5': SpecialStatCard("KO 4-5 игроков", "-"),
             'ko_stage_6_9': StatCard("KO 6-9 игроков", "-"),
             'deep_ft_reach': StatCard("% Проход <=5", "-"),
-            'deep_ft_stack': SpecialStatCard("Стек при <=5", "-"),
+            'deep_ft_stack': StatCard("Стек при <=5", "-"),
             'deep_ft_roi': StatCard("ROI <=5", "-"),
         }
         
