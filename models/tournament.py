@@ -24,6 +24,8 @@ class Tournament(BaseModel):
     finish_place: Optional[int] = None # None, если не закончил турнир в этой сессии
     ko_count: float = 0.0 # Общее количество KO Hero в турнире
     session_id: Optional[str] = None # ID сессии импорта
+    has_ts: bool = False
+    has_hh: bool = False
     reached_final_table: bool = False # Достиг ли Hero финального стола 9-max
     final_table_initial_stack_chips: Optional[float] = None # Стек на старте финалки в фишках
     final_table_initial_stack_bb: Optional[float] = None # Стек на старте финалки в BB

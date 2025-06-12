@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS tournaments (
     finish_place INTEGER,
     ko_count REAL DEFAULT 0,
     session_id TEXT,
+    has_ts BOOLEAN DEFAULT 0,
+    has_hh BOOLEAN DEFAULT 0,
     reached_final_table BOOLEAN DEFAULT 0,
     final_table_initial_stack_chips REAL,
     final_table_initial_stack_bb REAL,
@@ -89,6 +91,7 @@ CREATE TABLE IF NOT EXISTS overall_stats (
     early_ft_bust_count INTEGER DEFAULT 0,
     early_ft_bust_per_tournament REAL DEFAULT 0,
     pre_ft_ko_count REAL DEFAULT 0,
+    pre_ft_chipev REAL DEFAULT 0,
     incomplete_ft_count INTEGER DEFAULT 0,
     incomplete_ft_percent INTEGER DEFAULT 0,
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP

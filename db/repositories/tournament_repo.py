@@ -52,10 +52,10 @@ class TournamentRepository:
         query = """
             INSERT INTO tournaments (
                 tournament_id, tournament_name, start_time, buyin, payout,
-                finish_place, ko_count, session_id, reached_final_table,
-                final_table_initial_stack_chips, final_table_initial_stack_bb,
-                final_table_start_players
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                finish_place, ko_count, session_id, has_ts, has_hh,
+                reached_final_table, final_table_initial_stack_chips,
+                final_table_initial_stack_bb, final_table_start_players
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(tournament_id)
             DO UPDATE SET
                 tournament_name = COALESCE(excluded.tournament_name, tournaments.tournament_name),
@@ -65,6 +65,8 @@ class TournamentRepository:
                 finish_place = COALESCE(excluded.finish_place, tournaments.finish_place),
                 ko_count = excluded.ko_count, -- ko_count приходит уже объединенный из ImportService
                 session_id = COALESCE(tournaments.session_id, excluded.session_id), -- Сохраняем первый session_id, если новый не установлен
+                has_ts = tournaments.has_ts OR excluded.has_ts,
+                has_hh = tournaments.has_hh OR excluded.has_hh,
                 reached_final_table = tournaments.reached_final_table OR excluded.reached_final_table, -- Флаг становится TRUE если хоть раз был TRUE
                 final_table_initial_stack_chips = COALESCE(excluded.final_table_initial_stack_chips, tournaments.final_table_initial_stack_chips),
                 final_table_initial_stack_bb = COALESCE(excluded.final_table_initial_stack_bb, tournaments.final_table_initial_stack_bb),
@@ -80,6 +82,8 @@ class TournamentRepository:
             tournament.finish_place,
             tournament.ko_count,
             tournament.session_id,
+            int(tournament.has_ts),
+            int(tournament.has_hh),
             tournament.reached_final_table,
             tournament.final_table_initial_stack_chips,
             tournament.final_table_initial_stack_bb,
@@ -87,6 +91,65 @@ class TournamentRepository:
         )
 
         self.db.execute_update(query, params)
+
+    def add_or_update_many(self, tournaments: List[Tournament]):
+        """Пакетное добавление или обновление турниров."""
+        if not tournaments:
+            return 0
+
+        query = """
+            INSERT INTO tournaments (
+                tournament_id, tournament_name, start_time, buyin, payout,
+                finish_place, ko_count, session_id, has_ts, has_hh,
+                reached_final_table, final_table_initial_stack_chips,
+                final_table_initial_stack_bb, final_table_start_players
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(tournament_id)
+            DO UPDATE SET
+                tournament_name = COALESCE(excluded.tournament_name, tournaments.tournament_name),
+                start_time = COALESCE(excluded.start_time, tournaments.start_time),
+                buyin = COALESCE(excluded.buyin, tournaments.buyin),
+                payout = COALESCE(excluded.payout, tournaments.payout),
+                finish_place = COALESCE(excluded.finish_place, tournaments.finish_place),
+                ko_count = excluded.ko_count,
+                session_id = COALESCE(tournaments.session_id, excluded.session_id),
+                has_ts = tournaments.has_ts OR excluded.has_ts,
+                has_hh = tournaments.has_hh OR excluded.has_hh,
+                reached_final_table = tournaments.reached_final_table OR excluded.reached_final_table,
+                final_table_initial_stack_chips = COALESCE(excluded.final_table_initial_stack_chips, tournaments.final_table_initial_stack_chips),
+                final_table_initial_stack_bb = COALESCE(excluded.final_table_initial_stack_bb, tournaments.final_table_initial_stack_bb),
+                final_table_start_players = COALESCE(excluded.final_table_start_players, tournaments.final_table_start_players)
+        """
+
+        params_list = [
+            (
+                t.tournament_id,
+                t.tournament_name,
+                t.start_time,
+                t.buyin,
+                t.payout,
+                t.finish_place,
+                t.ko_count,
+                t.session_id,
+                int(t.has_ts),
+                int(t.has_hh),
+                t.reached_final_table,
+                t.final_table_initial_stack_chips,
+                t.final_table_initial_stack_bb,
+                t.final_table_start_players,
+            )
+            for t in tournaments
+        ]
+
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            cursor.executemany(query, params_list)
+            conn.commit()
+            return cursor.rowcount
+        except Exception as e:
+            print(f"Ошибка пакетного сохранения турниров: {e}")
+            raise
 
 
     def get_tournament_by_id(self, tournament_id: str) -> Optional[Tournament]:
@@ -96,9 +159,9 @@ class TournamentRepository:
         query = """
             SELECT
                 id, tournament_id, tournament_name, start_time, buyin, payout,
-                finish_place, ko_count, session_id, reached_final_table,
-                final_table_initial_stack_chips, final_table_initial_stack_bb,
-                final_table_start_players
+                finish_place, ko_count, session_id, has_ts, has_hh,
+                reached_final_table, final_table_initial_stack_chips,
+                final_table_initial_stack_bb, final_table_start_players
             FROM tournaments
             WHERE tournament_id=?
         """
@@ -122,9 +185,9 @@ class TournamentRepository:
         query = """
             SELECT
                 id, tournament_id, tournament_name, start_time, buyin, payout,
-                finish_place, ko_count, session_id, reached_final_table,
-                final_table_initial_stack_chips, final_table_initial_stack_bb,
-                final_table_start_players
+                finish_place, ko_count, session_id, has_ts, has_hh,
+                reached_final_table, final_table_initial_stack_chips,
+                final_table_initial_stack_bb, final_table_start_players
             FROM tournaments
         """
         conditions = []
@@ -487,9 +550,9 @@ class TournamentRepository:
         base_query = """
             SELECT
                 id, tournament_id, tournament_name, start_time, buyin, payout,
-                finish_place, ko_count, session_id, reached_final_table,
-                final_table_initial_stack_chips, final_table_initial_stack_bb,
-                final_table_start_players
+                finish_place, ko_count, session_id, has_ts, has_hh,
+                reached_final_table, final_table_initial_stack_chips,
+                final_table_initial_stack_bb, final_table_start_players
             FROM tournaments
         """
         count_query = "SELECT COUNT(*) FROM tournaments"

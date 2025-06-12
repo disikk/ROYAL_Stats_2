@@ -16,7 +16,9 @@ from stats import (
     AvgKOPerTournamentStat, FinalTableReachStat,
     AvgFTInitialStackStat, EarlyFTKOStat, EarlyFTBustStat,
     FTStackConversionStat, FTStackConversionAttemptsStat,
-    PreFTKOStat, KOLuckStat, ROIAdjustedStat, KOContributionStat
+    PreFTKOStat, KOLuckStat, ROIAdjustedStat, KOContributionStat,
+    KOStage23Stat, KOStage45Stat, KOStage69Stat,
+    WinningsFromITMStat, WinningsFromKOStat
 )
 
 
@@ -39,9 +41,9 @@ class BigKOCardViewModel:
             ratio = total_knockouts / count
             if ratio <= 25:
                 return "#00FF00"  # Ярко-зеленый
-            elif 26 <= ratio <= 29:
+            elif ratio <= 29:
                 return "#10B981"  # Зеленый
-            elif 30 <= ratio <= 33:
+            elif ratio <= 33:
                 return "#F59E0B"  # Оранжевый
             else:
                 return "#EF4444"  # Красный
@@ -165,6 +167,24 @@ class StatsGridViewModel:
         early_bust_count = early_bust_res.get('early_ft_bust_count', 0)
         early_bust_per = early_bust_res.get('early_ft_bust_per_tournament', 0.0)
         
+        # Новые статистики
+        winnings_from_ko_res = WinningsFromKOStat().compute(tournaments, final_table_hands, precomputed_stats=precomputed_stats)
+        winnings_from_ko = winnings_from_ko_res.get('winnings_from_ko', 0.0)
+        
+        ko_stage_2_3_res = KOStage23Stat().compute(tournaments, final_table_hands)
+        ko_stage_2_3 = ko_stage_2_3_res.get('ko_stage_2_3', 0)
+        attempts_stage_2_3 = ko_stage_2_3_res.get('ko_stage_2_3_attempts_per_tournament', 0.0)
+
+        ko_stage_4_5_res = KOStage45Stat().compute(tournaments, final_table_hands)
+        ko_stage_4_5 = ko_stage_4_5_res.get('ko_stage_4_5', 0)
+        attempts_stage_4_5 = ko_stage_4_5_res.get('ko_stage_4_5_attempts_per_tournament', 0.0)
+        
+        ko_stage_6_9_res = KOStage69Stat().compute(tournaments, final_table_hands)
+        ko_stage_6_9 = ko_stage_6_9_res.get('ko_stage_6_9', 0)
+        
+        winnings_from_itm_res = WinningsFromITMStat().compute(tournaments, final_table_hands, precomputed_stats=precomputed_stats)
+        winnings_from_itm = winnings_from_itm_res.get('winnings_from_itm', 0.0)
+        
         # Расчет средних мест
         all_places = [t.finish_place for t in tournaments if t.finish_place is not None]
         avg_all = sum(all_places) / len(all_places) if all_places else 0.0
@@ -231,6 +251,32 @@ class StatsGridViewModel:
                 value=StatCardViewModel.format_percentage(roi_adj_value),
                 value_color=StatCardViewModel.get_value_color(roi_adj_value),
                 tooltip="ROI с поправкой на удачу в нокаутах"
+            ),
+            'winnings_from_ko': StatCardViewModel(
+                title="Выигрыш от KO",
+                value=f"${winnings_from_ko:.0f}",
+            ),
+            'ko_stage_2_3': StatCardViewModel(
+                title="KO 2-3 игрока",
+                value=str(ko_stage_2_3),
+                subtitle=f"{attempts_stage_2_3:.2f} попыток за турнир с FT",
+                tooltip="Количество нокаутов в стадии 2-3 человека"
+            ),
+            'ko_stage_4_5': StatCardViewModel(
+                title="KO 4-5 игроков",
+                value=str(ko_stage_4_5),
+                subtitle=f"{attempts_stage_4_5:.2f} попыток за турнир с FT",
+                tooltip="Количество нокаутов в стадии 4-5 человек"
+            ),
+            'ko_stage_6_9': StatCardViewModel(
+                title="KO 6-9 игроков",
+                value=str(ko_stage_6_9),
+                tooltip="Количество нокаутов в стадии 6-9 человек"
+            ),
+            'winnings_from_itm': StatCardViewModel(
+                title="Выигрыш от ITM",
+                value=f"${winnings_from_itm:.0f}",
+                tooltip="Сумма, полученная от попадания в призы (места 1-3)"
             ),
         }
         

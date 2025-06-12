@@ -245,7 +245,7 @@ class StatsGrid(QtWidgets.QWidget):
         self._filter_timer.timeout.connect(self._apply_filters)
 
         # Настройки гистограммы стеков FT
-        self.ft_stack_step = 2  # шаг интервалов в BB
+        self.ft_stack_step = 200  # шаг интервалов в фишках
         self._current_tournaments = []  # сохраненные турниры для перерасчета
         self.ft_stack_roi_dist = {}  # распределение ROI по стекам FT
 
@@ -368,6 +368,11 @@ class StatsGrid(QtWidgets.QWidget):
             'avg_place_ft': StatCard("Среднее место (FT)", "-"),
             'avg_place_no_ft': StatCard("Среднее место (не FT)", "-"),
             'pre_ft_ko': StatCard("KO до FT", "-"),
+            'winnings_from_ko': SpecialStatCard("Выигрыш от KO", "-"),
+            'winnings_from_itm': SpecialStatCard("Выигрыш от ITM", "-"),
+            'ko_stage_2_3': SpecialStatCard("KO 2-3 игрока", "-"),
+            'ko_stage_4_5': SpecialStatCard("KO 4-5 игроков", "-"),
+            'ko_stage_6_9': StatCard("KO 6-9 игроков", "-"),
         }
         
         # Словарь с описаниями для тултипов
@@ -386,7 +391,12 @@ class StatsGrid(QtWidgets.QWidget):
             'avg_place_all': "Среднее место по всем сыгранным турнирам",
             'avg_place_ft': "Среднее место среди турниров с достижением финального стола",
             'avg_place_no_ft': "Среднее место среди турниров без достижения финального стола",
-            'pre_ft_ko': "Количество нокаутов до выхода на финальный стол"
+            'pre_ft_ko': "Количество нокаутов до выхода на финальный стол",
+            'winnings_from_ko': "Сумма, полученная от нокаутов",
+            'winnings_from_itm': "Сумма, полученная от попадания в регулярные призы (1-3 места).\n1 место = 4 бай-ина, 2 место = 3 бай-ина, 3 место = 2 бай-ина.",
+            'ko_stage_2_3': "Количество нокаутов в стадии 2-3 человека (хедз-ап и 3-макс).\nВо второй строке \u2014 среднее число попыток нокаута на турнир с FT",
+            'ko_stage_4_5': "Количество нокаутов в стадии 4-5 человек.\nВо второй строке \u2014 среднее число попыток нокаута на турнир с FT",
+            'ko_stage_6_9': "Количество нокаутов в стадии 6-9 человек (ранняя стадия финального стола)",
         }
         
         # Устанавливаем тултипы для карточек
@@ -399,6 +409,7 @@ class StatsGrid(QtWidgets.QWidget):
             ('tournaments', 0, 0), ('roi', 0, 1), ('itm', 0, 2), ('knockouts', 0, 3), ('avg_ko', 0, 4),
             ('ft_reach', 1, 0), ('avg_ft_stack', 1, 1), ('early_ft_ko', 1, 2), ('ft_stack_conv', 1, 3), ('pre_ft_ko', 1, 4),
             ('avg_place_all', 2, 0), ('avg_place_ft', 2, 1), ('avg_place_no_ft', 2, 2), ('early_ft_bust', 2, 3), ('ko_contribution', 2, 4),
+            ('winnings_from_ko', 3, 0), ('winnings_from_itm', 3, 1), ('ko_stage_2_3', 3, 2), ('ko_stage_4_5', 3, 3), ('ko_stage_6_9', 3, 4),
         ]
         
         for key, row, col in positions:
@@ -431,7 +442,7 @@ class StatsGrid(QtWidgets.QWidget):
 
         # Выбор плотности баров для гистограммы стеков FT
         self.ft_stack_density_selector = QtWidgets.QComboBox()
-        self.ft_stack_density_selector.addItems(["2 BB", "5 BB", "10 BB"])
+        self.ft_stack_density_selector.addItems(["200", "400", "1000"])
         self.ft_stack_density_selector.currentIndexChanged.connect(
             self._on_density_selector_changed
         )
@@ -443,7 +454,7 @@ class StatsGrid(QtWidgets.QWidget):
             "Финальный стол",
             "До финального стола",
             "Все места",
-            "Стек FT (BB)",
+            "Стек FT (фишки)",
             "ROI по стекам FT",
         ])
         self.chart_selector.currentIndexChanged.connect(self._on_chart_selector_changed)
@@ -1139,8 +1150,8 @@ class StatsGrid(QtWidgets.QWidget):
         self.roi_adj_tooltip.move(tooltip_pos)
         self.roi_adj_tooltip.show()
     
-    def _calculate_ft_stack_distribution(self, tournaments, step: int = 2):
-        """Рассчитывает распределение стеков выхода на FT в больших блайндах
+    def _calculate_ft_stack_distribution(self, tournaments, step: int = 200):
+        """Рассчитывает распределение стеков выхода на FT в фишках
         и медиану значений.
 
         :param tournaments: список турниров
@@ -1149,42 +1160,61 @@ class StatsGrid(QtWidgets.QWidget):
         # Инициализируем словарь для распределения
         ft_stack_dist = {}
         stack_values = []
+        
+        # Форматирование чисел для отображения
+        def format_range(start, end):
+            if start >= 1000:
+                start_str = f"{start/1000:.1f}k".rstrip('0').rstrip('.')
+            else:
+                start_str = str(start)
+            if end >= 1000:
+                end_str = f"{end/1000:.1f}k".rstrip('0').rstrip('.')
+            else:
+                end_str = str(end)
+            return f"{start_str}-{end_str}"
 
-        # Края распределения
-        ft_stack_dist["≤7"] = 0
-
+        # Края распределения  
+        ft_stack_dist["≤800"] = 0
+        
         # Промежуточные интервалы с заданным шагом
-        for i in range(8, 50, step):
-            end = min(i + step - 1, 49)
-            ft_stack_dist[f"{i}-{end}"] = 0
-
-        ft_stack_dist["≥50"] = 0
+        current = 800
+        while current < 4000:
+            next_boundary = current + step
+            if next_boundary > 4000:
+                break
+            key = format_range(current, next_boundary)
+            ft_stack_dist[key] = 0
+            current = next_boundary
+            
+        ft_stack_dist["≥4k"] = 0
 
         # Подсчитываем распределение
         for t in tournaments:
-            if t.reached_final_table and t.final_table_initial_stack_bb is not None:
-                bb = t.final_table_initial_stack_bb
-                stack_values.append(bb)
+            if t.reached_final_table and t.final_table_initial_stack_chips is not None:
+                chips = t.final_table_initial_stack_chips
+                stack_values.append(chips)
 
-                if bb <= 7:
-                    ft_stack_dist["≤7"] += 1
-                elif bb >= 50:
-                    ft_stack_dist["≥50"] += 1
+                if chips <= 800:
+                    ft_stack_dist["≤800"] += 1
+                elif chips >= 4000:
+                    ft_stack_dist["≥4k"] += 1
                 else:
                     # Находим подходящий интервал
-                    interval_start = ((int((bb - 8) / step)) * step) + 8
-                    interval_start = max(8, interval_start)
-                    interval_end = min(interval_start + step - 1, 49)
-                    interval_key = f"{interval_start}-{interval_end}"
-                    if interval_key in ft_stack_dist:
-                        ft_stack_dist[interval_key] += 1
+                    interval_start = int((chips - 800) / step) * step + 800
+                    interval_end = interval_start + step
+                    if interval_end > 4000:
+                        ft_stack_dist["≥4k"] += 1
+                    else:
+                        key = format_range(interval_start, interval_end)
+                        if key in ft_stack_dist:
+                            ft_stack_dist[key] += 1
 
         median_value = median(stack_values) if stack_values else None
 
         return ft_stack_dist, median_value
     
-    def _calculate_ft_stack_roi_distribution(self, tournaments, step: int = 2):
-        """Рассчитывает средний ROI для каждого интервала стеков на FT в больших блайндах.
+    def _calculate_ft_stack_roi_distribution(self, tournaments, step: int = 200):
+        """Рассчитывает средний ROI для каждого интервала стеков на FT в фишках.
         
         :param tournaments: список турниров
         :param step: величина интервала для баров
@@ -1197,12 +1227,29 @@ class StatsGrid(QtWidgets.QWidget):
         roi_by_interval = {}
         stack_values = []
         
+        # Форматирование чисел для отображения
+        def format_range(start, end):
+            if start >= 1000:
+                start_str = f"{start/1000:.1f}k".rstrip('0').rstrip('.')
+            else:
+                start_str = str(start)
+            if end >= 1000:
+                end_str = f"{end/1000:.1f}k".rstrip('0').rstrip('.')
+            else:
+                end_str = str(end)
+            return f"{start_str}-{end_str}"
+        
         # Создаём ключи интервалов
-        interval_keys = ["≤7"]
-        for i in range(8, 50, step):
-            end = min(i + step - 1, 49)
-            interval_keys.append(f"{i}-{end}")
-        interval_keys.append("≥50")
+        interval_keys = ["≤800"]
+        current = 800
+        while current < 4000:
+            next_boundary = current + step
+            if next_boundary > 4000:
+                break
+            key = format_range(current, next_boundary)
+            interval_keys.append(key)
+            current = next_boundary
+        interval_keys.append("≥4k")
         
         # Инициализируем словари для каждого интервала
         for key in interval_keys:
@@ -1213,9 +1260,9 @@ class StatsGrid(QtWidgets.QWidget):
         
         # Собираем данные по турнирам
         for t in tournaments:
-            if t.reached_final_table and t.final_table_initial_stack_bb is not None:
-                bb = t.final_table_initial_stack_bb
-                stack_values.append(bb)
+            if t.reached_final_table and t.final_table_initial_stack_chips is not None:
+                chips = t.final_table_initial_stack_chips
+                stack_values.append(chips)
                 
                 # Вычисляем прибыль и учитываем бай-ин. Если бай-ин отсутствует,
                 # такой турнир пропускаем, так как ROI для него некорректен.
@@ -1224,16 +1271,18 @@ class StatsGrid(QtWidgets.QWidget):
                 profit = (t.payout - t.buyin) if t.payout else -t.buyin
                 
                 # Определяем интервал
-                if bb <= 7:
-                    roi_key = "≤7"
-                elif bb >= 50:
-                    roi_key = "≥50"
+                if chips <= 800:
+                    roi_key = "≤800"
+                elif chips >= 4000:
+                    roi_key = "≥4k"
                 else:
                     # Находим подходящий интервал
-                    interval_start = ((int((bb - 8) / step)) * step) + 8
-                    interval_start = max(8, interval_start)
-                    interval_end = min(interval_start + step - 1, 49)
-                    roi_key = f"{interval_start}-{interval_end}"
+                    interval_start = int((chips - 800) / step) * step + 800
+                    interval_end = interval_start + step
+                    if interval_end > 4000:
+                        roi_key = "≥4k"
+                    else:
+                        roi_key = format_range(interval_start, interval_end)
                 if roi_key in roi_by_interval:
                     roi_by_interval[roi_key]['profit_sum'] += profit
                     roi_by_interval[roi_key]['buyin_sum'] += t.buyin
@@ -1337,13 +1386,12 @@ class StatsGrid(QtWidgets.QWidget):
 
         # Специальная сортировка для стеков FT
         if self.chart_type in ['ft_stack', 'ft_stack_roi']:
-            step = self.ft_stack_step
-            categories = ["≤7"]
-            for i in range(8, 50, step):
-                end = min(i + step - 1, 49)
-                categories.append(f"{i}-{end}")
-            categories.append("≥50")
-            categories = [cat for cat in categories if cat in place_dist]
+            # Сохраняем порядок категорий, как они были сгенерированы
+            # в _calculate_ft_stack_distribution
+            categories = []
+            for key in place_dist.keys():
+                if key not in categories:
+                    categories.append(key)
         else:
             categories = sorted(place_dist.keys())
 
@@ -1372,7 +1420,7 @@ class StatsGrid(QtWidgets.QWidget):
         axis_x = QBarCategoryAxis()
         axis_x.append([str(c) for c in categories])
         if self.chart_type in ['ft_stack', 'ft_stack_roi']:
-            axis_x.setTitleText("Стек (BB)")
+            axis_x.setTitleText("Стек (фишки)")
         else:
             axis_x.setTitleText("Место")
         axis_x.setLabelsColor(QtGui.QColor("#E4E4E7"))
@@ -1502,13 +1550,11 @@ class StatsGrid(QtWidgets.QWidget):
         
         # Специальная сортировка для стеков FT
         if chart_type in ['ft_stack', 'ft_stack_roi']:
-            step = self.ft_stack_step
-            categories = ["≤7"]
-            for i in range(8, 50, step):
-                end = min(i + step - 1, 49)
-                categories.append(f"{i}-{end}")
-            categories.append("≥50")
-            categories = [cat for cat in categories if cat in place_dist]
+            # Сохраняем порядок категорий, как они были сгенерированы
+            categories = []
+            for key in place_dist.keys():
+                if key not in categories:
+                    categories.append(key)
         else:
             categories = sorted(place_dist.keys())
             
@@ -1640,12 +1686,10 @@ class StatsGrid(QtWidgets.QWidget):
         plot_area = chart.plotArea()
 
         # Список категорий в порядке следования
-        step = self.ft_stack_step
-        categories = ["≤7"]
-        for i in range(8, 50, step):
-            end = min(i + step - 1, 49)
-            categories.append(f"{i}-{end}")
-        categories.append("≥50")
+        categories = []
+        for key in place_dist.keys():
+            if key not in categories:
+                categories.append(key)
 
         num_places = len(categories)
         if num_places == 0:
@@ -1653,16 +1697,47 @@ class StatsGrid(QtWidgets.QWidget):
 
         bar_width = plot_area.width() / num_places
 
-        if median_value <= 7:
-            idx = categories.index("≤7")
-        elif median_value >= 50:
-            idx = categories.index("≥50")
+        # Находим категорию для медианного значения
+        idx = None
+        step = self.ft_stack_step
+        
+        if median_value <= 800:
+            for i, cat in enumerate(categories):
+                if cat == "≤800":
+                    idx = i
+                    break
+        elif median_value >= 4000:
+            for i, cat in enumerate(categories):
+                if cat == "≥4k":
+                    idx = i
+                    break
         else:
-            interval_start = ((int((median_value - 8) / step)) * step) + 8
-            interval_start = max(8, interval_start)
-            interval_end = min(interval_start + step - 1, 49)
-            interval_key = f"{interval_start}-{interval_end}"
-            idx = categories.index(interval_key)
+            # Находим подходящий интервал
+            interval_start = int((median_value - 800) / step) * step + 800
+            interval_end = interval_start + step
+            
+            # Ищем соответствующую категорию в списке
+            for i, cat in enumerate(categories):
+                # Парсим числа из категории
+                if cat.startswith("≤") or cat.startswith("≥"):
+                    continue
+                parts = cat.split('-')
+                if len(parts) == 2:
+                    try:
+                        # Парсим начальное значение категории
+                        start_str = parts[0]
+                        if 'k' in start_str:
+                            cat_start = float(start_str.replace('k', '')) * 1000
+                        else:
+                            cat_start = float(start_str)
+                        if cat_start == interval_start:
+                            idx = i
+                            break
+                    except:
+                        pass
+        
+        if idx is None:
+            return
 
         x_pos = plot_area.left() + bar_width * (idx + 0.5)
 
@@ -1706,7 +1781,7 @@ class StatsGrid(QtWidgets.QWidget):
             self.chart_header.setText("Распределение финишных мест (1-18)")
             self.ft_stack_density_selector.setVisible(False)
         elif self.chart_type == 'ft_stack':
-            self.chart_header.setText("Распределение стеков выхода на FT (в больших блайндах)")
+            self.chart_header.setText("Распределение стеков выхода на FT (в фишках)")
             self.ft_stack_density_selector.setVisible(True)
         else:  # ft_stack_roi
             self.chart_header.setText("Средний ROI по стекам выхода на FT")
@@ -1716,7 +1791,7 @@ class StatsGrid(QtWidgets.QWidget):
 
     def _on_density_selector_changed(self, index: int):
         """Меняет шаг интервалов гистограммы стеков FT."""
-        steps = [2, 5, 10]
+        steps = [200, 400, 1000]
         self.ft_stack_step = steps[index]
         if self._current_tournaments:
             self.ft_stack_dist, self.ft_stack_median = self._calculate_ft_stack_distribution(

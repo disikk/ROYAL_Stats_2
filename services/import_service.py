@@ -438,17 +438,21 @@ class ImportService:
             # Инициализируем запись в словаре, если ее нет
             if tourney_id not in parsed_tournaments_data:
                 parsed_tournaments_data[tourney_id] = {
-                    'tournament_id': tourney_id, 
-                    'session_id': session_id, 
-                    'ko_count': 0, 
-                    'reached_final_table': False
+                    'tournament_id': tourney_id,
+                    'session_id': session_id,
+                    'ko_count': 0,
+                    'reached_final_table': False,
+                    'has_ts': False,
+                    'has_hh': False
                 }
             
             # Добавляем данные из HH к временной записи турнира
             parsed_tournaments_data[tourney_id]['start_time'] = (
-                parsed_tournaments_data[tourney_id].get('start_time') or 
+                parsed_tournaments_data[tourney_id].get('start_time') or
                 hh_result.start_time
             )
+
+            parsed_tournaments_data[tourney_id]['has_hh'] = True
             
             # Обновляем временные данные турнира из HH
             if hh_result.reached_final_table:
@@ -462,6 +466,26 @@ class ImportService:
             for hand_data in ft_hands_data:
                 hand_data['session_id'] = session_id
                 all_final_table_hands_data.append(hand_data)
+
+            # Если по сводке место <= 9, но финальные раздачи отсутствуют,
+            # не считаем, что финальный стол достигнут.
+            finish_place = parsed_tournaments_data[tourney_id].get('finish_place')
+            if (
+                finish_place is not None
+                and finish_place <= 9
+                and not parsed_tournaments_data[tourney_id].get('reached_final_table')
+                and not hh_result.reached_final_table
+                and not hh_result.final_table_hands_data
+            ):
+                logger.info(
+                    "Турнир %s: место %s <= 9, но финальных раздач нет."
+                    " Оставляем reached_final_table=False",
+                    tourney_id,
+                    finish_place,
+                )
+                parsed_tournaments_data[tourney_id]['final_table_initial_stack_chips'] = None
+                parsed_tournaments_data[tourney_id]['final_table_initial_stack_bb'] = None
+                parsed_tournaments_data[tourney_id]['final_table_start_players'] = None
     
     def _parse_tournament_summary(
         self,
@@ -479,10 +503,12 @@ class ImportService:
             # Инициализируем запись, если ее нет
             if tourney_id not in parsed_tournaments_data:
                 parsed_tournaments_data[tourney_id] = {
-                    'tournament_id': tourney_id, 
-                    'session_id': session_id, 
-                    'ko_count': 0, 
-                    'reached_final_table': False
+                    'tournament_id': tourney_id,
+                    'session_id': session_id,
+                    'ko_count': 0,
+                    'reached_final_table': False,
+                    'has_ts': False,
+                    'has_hh': False
                 }
             
             # Обновляем временные данные турнира из TS (TS имеет приоритет)
@@ -491,9 +517,11 @@ class ImportService:
                 parsed_tournaments_data[tourney_id].get('tournament_name')
             )
             parsed_tournaments_data[tourney_id]['start_time'] = (
-                ts_result.start_time or 
+                ts_result.start_time or
                 parsed_tournaments_data[tourney_id].get('start_time')
             )
+
+            parsed_tournaments_data[tourney_id]['has_ts'] = True
             parsed_tournaments_data[tourney_id]['buyin'] = (
                 ts_result.buyin or 
                 parsed_tournaments_data[tourney_id].get('buyin')
@@ -503,9 +531,29 @@ class ImportService:
                 parsed_tournaments_data[tourney_id].get('payout')
             )
             parsed_tournaments_data[tourney_id]['finish_place'] = (
-                ts_result.finish_place or 
+                ts_result.finish_place or
                 parsed_tournaments_data[tourney_id].get('finish_place')
             )
+
+            # Дополнительная проверка, если место <= 9, а данных финалки нет
+            finish_place = parsed_tournaments_data[tourney_id].get('finish_place')
+            reached_ft = parsed_tournaments_data[tourney_id].get('reached_final_table')
+            has_ft_data = parsed_tournaments_data[tourney_id].get('final_table_initial_stack_chips') is not None
+            if (
+                finish_place is not None
+                and finish_place <= 9
+                and not reached_ft
+                and not has_ft_data
+            ):
+                logger.info(
+                    "Турнир %s: место %s <= 9, но данных финального стола нет."
+                    " Оставляем reached_final_table=False",
+                    tourney_id,
+                    finish_place,
+                )
+                parsed_tournaments_data[tourney_id]['final_table_initial_stack_chips'] = None
+                parsed_tournaments_data[tourney_id]['final_table_initial_stack_bb'] = None
+                parsed_tournaments_data[tourney_id]['final_table_start_players'] = None
     
     def _save_parsed_data(
         self,
@@ -596,65 +644,74 @@ class ImportService:
         """
         tournaments_saved = 0
         total_tournaments = len(parsed_tournaments_data)
-        saved_objects = []
-        updated_ids = []
-        
+        saved_objects: List[Tournament] = []
+        updated_ids: List[str] = []
+        tournaments_to_save: List[Tournament] = []
+
         for tourney_id, data in parsed_tournaments_data.items():
             try:
-                # Запрашиваем текущий турнир для merge
                 existing_tourney = self.tournament_repo.get_tournament_by_id(tourney_id)
-                
-                # Объединяем данные: TS > HH > Existing
-                final_tourney_data = {}
+
+                final_tourney_data: Dict[str, Any] = {}
                 if existing_tourney:
                     final_tourney_data.update(existing_tourney.as_dict())
-                
+
                 final_tourney_data.update(data)
-                
-                # Специальная логика для полей, которые должны объединяться
+
+                if existing_tourney:
+                    final_tourney_data['has_ts'] = (
+                        existing_tourney.has_ts or data.get('has_ts', False)
+                    )
+                    final_tourney_data['has_hh'] = (
+                        existing_tourney.has_hh or data.get('has_hh', False)
+                    )
+                else:
+                    final_tourney_data['has_ts'] = data.get('has_ts', False)
+                    final_tourney_data['has_hh'] = data.get('has_hh', False)
+
                 if existing_tourney and existing_tourney.reached_final_table:
                     final_tourney_data['reached_final_table'] = True
-                
-                # Сохраняем initial_stack только если он еще не был сохранен
+
                 if existing_tourney and existing_tourney.final_table_initial_stack_chips is not None:
                     final_tourney_data['final_table_initial_stack_chips'] = existing_tourney.final_table_initial_stack_chips
                     final_tourney_data['final_table_initial_stack_bb'] = existing_tourney.final_table_initial_stack_bb
-                
-                # Сохраняем start_players только если еще не было сохранено
+
                 if existing_tourney and existing_tourney.final_table_start_players is not None:
                     final_tourney_data['final_table_start_players'] = existing_tourney.final_table_start_players
-                
-                # Сохраняем первый session_id
+
                 if existing_tourney and existing_tourney.session_id:
                     final_tourney_data['session_id'] = existing_tourney.session_id
+
+                # Не устанавливаем reached_final_table автоматически по месту!
+                # Этот флаг должен устанавливаться только при наличии Hand History
+                # с реальными данными о финальном столе (9-max)
                 
-                # Если финишное место в топ-9, устанавливаем флаг финального стола
-                finish_place = final_tourney_data.get('finish_place')
-                if finish_place is not None and 1 <= finish_place <= 9:
-                    final_tourney_data['reached_final_table'] = True
-                
-                # Создаем объект Tournament из объединенных данных
                 merged_tournament = Tournament.from_dict(final_tourney_data)
-                self.tournament_repo.add_or_update_tournament(merged_tournament)
-                tournaments_saved += 1
-                
-                # Добавляем в список сохраненных объектов
-                if existing_tourney is None:
-                    # Новый турнир
-                    saved_objects.append(merged_tournament)
-                else:
-                    # Обновленный турнир
+
+                if existing_tourney:
+                    def _strip(t: Tournament) -> dict:
+                        d = t.as_dict()
+                        d.pop("id", None)
+                        return d
+
+                    if _strip(existing_tourney) == _strip(merged_tournament):
+                        continue
                     updated_ids.append(tourney_id)
-                
-                # Обновляем прогресс
-                if tournaments_saved % 5 == 0 or tournaments_saved == total_tournaments:
-                    save_progress = current_progress + int((tournaments_saved / max(total_tournaments, 1)) * weight)
-                    if progress_callback:
-                        progress_callback(save_progress, total_steps, f"Сохранено турниров: {tournaments_saved}/{total_tournaments}")
-                
+                else:
+                    saved_objects.append(merged_tournament)
+
+                tournaments_to_save.append(merged_tournament)
+                tournaments_saved += 1
             except Exception as e:
                 logger.error(f"Ошибка сохранения/обновления турнира {tourney_id}: {e}")
-        
+
+        if tournaments_to_save:
+            self.tournament_repo.add_or_update_many(tournaments_to_save)
+
+        if progress_callback:
+            progress_callback(current_progress + int(weight), total_steps,
+                             f"Сохранено турниров: {tournaments_saved}/{total_tournaments}")
+
         return tournaments_saved, saved_objects, updated_ids
     
     def _save_final_table_hands(
@@ -674,29 +731,25 @@ class ImportService:
         logger.debug(f"Начинаем сохранение {len(all_final_table_hands_data)} рук финального стола")
         
         total_hands_to_save = len(all_final_table_hands_data)
-        hands_saved = 0
-        saved_objects = []
-        
+        saved_objects: List[FinalTableHand] = []
+
         for hand_data in all_final_table_hands_data:
             try:
-                hand = FinalTableHand.from_dict(hand_data)
-                self.ft_hand_repo.add_hand(hand)
-                hands_saved += 1
-                saved_objects.append(hand)
-                
-                # Обновляем прогресс для сохранения рук
-                if hands_saved % 10 == 0 or hands_saved == total_hands_to_save:
-                    hands_progress = current_progress + int((hands_saved / max(total_hands_to_save, 1)) * weight)
-                    if progress_callback:
-                        progress_callback(hands_progress, total_steps, f"Сохранено рук: {hands_saved}/{total_hands_to_save}")
-                        
+                saved_objects.append(FinalTableHand.from_dict(hand_data))
             except Exception as e:
-                logger.error(f"Ошибка сохранения финальной раздачи {hand_data.get('hand_id')} "
-                           f"турнира {hand_data.get('tournament_id')}: {e}")
-                import traceback
-                logger.error(f"Traceback: {traceback.format_exc()}")
-        
-        return hands_saved, saved_objects
+                logger.error(
+                    f"Ошибка подготовки финальной раздачи {hand_data.get('hand_id')} "
+                    f"турнира {hand_data.get('tournament_id')}: {e}"
+                )
+
+        if saved_objects:
+            self.ft_hand_repo.add_hands(saved_objects)
+
+        if progress_callback:
+            progress_callback(current_progress + int(weight), total_steps,
+                             f"Сохранено рук: {len(saved_objects)}/{total_hands_to_save}")
+
+        return len(saved_objects), saved_objects
     
     def _update_ko_counts(
         self,

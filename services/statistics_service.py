@@ -431,23 +431,23 @@ class StatisticsService:
         )
         
         stats = OverallStats()
-        
-        stats.total_tournaments = len(all_tournaments)
-        
-        # Фильтруем турниры, достигшие финального стола
-        final_table_tournaments = [t for t in all_tournaments if t.reached_final_table]
+
+        tournaments_with_ts = [t for t in all_tournaments if t.has_ts]
+        tournaments_with_hh = [t for t in all_tournaments if t.has_hh]
+
+        stats.total_tournaments = len(tournaments_with_ts)
+
+        final_table_tournaments = [t for t in tournaments_with_hh if t.reached_final_table]
         stats.total_final_tables = len(final_table_tournaments)
-        
-        # Расчеты, основанные на турнирах:
-        stats.total_buy_in = sum(t.buyin for t in all_tournaments if t.buyin is not None)
-        stats.total_prize = sum(t.payout if t.payout is not None else 0 for t in all_tournaments)
-        
-        # Среднее место по всем турнирам (включая не финалку)
-        all_places = [t.finish_place for t in all_tournaments if t.finish_place is not None]
+
+        stats.total_buy_in = sum(t.buyin for t in tournaments_with_ts if t.buyin is not None)
+        stats.total_prize = sum(t.payout if t.payout is not None else 0 for t in tournaments_with_ts)
+
+        all_places = [t.finish_place for t in tournaments_with_ts if t.finish_place is not None]
         stats.avg_finish_place = sum(all_places) / len(all_places) if all_places else 0.0
-        
-        # Среднее место только на финалке (1-9)
-        ft_places = [t.finish_place for t in final_table_tournaments if t.finish_place is not None and 1 <= t.finish_place <= 9]
+
+        final_table_tournaments_with_ts = [t for t in final_table_tournaments if t.has_ts]
+        ft_places = [t.finish_place for t in final_table_tournaments_with_ts if t.finish_place is not None and 1 <= t.finish_place <= 9]
         stats.avg_finish_place_ft = sum(ft_places) / len(ft_places) if ft_places else 0.0
         
         # Общее количество KO
@@ -456,15 +456,23 @@ class StatisticsService:
         
         # Avg KO / Tournament
         stats.avg_ko_per_tournament = stats.total_knockouts / stats.total_tournaments if stats.total_tournaments > 0 else 0.0
-        
+
         # % Reach FT
         stats.final_table_reach_percent = (stats.total_final_tables / stats.total_tournaments * 100) if stats.total_tournaments > 0 else 0.0
-        
+
         # Средний стек на старте финалки (чипсы и BB)
-        ft_initial_stacks_chips = [t.final_table_initial_stack_chips for t in final_table_tournaments if t.final_table_initial_stack_chips is not None]
+        ft_initial_stacks_chips = [
+            t.final_table_initial_stack_chips
+            for t in final_table_tournaments
+            if t.final_table_initial_stack_chips is not None
+        ]
         stats.avg_ft_initial_stack_chips = sum(ft_initial_stacks_chips) / len(ft_initial_stacks_chips) if ft_initial_stacks_chips else 0.0
-        
-        ft_initial_stacks_bb = [t.final_table_initial_stack_bb for t in final_table_tournaments if t.final_table_initial_stack_bb is not None]
+
+        ft_initial_stacks_bb = [
+            t.final_table_initial_stack_bb
+            for t in final_table_tournaments
+            if t.final_table_initial_stack_bb is not None
+        ]
         stats.avg_ft_initial_stack_bb = sum(ft_initial_stacks_bb) / len(ft_initial_stacks_bb) if ft_initial_stacks_bb else 0.0
         
         # Расчеты для "ранней стадии финалки" (9-6 игроков)
@@ -477,7 +485,7 @@ class StatisticsService:
         # Вылеты Hero на ранней стадии финалки (6-9 место)
         stats.early_ft_bust_count = sum(
             1
-            for t in final_table_tournaments
+            for t in final_table_tournaments_with_ts
             if t.finish_place is not None and 6 <= t.finish_place <= 9
         )
         stats.early_ft_bust_per_tournament = (
@@ -500,10 +508,16 @@ class StatisticsService:
         
         # KO в последней 5-max раздаче перед финальным столом
         stats.pre_ft_ko_count = sum(hand.pre_ft_ko for hand in all_ft_hands)
+
+        # Pre-FT ChipEV будет рассчитан плагином
         
         # Логируем статистику по выплатам для отладки
-        tournaments_with_payout = sum(1 for t in all_tournaments if t.payout is not None and t.payout > 0)
-        tournaments_without_payout = sum(1 for t in all_tournaments if t.payout is None or t.payout == 0)
+        tournaments_with_payout = sum(
+            1 for t in tournaments_with_ts if t.payout is not None and t.payout > 0
+        )
+        tournaments_without_payout = sum(
+            1 for t in tournaments_with_ts if t.payout is None or t.payout == 0
+        )
         logger.debug(
             f"Турниры с выплатами: {tournaments_with_payout}, без выплат: {tournaments_without_payout}"
         )
@@ -549,9 +563,20 @@ class StatisticsService:
             stats.big_ko_x1000 = big_ko_results.get("x1000", 0)
             stats.big_ko_x10000 = big_ko_results.get("x10000", 0)
         
+        # Обработка результатов Pre-FT ChipEV
+        if 'Pre-FT ChipEV' in plugin_results:
+            pre_ft_chipev_results = plugin_results['Pre-FT ChipEV']
+            stats.pre_ft_chipev = pre_ft_chipev_results.get("pre_ft_chipev", 0.0)
+            logger.info(f"Pre-FT ChipEV из плагина: {stats.pre_ft_chipev}")
+        else:
+            logger.warning("Плагин Pre-FT ChipEV не найден в результатах!")
+        
         # Среднее место когда НЕ дошел до финалки
-        no_ft_places = [t.finish_place for t in all_tournaments 
-                       if not t.reached_final_table and t.finish_place is not None]
+        no_ft_places = [
+            t.finish_place
+            for t in tournaments_with_ts
+            if not t.reached_final_table and t.finish_place is not None
+        ]
         stats.avg_finish_place_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
         stats.avg_finish_place_no_ft = round(stats.avg_finish_place_no_ft, 2)
         
@@ -565,6 +590,7 @@ class StatisticsService:
         stats.early_ft_bust_per_tournament = round(stats.early_ft_bust_per_tournament, 2)
         stats.final_table_reach_percent = round(stats.final_table_reach_percent, 2)
         stats.pre_ft_ko_count = round(stats.pre_ft_ko_count, 2)
+        stats.pre_ft_chipev = round(stats.pre_ft_chipev, 2)
         
         logger.debug(
             f"Итоговая статистика: tournaments={stats.total_tournaments}, "
@@ -751,6 +777,15 @@ class StatisticsService:
                 current_stats.avg_ft_initial_stack_chips = sum(all_ft_stacks['chips']) / len(all_ft_stacks['chips'])
             if all_ft_stacks['bb']:
                 current_stats.avg_ft_initial_stack_bb = sum(all_ft_stacks['bb']) / len(all_ft_stacks['bb'])
+
+        # Пересчитываем средний ChipEV до финалки
+        all_ft_stacks = self.tournament_repo.get_final_table_initial_stacks()
+        ft_stack_sum = sum(all_ft_stacks['chips']) if all_ft_stacks['chips'] else 0.0
+        not_ft_count = current_stats.total_tournaments - current_stats.total_final_tables
+        if current_stats.total_tournaments > 0:
+            current_stats.pre_ft_chipev = (ft_stack_sum - not_ft_count * 1000) / current_stats.total_tournaments
+        else:
+            current_stats.pre_ft_chipev = 0.0
         
         # Обновляем статистику Big KO через плагин
         all_tournaments = list(added_tournaments)  # Только новые для инкрементального расчета
@@ -780,7 +815,8 @@ class StatisticsService:
         current_stats.early_ft_ko_per_tournament = round(current_stats.early_ft_ko_per_tournament, 2)
         current_stats.early_ft_bust_per_tournament = round(current_stats.early_ft_bust_per_tournament, 2)
         current_stats.final_table_reach_percent = round(current_stats.final_table_reach_percent, 2)
-        
+        current_stats.pre_ft_chipev = round(current_stats.pre_ft_chipev, 2)
+
         return current_stats
     
     def update_statistics_incremental(
