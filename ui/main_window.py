@@ -125,6 +125,11 @@ class MainWindow(QtWidgets.QMainWindow):
         """)
 
         # Кнопки панели инструментов с кастомными SVG иконками
+        screenshot_action = QtGui.QAction(CustomIcons.screenshot_icon("#F87171"), "Скриншот", self)
+        screenshot_action.setToolTip("Сохранить скриншот окна в буфер обмена")
+        screenshot_action.triggered.connect(self.take_screenshot)
+        self.toolbar.addAction(screenshot_action)
+
         refresh_action = QtGui.QAction(CustomIcons.refresh_icon("#10B981"), "Обновить", self)
         refresh_action.setToolTip("Обновить все данные")
         refresh_action.triggered.connect(self.refresh_all_data)
@@ -489,6 +494,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.db_status_label.setText(
             f"БД: {os.path.basename(self.app_service.db_path)}"
         )
+
+    def take_screenshot(self):
+        """Сохраняет скриншот окна в буфер обмена."""
+        pixmap = self.grab()
+        QtWidgets.QApplication.clipboard().setPixmap(pixmap)
+        self.statusBar().showMessage("Скриншот сохранён в буфер обмена", 2000)
 
 
     def tab_changed(self, index):
