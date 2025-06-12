@@ -31,9 +31,10 @@ class WinningsFromKOStat(BaseStat):
             **kwargs: Дополнительные параметры, включая precomputed_stats
 
         Returns:
-            Словарь с ключом:
-            - 'value': общая сумма выигрыша от KO
-            - 'total_ko_amount': также общая сумма выигрыша от KO для возможной совместимости
+            Словарь с ключами:
+            - 'winnings_from_ko': общая сумма выигрыша от KO
+            - 'value': то же значение для обратной совместимости
+            - 'total_ko_amount': общая сумма выигрыша от KO
         """
         precomputed_stats = kwargs.get('precomputed_stats', {})
 
@@ -66,7 +67,10 @@ class WinningsFromKOStat(BaseStat):
 
         total_ko_amount = round(total_ko_amount, 2)
 
+        # Возвращаем сумму под ключом, который ожидает ViewModel.
+        # Также оставляем старый ключ "value" для возможной совместимости
         return {
+            "winnings_from_ko": total_ko_amount,
             "value": total_ko_amount,
-            "total_ko_amount": total_ko_amount # для обратной совместимости или других нужд
+            "total_ko_amount": total_ko_amount
         }
