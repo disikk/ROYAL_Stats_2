@@ -462,6 +462,26 @@ class ImportService:
             for hand_data in ft_hands_data:
                 hand_data['session_id'] = session_id
                 all_final_table_hands_data.append(hand_data)
+
+            # Если по сводке место <= 9, но финальные раздачи отсутствуют,
+            # не считаем, что финальный стол достигнут.
+            finish_place = parsed_tournaments_data[tourney_id].get('finish_place')
+            if (
+                finish_place is not None
+                and finish_place <= 9
+                and not parsed_tournaments_data[tourney_id].get('reached_final_table')
+                and not hh_result.reached_final_table
+                and not hh_result.final_table_hands_data
+            ):
+                logger.info(
+                    "Турнир %s: место %s <= 9, но финальных раздач нет."
+                    " Оставляем reached_final_table=False",
+                    tourney_id,
+                    finish_place,
+                )
+                parsed_tournaments_data[tourney_id]['final_table_initial_stack_chips'] = None
+                parsed_tournaments_data[tourney_id]['final_table_initial_stack_bb'] = None
+                parsed_tournaments_data[tourney_id]['final_table_start_players'] = None
     
     def _parse_tournament_summary(
         self,
@@ -503,9 +523,29 @@ class ImportService:
                 parsed_tournaments_data[tourney_id].get('payout')
             )
             parsed_tournaments_data[tourney_id]['finish_place'] = (
-                ts_result.finish_place or 
+                ts_result.finish_place or
                 parsed_tournaments_data[tourney_id].get('finish_place')
             )
+
+            # Дополнительная проверка, если место <= 9, а данных финалки нет
+            finish_place = parsed_tournaments_data[tourney_id].get('finish_place')
+            reached_ft = parsed_tournaments_data[tourney_id].get('reached_final_table')
+            has_ft_data = parsed_tournaments_data[tourney_id].get('final_table_initial_stack_chips') is not None
+            if (
+                finish_place is not None
+                and finish_place <= 9
+                and not reached_ft
+                and not has_ft_data
+            ):
+                logger.info(
+                    "Турнир %s: место %s <= 9, но данных финального стола нет."
+                    " Оставляем reached_final_table=False",
+                    tourney_id,
+                    finish_place,
+                )
+                parsed_tournaments_data[tourney_id]['final_table_initial_stack_chips'] = None
+                parsed_tournaments_data[tourney_id]['final_table_initial_stack_bb'] = None
+                parsed_tournaments_data[tourney_id]['final_table_start_players'] = None
     
     def _save_parsed_data(
         self,
