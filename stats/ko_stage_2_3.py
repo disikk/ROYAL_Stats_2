@@ -41,16 +41,11 @@ class KOStage23Stat(BaseStat):
             if hand.players_count >= 2 and hand.players_count <= 3
         ]
         
-        # Подсчитываем KO
-        ko_count = 0
-        ko_amount = 0.0
-        
-        for hand in stage_2_3_hands:
-            if hand.hero_ko_this_hand > 0:
-                ko_count += 1
-                ko_amount += hand.hero_ko_this_hand
-        
+        # Подсчитываем KO. В hero_ko_this_hand может быть дробное
+        # значение, если награда разделена между несколькими игроками.
+        ko_total = sum(hand.hero_ko_this_hand for hand in stage_2_3_hands)
+
         return {
-            "ko_stage_2_3": ko_count,
-            "ko_stage_2_3_amount": round(ko_amount, 2)
+            "ko_stage_2_3": round(ko_total, 2),
+            "ko_stage_2_3_amount": round(ko_total, 2)
         }
