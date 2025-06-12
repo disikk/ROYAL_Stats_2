@@ -39,6 +39,7 @@ class OverallStats(BaseModel):
     early_ft_bust_count: int = 0  # Количество вылетов Hero на местах 6-9
     early_ft_bust_per_tournament: float = 0.0  # Среднее число таких вылетов на турнир с финалкой
     pre_ft_ko_count: float = 0.0  # KO в последней 5-max раздаче перед финалкой
+    pre_ft_chipev: float = 0.0  # Средний результат в фишках до финального стола
     incomplete_ft_count: int = 0  # Сколько финалок стартовало с <9 игроков
     incomplete_ft_percent: int = 0  # Процент таких финалок от общего числа
     last_updated: Optional[str] = None
