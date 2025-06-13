@@ -373,6 +373,9 @@ class StatsGrid(QtWidgets.QWidget):
             'ko_stage_2_3': SpecialStatCard("KO 2-3 игрока", "-"),
             'ko_stage_4_5': SpecialStatCard("KO 4-5 игроков", "-"),
             'ko_stage_6_9': StatCard("KO 6-9 игроков", "-"),
+            'deep_ft_reach': StatCard("% Проход в 5max", "-"),
+            'deep_ft_stack': StatCard("Стек проходки в 5max", "-"),
+            'deep_ft_roi': StatCard("ROI при проходе в 5max", "-"),
         }
         
         # Словарь с описаниями для тултипов
@@ -397,6 +400,9 @@ class StatsGrid(QtWidgets.QWidget):
             'ko_stage_2_3': "Количество нокаутов в стадии 2-3 человека (хедз-ап и 3-макс).\nВо второй строке \u2014 среднее число попыток нокаута на турнир с FT",
             'ko_stage_4_5': "Количество нокаутов в стадии 4-5 человек.\nВо второй строке \u2014 среднее число попыток нокаута на турнир с FT",
             'ko_stage_6_9': "Количество нокаутов в стадии 6-9 человек (ранняя стадия финального стола)",
+            'deep_ft_reach': "Доля финальных столов, где Hero дошел до 5 и менее игроков",
+            'deep_ft_stack': "Средний стек Hero при 5 и менее игроках на финальном столе",
+            'deep_ft_roi': "ROI в турнирах с достижением стадии 5 игроков и меньше",
         }
         
         # Устанавливаем тултипы для карточек
@@ -410,6 +416,7 @@ class StatsGrid(QtWidgets.QWidget):
             ('ft_reach', 1, 0), ('avg_ft_stack', 1, 1), ('early_ft_ko', 1, 2), ('ft_stack_conv', 1, 3), ('pre_ft_ko', 1, 4),
             ('avg_place_all', 2, 0), ('avg_place_ft', 2, 1), ('avg_place_no_ft', 2, 2), ('early_ft_bust', 2, 3), ('ko_contribution', 2, 4),
             ('winnings_from_ko', 3, 0), ('winnings_from_itm', 3, 1), ('ko_stage_2_3', 3, 2), ('ko_stage_4_5', 3, 3), ('ko_stage_6_9', 3, 4),
+            ('deep_ft_reach', 4, 0), ('deep_ft_stack', 4, 1), ('deep_ft_roi', 4, 2),
         ]
         
         for key, row, col in positions:

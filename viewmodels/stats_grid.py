@@ -18,7 +18,7 @@ from stats import (
     FTStackConversionStat, FTStackConversionAttemptsStat,
     PreFTKOStat, KOLuckStat, ROIAdjustedStat, KOContributionStat,
     KOStage23Stat, KOStage45Stat, KOStage69Stat,
-    WinningsFromITMStat, WinningsFromKOStat
+    WinningsFromITMStat, WinningsFromKOStat, DeepFTStat
 )
 
 
@@ -181,9 +181,15 @@ class StatsGridViewModel:
         
         ko_stage_6_9_res = KOStage69Stat().compute(tournaments, final_table_hands)
         ko_stage_6_9 = ko_stage_6_9_res.get('ko_stage_6_9', 0)
-        
+
         winnings_from_itm_res = WinningsFromITMStat().compute(tournaments, final_table_hands, precomputed_stats=precomputed_stats)
         winnings_from_itm = winnings_from_itm_res.get('winnings_from_itm', 0.0)
+
+        deep_ft_res = DeepFTStat().compute(tournaments, final_table_hands, overall_stats=overall_stats)
+        deep_ft_reach = deep_ft_res.get('deep_ft_reach_percent', 0.0)
+        deep_ft_stack_chips = deep_ft_res.get('deep_ft_avg_stack_chips', 0.0)
+        deep_ft_stack_bb = deep_ft_res.get('deep_ft_avg_stack_bb', 0.0)
+        deep_ft_roi = deep_ft_res.get('deep_ft_roi', 0.0)
         
         # Расчет средних мест
         all_places = [t.finish_place for t in tournaments if t.finish_place is not None]
@@ -277,6 +283,22 @@ class StatsGridViewModel:
                 title="Выигрыш от ITM",
                 value=f"${winnings_from_itm:.0f}",
                 tooltip="Сумма, полученная от попадания в призы (места 1-3)"
+            ),
+            'deep_ft_reach': StatCardViewModel(
+                title="% Reach \u22645",
+                value=f"{deep_ft_reach:.1f}%",
+                tooltip="Процент финалок, где Hero дошел до \u22645 игроков"
+            ),
+            'deep_ft_stack': StatCardViewModel(
+                title="Stack \u22645",
+                value=f"{StatCardViewModel.format_number(deep_ft_stack_chips, decimals=0)}/{deep_ft_stack_bb:.1f}",
+                tooltip="Средний стек проходки в стадию \u22645 игроков на финальном столе"
+            ),
+            'deep_ft_roi': StatCardViewModel(
+                title="ROI \u22645",
+                value=StatCardViewModel.format_percentage(deep_ft_roi),
+                value_color=StatCardViewModel.get_value_color(deep_ft_roi),
+                tooltip="ROI в турнирах, где Hero дошел до стадии \u22645 игроков"
             ),
         }
         

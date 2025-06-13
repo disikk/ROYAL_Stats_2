@@ -25,6 +25,7 @@ from ui.session_select_dialog import SessionSelectDialog
 from ui.custom_icons import CustomIcons  # Импортируем кастомные иконки
 from ui.background import thread_manager
 from models import OverallStats
+from ui.gradient_label import GradientLabel
 
 # Импортируем диалог управления БД
 from ui.database_management_dialog import DatabaseManagementDialog # Предполагаем, что такой файл будет создан
@@ -43,7 +44,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, app_facade: AppFacade):
         super().__init__()
         self.setWindowTitle(app_config.app_title)
-        self.setMinimumSize(1300, 880)
+        self.setMinimumSize(1300, 910)
 
         # Используем переданный AppFacade
         self.app_service = app_facade
@@ -90,8 +91,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.statusBar().setSizeGripEnabled(False)
 
         # Метка с информацией о текущей БД (будет размещена в тулбаре)
-        self.db_status_label = QtWidgets.QLabel("")
-        self.db_status_label.setStyleSheet("color: #777; margin-right: 8px;")
+        # Используем градиентный текст и увеличиваем размер на 50%
+        self.db_status_label = GradientLabel("")
+        self.db_status_label.setStyleSheet(
+            "font-weight: bold; font-size: 150%; margin-right: 8px;"
+        )
 
         # Панель инструментов
         self.toolbar = self.addToolBar("Панель инструментов")
@@ -121,6 +125,16 @@ class MainWindow(QtWidgets.QMainWindow):
         """)
 
         # Кнопки панели инструментов с кастомными SVG иконками
+        screenshot_action = QtGui.QAction(CustomIcons.screenshot_icon("#F87171"), "Скриншот", self)
+        screenshot_action.setToolTip("Сохранить скриншот окна в буфер обмена")
+        screenshot_action.triggered.connect(self.take_screenshot)
+        self.toolbar.addAction(screenshot_action)
+        # Увеличиваем иконку скриншота на 20% относительно стандартного размера
+        screenshot_btn = self.toolbar.widgetForAction(screenshot_action)
+        base_size = self.toolbar.iconSize()
+        enlarged = QtCore.QSize(int(base_size.width() * 1.2), int(base_size.height() * 1.2))
+        screenshot_btn.setIconSize(enlarged)
+
         refresh_action = QtGui.QAction(CustomIcons.refresh_icon("#10B981"), "Обновить", self)
         refresh_action.setToolTip("Обновить все данные")
         refresh_action.triggered.connect(self.refresh_all_data)
@@ -485,6 +499,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.db_status_label.setText(
             f"БД: {os.path.basename(self.app_service.db_path)}"
         )
+
+    def take_screenshot(self):
+        """Сохраняет скриншот окна в буфер обмена."""
+        pixmap = self.grab()
+        QtWidgets.QApplication.clipboard().setPixmap(pixmap)
+        self.statusBar().showMessage("Скриншот сохранён в буфер обмена", 2000)
 
 
     def tab_changed(self, index):
