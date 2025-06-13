@@ -29,6 +29,17 @@ from .events import DataImportedEvent
 logger = logging.getLogger('ROYAL_Stats.ImportService')
 
 
+def _read_file(file_path: str, file_type: str):
+    """Читает файл и возвращает его содержимое."""
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+        return file_path, content, True
+    except Exception as e:
+        logger.error(f"Ошибка обработки файла {file_path}: {e}")
+        return file_path, "", False
+
+
 class ImportService:
     """
     Сервис для импорта файлов истории рук и сводок турниров.
@@ -353,15 +364,6 @@ class ImportService:
         
         files_processed = 0
         total_files = len(file_infos)
-
-        def _read_file(file_path: str, file_type: str):
-            try:
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read()
-                return file_path, content, True
-            except Exception as e:
-                logger.error(f"Ошибка обработки файла {file_path}: {e}")
-                return file_path, "", False
 
         with ProcessPoolExecutor() as executor:
             futures = {
