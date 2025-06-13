@@ -275,41 +275,43 @@ class ImportService:
         all_files_to_process: List[tuple[str, str, List[str]]] = []
         filtered_files_count = 0
         processed_candidates = 0
-        
-        for path in paths:
-            if is_canceled_callback and is_canceled_callback():
-                logger.info("Импорт отменен пользователем при подготовке файлов.")
-                if progress_callback:
-                    progress_callback(processed_candidates, total_candidates, "Импорт отменен пользователем")
-                return [], 0
-                
-            if os.path.isdir(path):
-                for root, _, filenames in os.walk(path):
-                    for fname in filenames:
-                        if is_canceled_callback and is_canceled_callback():
-                            return [], 0
-                        if fname.lower().endswith('.txt'):
-                            full_path = os.path.join(root, fname)
-                            file_type, header_lines = FileClassifier.determine_file_type(full_path)
-                            if file_type:
-                                all_files_to_process.append((full_path, file_type, header_lines))
-                            else:
-                                filtered_files_count += 1
-                            processed_candidates += 1
-                            if progress_callback and total_candidates:
-                                progress_callback(processed_candidates, total_candidates, "Подготовка файлов...")
-            elif os.path.isfile(path) and path.lower().endswith('.txt'):
+        futures = {}
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            for path in paths:
                 if is_canceled_callback and is_canceled_callback():
+                    logger.info("Импорт отменен пользователем при подготовке файлов.")
+                    if progress_callback:
+                        progress_callback(processed_candidates, total_candidates, "Импорт отменен пользователем")
                     return [], 0
-                file_type, header_lines = FileClassifier.determine_file_type(path)
+
+                if os.path.isdir(path):
+                    for root, _, filenames in os.walk(path):
+                        for fname in filenames:
+                            if is_canceled_callback and is_canceled_callback():
+                                return [], 0
+                            if fname.lower().endswith('.txt'):
+                                full_path = os.path.join(root, fname)
+                                futures[executor.submit(FileClassifier.determine_file_type, full_path)] = full_path
+                elif os.path.isfile(path) and path.lower().endswith('.txt'):
+                    if is_canceled_callback and is_canceled_callback():
+                        return [], 0
+                    futures[executor.submit(FileClassifier.determine_file_type, path)] = path
+
+            for future in as_completed(futures):
+                processed_candidates += 1
+                file_type, header_lines = future.result()
+                file_path = futures[future]
                 if file_type:
-                    all_files_to_process.append((path, file_type, header_lines))
+                    all_files_to_process.append((file_path, file_type, header_lines))
                 else:
                     filtered_files_count += 1
-                processed_candidates += 1
                 if progress_callback and total_candidates:
                     progress_callback(processed_candidates, total_candidates, "Подготовка файлов...")
-        
+                if is_canceled_callback and is_canceled_callback():
+                    logger.info("Импорт отменен пользователем при подготовке файлов.")
+                    return [], 0
+
         return all_files_to_process, filtered_files_count
     
     def _get_or_create_session(
