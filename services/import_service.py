@@ -28,6 +28,9 @@ from .events import DataImportedEvent
 
 logger = logging.getLogger('ROYAL_Stats.ImportService')
 
+# Количество записей для пакетной вставки/обновления
+BATCH_SIZE = 500
+
 
 def _read_file(file_path: str, file_type: str):
     """Читает файл и возвращает его содержимое."""
@@ -729,7 +732,9 @@ class ImportService:
                 logger.error(f"Ошибка сохранения/обновления турнира {tourney_id}: {e}")
 
         if tournaments_to_save:
-            self.tournament_repo.add_or_update_many(tournaments_to_save)
+            for i in range(0, len(tournaments_to_save), BATCH_SIZE):
+                batch = tournaments_to_save[i:i + BATCH_SIZE]
+                self.tournament_repo.add_or_update_many(batch)
 
         if progress_callback:
             progress_callback(current_progress + int(weight), total_steps,
@@ -766,7 +771,9 @@ class ImportService:
                 )
 
         if saved_objects:
-            self.ft_hand_repo.add_hands(saved_objects)
+            for i in range(0, len(saved_objects), BATCH_SIZE):
+                batch = saved_objects[i:i + BATCH_SIZE]
+                self.ft_hand_repo.add_hands(batch)
 
         if progress_callback:
             progress_callback(current_progress + int(weight), total_steps,
