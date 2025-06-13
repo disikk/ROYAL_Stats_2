@@ -128,7 +128,7 @@ class ImportService:
             return None
 
         # Подсчет общего количества файлов-кандидатов
-        total_candidates = self._count_candidate_files(paths, is_canceled_callback)
+        total_candidates = self._count_candidate_files(paths, progress_callback, is_canceled_callback)
         if total_candidates == 0:
             logger.info("Нет файлов для обработки.")
             if progress_callback:
@@ -253,12 +253,14 @@ class ImportService:
         }
     
     def _count_candidate_files(
-        self, 
-        paths: List[str], 
+        self,
+        paths: List[str],
+        progress_callback: Optional[Callable[[int, int, str], None]],
         is_canceled_callback: Optional[Callable[[], bool]]
     ) -> int:
         """Подсчитывает общее количество .txt файлов в указанных путях."""
         total_candidates = 0
+        processed = 0
         for path in paths:
             if is_canceled_callback and is_canceled_callback():
                 return 0
@@ -266,9 +268,18 @@ class ImportService:
                 for _, _, filenames in os.walk(path):
                     if is_canceled_callback and is_canceled_callback():
                         return 0
-                    total_candidates += len([f for f in filenames if f.lower().endswith('.txt')])
+                    count = len([f for f in filenames if f.lower().endswith('.txt')])
+                    total_candidates += count
+                    processed += count
+                    if progress_callback and processed % 100 == 0:
+                        progress_callback(processed, 0, "Подсчет файлов...")
             elif os.path.isfile(path) and path.lower().endswith('.txt'):
                 total_candidates += 1
+                processed += 1
+                if progress_callback and processed % 100 == 0:
+                    progress_callback(processed, 0, "Подсчет файлов...")
+        if progress_callback:
+            progress_callback(processed, processed, "Файлы подсчитаны")
         return total_candidates
     
     def _collect_poker_files(
