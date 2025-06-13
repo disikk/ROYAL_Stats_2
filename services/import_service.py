@@ -365,55 +365,35 @@ class ImportService:
         files_processed = 0
         total_files = len(file_infos)
 
-        read_futures = {}
-        with ProcessPoolExecutor() as read_executor:
-            for fp, ft, hl in file_infos:
-                read_futures[read_executor.submit(_read_file, fp, ft)] = (fp, ft, hl)
+        with ProcessPoolExecutor() as executor:
+            futures = {
+                executor.submit(_read_file, fp, ft): (ft, hl)
+                for fp, ft, hl in file_infos
+            }
 
-            parsed_futures = {}
-            with ThreadPoolExecutor() as parse_executor:
-                for future in as_completed(read_futures):
-                    if is_canceled_callback and is_canceled_callback():
-                        logger.warning("=== ИМПОРТ ОТМЕНЕН при чтении файлов ===")
-                        read_executor.shutdown(wait=False, cancel_futures=True)
-                        parse_executor.shutdown(wait=False, cancel_futures=True)
-                        return None
+            for future in as_completed(futures):
+                if is_canceled_callback and is_canceled_callback():
+                    logger.warning("=== ИМПОРТ ОТМЕНЕН при парсинге файлов ===")
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    return None
 
-                    file_path, content, success = future.result()
-                    file_type, header_lines = read_futures[future][1:]
+                file_path, content, success = future.result()
+                file_type, header_lines = futures[future]
 
-                    if success:
-                        parsed_futures[parse_executor.submit(
-                            self._parse_single_file,
-                            file_path,
-                            file_type,
-                            header_lines,
-                            content,
-                            session_id
-                        )] = file_path
-
-                for p_future in as_completed(parsed_futures):
-                    if is_canceled_callback and is_canceled_callback():
-                        logger.warning("=== ИМПОРТ ОТМЕНЕН при парсинге файлов ===")
-                        parse_executor.shutdown(wait=False, cancel_futures=True)
-                        return None
-
-                    file_path = parsed_futures[p_future]
-                    try:
-                        t_data, hands = p_future.result()
-                        for tid, tinfo in t_data.items():
-                            if tid not in parsed_tournaments_data:
-                                parsed_tournaments_data[tid] = tinfo
-                            else:
-                                parsed_tournaments_data[tid].update(tinfo)
-                        all_final_table_hands_data.extend(hands)
-                    except Exception as e:
-                        logger.error(f"Ошибка парсинга файла {file_path}: {e}")
-
+                if success:
+                    self._parse_single_file(
+                        file_path,
+                        file_type,
+                        header_lines,
+                        content,
+                        session_id,
+                        parsed_tournaments_data,
+                        all_final_table_hands_data,
+                    )
                     files_processed += 1
                     file_progress = int((files_processed / total_files) * parsing_weight)
                     if progress_callback:
-                        progress_callback(current_progress + file_progress, total_steps, f"Обработка: {os.path.basename(file_path)}")
+                        progress_callback(file_progress, total_steps, f"Обработка: {os.path.basename(file_path)}")
         
         return {
             'tournaments': parsed_tournaments_data,
@@ -426,18 +406,17 @@ class ImportService:
         file_type: str,
         header_lines: List[str],
         content: str,
-        session_id: str
-    ) -> tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
-        """Парсит отдельный файл и возвращает разобранные данные."""
-
-        parsed_tournaments_data: Dict[str, Dict[str, Any]] = {}
-        all_final_table_hands_data: List[Dict[str, Any]] = []
+        session_id: str,
+        parsed_tournaments_data: Dict[str, Dict[str, Any]],
+        all_final_table_hands_data: List[Dict[str, Any]]
+    ):
+        """Парсит отдельный файл и добавляет данные в общие структуры."""
 
         # Обрабатываем файл соответствующим парсером
         parser = self.parsers.get(file_type)
         if not parser:
             logger.warning(f"Не найден парсер для типа {file_type} (файл {file_path})")
-            return {}, []
+            return
 
         if file_type == 'hh':
             self._parse_hand_history(
@@ -456,8 +435,6 @@ class ImportService:
                 session_id,
                 parsed_tournaments_data
             )
-
-        return parsed_tournaments_data, all_final_table_hands_data
     
     def _parse_hand_history(
         self,
