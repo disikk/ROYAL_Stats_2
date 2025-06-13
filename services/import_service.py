@@ -9,6 +9,8 @@
 import os
 import logging
 from typing import List, Dict, Any, Optional, Callable, TYPE_CHECKING
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 from datetime import datetime
 
 from models import Tournament, Session, FinalTableHand
@@ -350,37 +352,47 @@ class ImportService:
         
         files_processed = 0
         total_files = len(file_infos)
+        lock = threading.Lock()
 
-        for file_path, file_type, header_lines in file_infos:
-            # Проверяем флаг отмены
+        def worker(file_path: str, file_type: str, header_lines: List[str]):
             if is_canceled_callback and is_canceled_callback():
-                logger.warning(f"=== ИМПОРТ ОТМЕНЕН при парсинге файлов ===")
-                return None
-            
-            # Обновляем прогресс
-            file_progress = int((files_processed / total_files) * parsing_weight)
-            if progress_callback:
-                progress_callback(file_progress, total_steps, f"Обработка: {os.path.basename(file_path)}")
-
+                return file_path, False
             try:
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.read()
-
-                # Парсим файл
-                self._parse_single_file(
-                    file_path,
-                    file_type,
-                    header_lines,
-                    content,
-                    session_id,
-                    parsed_tournaments_data,
-                    all_final_table_hands_data
-                )
+                with lock:
+                    self._parse_single_file(
+                        file_path,
+                        file_type,
+                        header_lines,
+                        content,
+                        session_id,
+                        parsed_tournaments_data,
+                        all_final_table_hands_data
+                    )
+                return file_path, True
             except Exception as e:
                 logger.error(f"Ошибка обработки файла {file_path}: {e}")
-                # Продолжаем обрабатывать другие файлы
-            
-            files_processed += 1
+                return file_path, True
+
+        with ThreadPoolExecutor() as executor:
+            futures = {
+                executor.submit(worker, fp, ft, hl): fp
+                for fp, ft, hl in file_infos
+            }
+
+            for future in as_completed(futures):
+                if is_canceled_callback and is_canceled_callback():
+                    logger.warning("=== ИМПОРТ ОТМЕНЕН при парсинге файлов ===")
+                    executor.shutdown(wait=False)
+                    return None
+
+                file_path, processed = future.result()
+                if processed:
+                    files_processed += 1
+                    file_progress = int((files_processed / total_files) * parsing_weight)
+                    if progress_callback:
+                        progress_callback(file_progress, total_steps, f"Обработка: {os.path.basename(file_path)}")
         
         return {
             'tournaments': parsed_tournaments_data,
