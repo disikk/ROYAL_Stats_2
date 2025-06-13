@@ -23,6 +23,7 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
         self.app_service = app_service
         self.selected_db_path = None
         self.sort_mode = "name"  # name or date
+        self.all_db_paths: List[str] = []  # Храним полный список БД для фильтрации
         self._init_ui()
         self._load_databases()
         
@@ -61,6 +62,17 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
         sort_layout.addWidget(self.sort_combo)
         sort_layout.addStretch()
         layout.addLayout(sort_layout)
+
+        # Поиск
+        search_layout = QtWidgets.QHBoxLayout()
+        search_label = QtWidgets.QLabel("Поиск:")
+        search_label.setStyleSheet("QLabel { color: #FAFAFA; }")
+        self.search_edit = QtWidgets.QLineEdit()
+        self.search_edit.setPlaceholderText("Введите имя БД")
+        self.search_edit.textChanged.connect(self._apply_filter)
+        search_layout.addWidget(search_label)
+        search_layout.addWidget(self.search_edit)
+        layout.addLayout(search_layout)
 
         # Список баз данных
         self.db_list = QtWidgets.QListWidget()
@@ -173,25 +185,8 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
         else:
             other_dbs.sort(key=lambda x: os.path.basename(x).lower())
 
-        ordered = [current_db] + other_dbs if current_db in db_files else other_dbs
-
-        for db_path in ordered:
-            db_name = os.path.basename(db_path)
-            item = QtWidgets.QListWidgetItem(db_name)
-            item.setData(QtCore.Qt.ItemDataRole.UserRole, db_path)
-            
-            # Помечаем текущую БД
-            if db_path == current_db:
-                item.setText(f"{db_name} (текущая)")
-                font = item.font()
-                font.setBold(True)
-                item.setFont(font)
-                
-            self.db_list.addItem(item)
-            
-        # Если есть БД, выбираем первую
-        if self.db_list.count() > 0:
-            self.db_list.setCurrentRow(0)
+        self.all_db_paths = [current_db] + other_dbs if current_db in db_files else other_dbs
+        self._apply_filter()
 
     def _on_sort_changed(self):
         """Обновляет список при смене сортировки."""
@@ -199,6 +194,26 @@ class DatabaseManagementDialog(QtWidgets.QDialog):
         if mode:
             self.sort_mode = mode
         self._load_databases()
+
+    def _apply_filter(self):
+        """Применяет текстовый фильтр к списку БД."""
+        search = self.search_edit.text().strip().lower()
+        self.db_list.clear()
+        current_db = self.app_service.db_path
+        for db_path in self.all_db_paths:
+            db_name = os.path.basename(db_path)
+            if search in db_name.lower():
+                item = QtWidgets.QListWidgetItem(db_name)
+                item.setData(QtCore.Qt.ItemDataRole.UserRole, db_path)
+                if db_path == current_db:
+                    item.setText(f"{db_name} (текущая)")
+                    font = item.font()
+                    font.setBold(True)
+                    item.setFont(font)
+                self.db_list.addItem(item)
+
+        if self.db_list.count() > 0:
+            self.db_list.setCurrentRow(0)
             
     def _on_selection_changed(self):
         """Обработчик изменения выбора в списке."""
