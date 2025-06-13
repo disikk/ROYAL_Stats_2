@@ -171,6 +171,31 @@ class TournamentRepository:
             return Tournament.from_dict(dict(result[0]))
         return None
 
+    def get_tournaments_by_ids(self, ids: List[str]) -> Dict[str, Tournament]:
+        """Возвращает словарь {tournament_id: Tournament} по списку ID."""
+        if not ids:
+            return {}
+
+        placeholders = ",".join("?" * len(ids))
+        query = f"""
+            SELECT
+                id, tournament_id, tournament_name, start_time, buyin, payout,
+                finish_place, ko_count, session_id, has_ts, has_hh,
+                reached_final_table, final_table_initial_stack_chips,
+                final_table_initial_stack_bb, final_table_start_players
+            FROM tournaments
+            WHERE tournament_id IN ({placeholders})
+        """
+
+        results = self.db.execute_query(query, ids)
+
+        tournaments: Dict[str, Tournament] = {}
+        for row in results:
+            tournament = Tournament.from_dict(dict(row))
+            tournaments[tournament.tournament_id] = tournament
+
+        return tournaments
+
     def get_all_tournaments(
         self,
         session_id: Optional[str] = None,
