@@ -9,6 +9,7 @@
 import os
 import logging
 from typing import List, Dict, Any, Optional, Callable, TYPE_CHECKING
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 from models import Tournament, Session, FinalTableHand
@@ -26,6 +27,17 @@ from .event_bus import EventBus
 from .events import DataImportedEvent
 
 logger = logging.getLogger('ROYAL_Stats.ImportService')
+
+
+def _read_file(file_path: str, file_type: str):
+    """Читает файл и возвращает его содержимое."""
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+        return file_path, content, True
+    except Exception as e:
+        logger.error(f"Ошибка обработки файла {file_path}: {e}")
+        return file_path, "", False
 
 
 class ImportService:
@@ -265,44 +277,51 @@ class ImportService:
         total_candidates: int,
         progress_callback: Optional[Callable[[int, int, str], None]],
         is_canceled_callback: Optional[Callable[[], bool]]
-    ) -> tuple[List[str], int]:
-        """Собирает и фильтрует покерные файлы из указанных путей."""
-        all_files_to_process = []
+    ) -> tuple[List[tuple[str, str, List[str]]], int]:
+        """Собирает и фильтрует покерные файлы из указанных путей.
+
+        Возвращает список кортежей (путь, тип, первые строки).
+        """
+        all_files_to_process: List[tuple[str, str, List[str]]] = []
         filtered_files_count = 0
         processed_candidates = 0
-        
-        for path in paths:
-            if is_canceled_callback and is_canceled_callback():
-                logger.info("Импорт отменен пользователем при подготовке файлов.")
-                if progress_callback:
-                    progress_callback(processed_candidates, total_candidates, "Импорт отменен пользователем")
-                return [], 0
-                
-            if os.path.isdir(path):
-                for root, _, filenames in os.walk(path):
-                    for fname in filenames:
-                        if is_canceled_callback and is_canceled_callback():
-                            return [], 0
-                        if fname.lower().endswith('.txt'):
-                            full_path = os.path.join(root, fname)
-                            if FileClassifier.is_poker_file(full_path):
-                                all_files_to_process.append(full_path)
-                            else:
-                                filtered_files_count += 1
-                            processed_candidates += 1
-                            if progress_callback and total_candidates:
-                                progress_callback(processed_candidates, total_candidates, "Подготовка файлов...")
-            elif os.path.isfile(path) and path.lower().endswith('.txt'):
+        futures = {}
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            for path in paths:
                 if is_canceled_callback and is_canceled_callback():
+                    logger.info("Импорт отменен пользователем при подготовке файлов.")
+                    if progress_callback:
+                        progress_callback(processed_candidates, total_candidates, "Импорт отменен пользователем")
                     return [], 0
-                if FileClassifier.is_poker_file(path):
-                    all_files_to_process.append(path)
+
+                if os.path.isdir(path):
+                    for root, _, filenames in os.walk(path):
+                        for fname in filenames:
+                            if is_canceled_callback and is_canceled_callback():
+                                return [], 0
+                            if fname.lower().endswith('.txt'):
+                                full_path = os.path.join(root, fname)
+                                futures[executor.submit(FileClassifier.determine_file_type, full_path)] = full_path
+                elif os.path.isfile(path) and path.lower().endswith('.txt'):
+                    if is_canceled_callback and is_canceled_callback():
+                        return [], 0
+                    futures[executor.submit(FileClassifier.determine_file_type, path)] = path
+
+            for future in as_completed(futures):
+                processed_candidates += 1
+                file_type, header_lines = future.result()
+                file_path = futures[future]
+                if file_type:
+                    all_files_to_process.append((file_path, file_type, header_lines))
                 else:
                     filtered_files_count += 1
-                processed_candidates += 1
                 if progress_callback and total_candidates:
                     progress_callback(processed_candidates, total_candidates, "Подготовка файлов...")
-        
+                if is_canceled_callback and is_canceled_callback():
+                    logger.info("Импорт отменен пользователем при подготовке файлов.")
+                    return [], 0
+
         return all_files_to_process, filtered_files_count
     
     def _get_or_create_session(
@@ -328,7 +347,7 @@ class ImportService:
     
     def _parse_files(
         self,
-        file_paths: List[str],
+        file_infos: List[tuple[str, str, List[str]]],
         session_id: str,
         current_progress: int,
         total_steps: int,
@@ -344,32 +363,37 @@ class ImportService:
             progress_callback(current_progress, total_steps, "Начинаем обработку файлов...")
         
         files_processed = 0
-        total_files = len(file_paths)
-        
-        for file_path in file_paths:
-            # Проверяем флаг отмены
-            if is_canceled_callback and is_canceled_callback():
-                logger.warning(f"=== ИМПОРТ ОТМЕНЕН при парсинге файлов ===")
-                return None
-            
-            # Обновляем прогресс
-            file_progress = int((files_processed / total_files) * parsing_weight)
-            if progress_callback:
-                progress_callback(file_progress, total_steps, f"Обработка: {os.path.basename(file_path)}")
-            
-            try:
-                # Парсим файл
-                self._parse_single_file(
-                    file_path, 
-                    session_id, 
-                    parsed_tournaments_data, 
-                    all_final_table_hands_data
-                )
-            except Exception as e:
-                logger.error(f"Ошибка обработки файла {file_path}: {e}")
-                # Продолжаем обрабатывать другие файлы
-            
-            files_processed += 1
+        total_files = len(file_infos)
+
+        with ProcessPoolExecutor() as executor:
+            futures = {
+                executor.submit(_read_file, fp, ft): (ft, hl)
+                for fp, ft, hl in file_infos
+            }
+
+            for future in as_completed(futures):
+                if is_canceled_callback and is_canceled_callback():
+                    logger.warning("=== ИМПОРТ ОТМЕНЕН при парсинге файлов ===")
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    return None
+
+                file_path, content, success = future.result()
+                file_type, header_lines = futures[future]
+
+                if success:
+                    self._parse_single_file(
+                        file_path,
+                        file_type,
+                        header_lines,
+                        content,
+                        session_id,
+                        parsed_tournaments_data,
+                        all_final_table_hands_data,
+                    )
+                    files_processed += 1
+                    file_progress = int((files_processed / total_files) * parsing_weight)
+                    if progress_callback:
+                        progress_callback(file_progress, total_steps, f"Обработка: {os.path.basename(file_path)}")
         
         return {
             'tournaments': parsed_tournaments_data,
@@ -379,20 +403,15 @@ class ImportService:
     def _parse_single_file(
         self,
         file_path: str,
+        file_type: str,
+        header_lines: List[str],
+        content: str,
         session_id: str,
         parsed_tournaments_data: Dict[str, Dict[str, Any]],
         all_final_table_hands_data: List[Dict[str, Any]]
     ):
         """Парсит отдельный файл и добавляет данные в общие структуры."""
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            content = f.read()
-        
-        # Определяем тип файла
-        file_type = FileClassifier.determine_file_type(file_path)
-        if file_type is None:
-            logger.warning(f"Файл не соответствует ожидаемым форматам: {file_path}. Файл пропущен.")
-            return
-        
+
         # Обрабатываем файл соответствующим парсером
         parser = self.parsers.get(file_type)
         if not parser:
@@ -648,9 +667,13 @@ class ImportService:
         updated_ids: List[str] = []
         tournaments_to_save: List[Tournament] = []
 
+        existing_tournaments = self.tournament_repo.get_tournaments_by_ids(
+            list(parsed_tournaments_data.keys())
+        )
+
         for tourney_id, data in parsed_tournaments_data.items():
             try:
-                existing_tourney = self.tournament_repo.get_tournament_by_id(tourney_id)
+                existing_tourney = existing_tournaments.get(tourney_id)
 
                 final_tourney_data: Dict[str, Any] = {}
                 if existing_tourney:
@@ -764,24 +787,27 @@ class ImportService:
         if progress_callback:
             progress_callback(current_progress, total_steps, "Подсчет нокаутов...")
         
+        tournament_ids = list(parsed_tournaments_data.keys())
+        total_tournaments = len(tournament_ids)
+
+        # Получаем ko_count сразу для всех турниров одним запросом
+        try:
+            ko_counts = self.ft_hand_repo.get_ko_counts_for_tournaments(tournament_ids)
+        except Exception as e:
+            logger.error(f"Ошибка получения KO из БД: {e}")
+            ko_counts = {}
+
         tournaments_processed = 0
-        total_tournaments = len(parsed_tournaments_data)
-        
-        for tourney_id in parsed_tournaments_data:
-            try:
-                # Получаем все руки финального стола для этого турнира из БД
-                tournament_ft_hands = self.ft_hand_repo.get_hands_by_tournament(tourney_id)
-                # Суммируем KO из всех рук
-                total_ko = sum(hand.hero_ko_this_hand for hand in tournament_ft_hands)
-                # Обновляем ko_count
-                parsed_tournaments_data[tourney_id]['ko_count'] = total_ko
-                tournaments_processed += 1
-                
-                # Обновляем прогресс
-                if tournaments_processed % 5 == 0 or tournaments_processed == total_tournaments:
-                    ko_progress = current_progress + int((tournaments_processed / max(total_tournaments, 1)) * weight)
-                    if progress_callback:
-                        progress_callback(ko_progress, total_steps, f"Обработано турниров: {tournaments_processed}/{total_tournaments}")
-                        
-            except Exception as e:
-                logger.error(f"Ошибка подсчета KO для турнира {tourney_id}: {e}")
+        for tourney_id in tournament_ids:
+            parsed_tournaments_data[tourney_id]['ko_count'] = ko_counts.get(tourney_id, 0)
+            tournaments_processed += 1
+
+            # Обновляем прогресс
+            if tournaments_processed % 5 == 0 or tournaments_processed == total_tournaments:
+                ko_progress = current_progress + int((tournaments_processed / max(total_tournaments, 1)) * weight)
+                if progress_callback:
+                    progress_callback(
+                        ko_progress,
+                        total_steps,
+                        f"Обработано турниров: {tournaments_processed}/{total_tournaments}"
+                    )

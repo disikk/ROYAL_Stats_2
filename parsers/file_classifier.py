@@ -6,7 +6,7 @@
 """
 
 import logging
-from typing import Optional
+from typing import List, Optional, Tuple
 
 logger = logging.getLogger('ROYAL_Stats.FileClassifier')
 
@@ -17,7 +17,7 @@ class FileClassifier:
     """
     
     @staticmethod
-    def determine_file_type(file_path: str) -> Optional[str]:
+    def determine_file_type(file_path: str) -> Tuple[Optional[str], List[str]]:
         """
         Определяет тип покерного файла по первым двум строкам.
         
@@ -31,33 +31,33 @@ class FileClassifier:
         """
         try:
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                lines = f.readlines()
-            
+                first_line = f.readline()
+                second_line = f.readline()
+
+            lines = [first_line.strip(), second_line.strip()]
+
             # Нужно минимум 2 строки для проверки
-            if len(lines) < 2:
-                return None
-                
-            first_line = lines[0].strip()
-            second_line = lines[1].strip()
+            if not first_line or not second_line:
+                return None, lines
             
             # Проверка Tournament Summary
             if (first_line.startswith("Tournament #") and 
                 "Mystery Battle Royale" in first_line and 
                 second_line.startswith("Buy-in:")):
-                return 'ts'
+                return 'ts', lines
                 
             # Проверка Hand History
             if (first_line.startswith("Poker Hand #") and 
                 "Mystery Battle Royale" in first_line and 
                 second_line.startswith("Table")):
-                return 'hh'
+                return 'hh', lines
                 
             # Если не подходит ни под один формат
-            return None
+            return None, lines
             
         except Exception as e:
             logger.warning(f"Не удалось прочитать файл {file_path}: {e}")
-            return None
+            return None, []
     
     @staticmethod
     def is_poker_file(file_path: str) -> bool:
@@ -70,4 +70,5 @@ class FileClassifier:
         Returns:
             True, если файл соответствует ожидаемым форматам покерных файлов
         """
-        return FileClassifier.determine_file_type(file_path) is not None
+        file_type, _ = FileClassifier.determine_file_type(file_path)
+        return file_type is not None
