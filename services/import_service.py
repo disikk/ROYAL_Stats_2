@@ -8,6 +8,8 @@
 
 import os
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Any, Optional, Callable, TYPE_CHECKING
 from datetime import datetime
 
@@ -336,41 +338,51 @@ class ImportService:
         progress_callback: Optional[Callable[[int, int, str], None]],
         is_canceled_callback: Optional[Callable[[], bool]]
     ) -> Optional[Dict[str, Any]]:
-        """Парсит файлы и возвращает структурированные данные."""
+        """Парсит файлы параллельно и возвращает структурированные данные."""
         parsed_tournaments_data: Dict[str, Dict[str, Any]] = {}
         all_final_table_hands_data: List[Dict[str, Any]] = []
-        
+
         if progress_callback:
             progress_callback(current_progress, total_steps, "Начинаем обработку файлов...")
-        
-        files_processed = 0
+
         total_files = len(file_paths)
-        
-        for file_path in file_paths:
-            # Проверяем флаг отмены
+        files_processed = 0
+        lock = threading.Lock()
+
+        def process(file_path: str):
+            nonlocal files_processed
             if is_canceled_callback and is_canceled_callback():
-                logger.warning(f"=== ИМПОРТ ОТМЕНЕН при парсинге файлов ===")
-                return None
-            
-            # Обновляем прогресс
-            file_progress = int((files_processed / total_files) * parsing_weight)
-            if progress_callback:
-                progress_callback(file_progress, total_steps, f"Обработка: {os.path.basename(file_path)}")
-            
+                return
             try:
-                # Парсим файл
                 self._parse_single_file(
-                    file_path, 
-                    session_id, 
-                    parsed_tournaments_data, 
-                    all_final_table_hands_data
+                    file_path,
+                    session_id,
+                    parsed_tournaments_data,
+                    all_final_table_hands_data,
+                    lock
                 )
             except Exception as e:
                 logger.error(f"Ошибка обработки файла {file_path}: {e}")
-                # Продолжаем обрабатывать другие файлы
-            
-            files_processed += 1
-        
+            finally:
+                with lock:
+                    files_processed += 1
+                    file_progress = int((files_processed / total_files) * parsing_weight)
+                    if progress_callback:
+                        progress_callback(
+                            file_progress,
+                            total_steps,
+                            f"Обработка: {os.path.basename(file_path)}"
+                        )
+
+        with ThreadPoolExecutor() as executor:
+            futures = [executor.submit(process, fp) for fp in file_paths]
+            for f in futures:
+                f.result()
+
+        if is_canceled_callback and is_canceled_callback():
+            logger.warning(f"=== ИМПОРТ ОТМЕНЕН при парсинге файлов ===")
+            return None
+
         return {
             'tournaments': parsed_tournaments_data,
             'hands': all_final_table_hands_data
@@ -381,7 +393,8 @@ class ImportService:
         file_path: str,
         session_id: str,
         parsed_tournaments_data: Dict[str, Dict[str, Any]],
-        all_final_table_hands_data: List[Dict[str, Any]]
+        all_final_table_hands_data: List[Dict[str, Any]],
+        lock: threading.Lock
     ):
         """Парсит отдельный файл и добавляет данные в общие структуры."""
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -400,34 +413,31 @@ class ImportService:
             return
 
         if file_type == 'hh':
-            self._parse_hand_history(
-                parser,
-                content,
-                file_path,
-                session_id,
-                parsed_tournaments_data,
-                all_final_table_hands_data
-            )
+            hh_result = parser.parse(content, filename=os.path.basename(file_path))
+            with lock:
+                self._apply_hand_history_result(
+                    hh_result,
+                    session_id,
+                    parsed_tournaments_data,
+                    all_final_table_hands_data
+                )
         elif file_type == 'ts':
-            self._parse_tournament_summary(
-                parser,
-                content,
-                file_path,
-                session_id,
-                parsed_tournaments_data
-            )
+            ts_result = parser.parse(content, filename=os.path.basename(file_path))
+            with lock:
+                self._apply_tournament_summary_result(
+                    ts_result,
+                    session_id,
+                    parsed_tournaments_data
+                )
     
-    def _parse_hand_history(
+    def _apply_hand_history_result(
         self,
-        parser: 'BaseParserPlugin',
-        content: str,
-        file_path: str,
+        hh_result,
         session_id: str,
         parsed_tournaments_data: Dict[str, Dict[str, Any]],
         all_final_table_hands_data: List[Dict[str, Any]]
     ):
-        """Обрабатывает файл истории рук."""
-        hh_result = parser.parse(content, filename=os.path.basename(file_path))
+        """Применяет результат парсинга файла истории рук."""
         tourney_id = hh_result.tournament_id
         
         logger.debug(f"Tournament ID: {tourney_id}")
@@ -487,16 +497,13 @@ class ImportService:
                 parsed_tournaments_data[tourney_id]['final_table_initial_stack_bb'] = None
                 parsed_tournaments_data[tourney_id]['final_table_start_players'] = None
     
-    def _parse_tournament_summary(
+    def _apply_tournament_summary_result(
         self,
-        parser: 'BaseParserPlugin',
-        content: str,
-        file_path: str,
+        ts_result,
         session_id: str,
         parsed_tournaments_data: Dict[str, Dict[str, Any]]
     ):
-        """Обрабатывает файл сводки турнира."""
-        ts_result = parser.parse(content, filename=os.path.basename(file_path))
+        """Применяет результат парсинга файла сводки турнира."""
         tourney_id = ts_result.tournament_id
         
         if tourney_id:
