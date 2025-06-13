@@ -265,9 +265,12 @@ class ImportService:
         total_candidates: int,
         progress_callback: Optional[Callable[[int, int, str], None]],
         is_canceled_callback: Optional[Callable[[], bool]]
-    ) -> tuple[List[str], int]:
-        """Собирает и фильтрует покерные файлы из указанных путей."""
-        all_files_to_process = []
+    ) -> tuple[List[tuple[str, str, List[str]]], int]:
+        """Собирает и фильтрует покерные файлы из указанных путей.
+
+        Возвращает список кортежей (путь, тип, первые строки).
+        """
+        all_files_to_process: List[tuple[str, str, List[str]]] = []
         filtered_files_count = 0
         processed_candidates = 0
         
@@ -285,8 +288,9 @@ class ImportService:
                             return [], 0
                         if fname.lower().endswith('.txt'):
                             full_path = os.path.join(root, fname)
-                            if FileClassifier.is_poker_file(full_path):
-                                all_files_to_process.append(full_path)
+                            file_type, header_lines = FileClassifier.determine_file_type(full_path)
+                            if file_type:
+                                all_files_to_process.append((full_path, file_type, header_lines))
                             else:
                                 filtered_files_count += 1
                             processed_candidates += 1
@@ -295,8 +299,9 @@ class ImportService:
             elif os.path.isfile(path) and path.lower().endswith('.txt'):
                 if is_canceled_callback and is_canceled_callback():
                     return [], 0
-                if FileClassifier.is_poker_file(path):
-                    all_files_to_process.append(path)
+                file_type, header_lines = FileClassifier.determine_file_type(path)
+                if file_type:
+                    all_files_to_process.append((path, file_type, header_lines))
                 else:
                     filtered_files_count += 1
                 processed_candidates += 1
@@ -328,7 +333,7 @@ class ImportService:
     
     def _parse_files(
         self,
-        file_paths: List[str],
+        file_infos: List[tuple[str, str, List[str]]],
         session_id: str,
         current_progress: int,
         total_steps: int,
@@ -344,9 +349,9 @@ class ImportService:
             progress_callback(current_progress, total_steps, "Начинаем обработку файлов...")
         
         files_processed = 0
-        total_files = len(file_paths)
-        
-        for file_path in file_paths:
+        total_files = len(file_infos)
+
+        for file_path, file_type, header_lines in file_infos:
             # Проверяем флаг отмены
             if is_canceled_callback and is_canceled_callback():
                 logger.warning(f"=== ИМПОРТ ОТМЕНЕН при парсинге файлов ===")
@@ -356,13 +361,19 @@ class ImportService:
             file_progress = int((files_processed / total_files) * parsing_weight)
             if progress_callback:
                 progress_callback(file_progress, total_steps, f"Обработка: {os.path.basename(file_path)}")
-            
+
             try:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+
                 # Парсим файл
                 self._parse_single_file(
-                    file_path, 
-                    session_id, 
-                    parsed_tournaments_data, 
+                    file_path,
+                    file_type,
+                    header_lines,
+                    content,
+                    session_id,
+                    parsed_tournaments_data,
                     all_final_table_hands_data
                 )
             except Exception as e:
@@ -379,20 +390,15 @@ class ImportService:
     def _parse_single_file(
         self,
         file_path: str,
+        file_type: str,
+        header_lines: List[str],
+        content: str,
         session_id: str,
         parsed_tournaments_data: Dict[str, Dict[str, Any]],
         all_final_table_hands_data: List[Dict[str, Any]]
     ):
         """Парсит отдельный файл и добавляет данные в общие структуры."""
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-            content = f.read()
-        
-        # Определяем тип файла
-        file_type = FileClassifier.determine_file_type(file_path)
-        if file_type is None:
-            logger.warning(f"Файл не соответствует ожидаемым форматам: {file_path}. Файл пропущен.")
-            return
-        
+
         # Обрабатываем файл соответствующим парсером
         parser = self.parsers.get(file_type)
         if not parser:
