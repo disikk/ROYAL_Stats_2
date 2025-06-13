@@ -9,7 +9,7 @@
 import os
 import logging
 from typing import List, Dict, Any, Optional, Callable, TYPE_CHECKING
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 from models import Tournament, Session, FinalTableHand
