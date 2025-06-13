@@ -9,7 +9,7 @@
 import os
 import logging
 from typing import List, Dict, Any, Optional, Callable, TYPE_CHECKING
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 from models import Tournament, Session, FinalTableHand
@@ -377,9 +377,7 @@ class ImportService:
         total_files = len(file_infos)
 
         read_futures = {}
-        # Используем пул потоков для чтения файлов, чтобы избежать накладных
-        # расходов на запуск процессов и связанных с этим задержек в UI.
-        with ThreadPoolExecutor(max_workers=os.cpu_count() * 2) as read_executor:
+        with ProcessPoolExecutor() as read_executor:
             for fp, ft, hl in file_infos:
                 read_futures[read_executor.submit(_read_file, fp, ft)] = (fp, ft, hl)
 
