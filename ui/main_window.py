@@ -129,6 +129,11 @@ class MainWindow(QtWidgets.QMainWindow):
         screenshot_action.setToolTip("Сохранить скриншот окна в буфер обмена")
         screenshot_action.triggered.connect(self.take_screenshot)
         self.toolbar.addAction(screenshot_action)
+        # Увеличиваем иконку скриншота на 20% относительно стандартного размера
+        screenshot_btn = self.toolbar.widgetForAction(screenshot_action)
+        base_size = self.toolbar.iconSize()
+        enlarged = QtCore.QSize(int(base_size.width() * 1.2), int(base_size.height() * 1.2))
+        screenshot_btn.setIconSize(enlarged)
 
         refresh_action = QtGui.QAction(CustomIcons.refresh_icon("#10B981"), "Обновить", self)
         refresh_action.setToolTip("Обновить все данные")
