@@ -668,9 +668,13 @@ class ImportService:
         updated_ids: List[str] = []
         tournaments_to_save: List[Tournament] = []
 
+        existing_tournaments = self.tournament_repo.get_tournaments_by_ids(
+            list(parsed_tournaments_data.keys())
+        )
+
         for tourney_id, data in parsed_tournaments_data.items():
             try:
-                existing_tourney = self.tournament_repo.get_tournament_by_id(tourney_id)
+                existing_tourney = existing_tournaments.get(tourney_id)
 
                 final_tourney_data: Dict[str, Any] = {}
                 if existing_tourney:
