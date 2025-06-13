@@ -764,24 +764,27 @@ class ImportService:
         if progress_callback:
             progress_callback(current_progress, total_steps, "Подсчет нокаутов...")
         
+        tournament_ids = list(parsed_tournaments_data.keys())
+        total_tournaments = len(tournament_ids)
+
+        # Получаем ko_count сразу для всех турниров одним запросом
+        try:
+            ko_counts = self.ft_hand_repo.get_ko_counts_for_tournaments(tournament_ids)
+        except Exception as e:
+            logger.error(f"Ошибка получения KO из БД: {e}")
+            ko_counts = {}
+
         tournaments_processed = 0
-        total_tournaments = len(parsed_tournaments_data)
-        
-        for tourney_id in parsed_tournaments_data:
-            try:
-                # Получаем все руки финального стола для этого турнира из БД
-                tournament_ft_hands = self.ft_hand_repo.get_hands_by_tournament(tourney_id)
-                # Суммируем KO из всех рук
-                total_ko = sum(hand.hero_ko_this_hand for hand in tournament_ft_hands)
-                # Обновляем ko_count
-                parsed_tournaments_data[tourney_id]['ko_count'] = total_ko
-                tournaments_processed += 1
-                
-                # Обновляем прогресс
-                if tournaments_processed % 5 == 0 or tournaments_processed == total_tournaments:
-                    ko_progress = current_progress + int((tournaments_processed / max(total_tournaments, 1)) * weight)
-                    if progress_callback:
-                        progress_callback(ko_progress, total_steps, f"Обработано турниров: {tournaments_processed}/{total_tournaments}")
-                        
-            except Exception as e:
-                logger.error(f"Ошибка подсчета KO для турнира {tourney_id}: {e}")
+        for tourney_id in tournament_ids:
+            parsed_tournaments_data[tourney_id]['ko_count'] = ko_counts.get(tourney_id, 0)
+            tournaments_processed += 1
+
+            # Обновляем прогресс
+            if tournaments_processed % 5 == 0 or tournaments_processed == total_tournaments:
+                ko_progress = current_progress + int((tournaments_processed / max(total_tournaments, 1)) * weight)
+                if progress_callback:
+                    progress_callback(
+                        ko_progress,
+                        total_steps,
+                        f"Обработано турниров: {tournaments_processed}/{total_tournaments}"
+                    )
