@@ -1410,9 +1410,12 @@ class StatsGrid(QtWidgets.QWidget):
 
     def _calculate_ko_attempts_distribution(self, ft_hands):
         """Рассчитывает распределение количества попыток KO в одной руке."""
-        dist = {i: 0 for i in range(6)}  # 0-4 и 5+
+        # Игнорируем руки без попыток KO и объединяем все значения 5+
+        dist = {i: 0 for i in range(1, 6)}  # 1-4 и 5+
         for hand in ft_hands:
             attempts = hand.hero_ko_attempts or 0
+            if attempts == 0:
+                continue  # не учитываем руки без попыток
             bucket = attempts if attempts < 5 else 5
             dist[bucket] += 1
         return dist
@@ -1535,7 +1538,11 @@ class StatsGrid(QtWidgets.QWidget):
         
         # Настройка оси X (категории)
         axis_x = QBarCategoryAxis()
-        axis_x.append([str(c) for c in categories])
+        if self.chart_type == 'ko_attempts':
+            labels = ["5+" if c == 5 else str(c) for c in categories]
+        else:
+            labels = [str(c) for c in categories]
+        axis_x.append(labels)
         if self.chart_type in ['ft_stack', 'ft_stack_roi', 'ft_stack_conv']:
             axis_x.setTitleText("Стек (фишки)")
         elif self.chart_type == 'ko_attempts':
