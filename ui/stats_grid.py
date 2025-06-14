@@ -355,7 +355,7 @@ class StatsGrid(QtWidgets.QWidget):
         self.cards = {
             'tournaments': StatCard("Турниров сыграно", "-"),
             'knockouts': StatCard("Всего нокаутов", "-"),
-            'avg_ko': StatCard("Среднее KO за турнир", "-"),
+            'avg_ko': SpecialStatCard("Среднее KO за турнир", "-"),
             'roi': StatCard("ROI", "-"),
             'ko_contribution': SpecialStatCard("Вклад KO в ROI", "-"),
             'itm': StatCard("ITM%", "-"),
@@ -382,7 +382,8 @@ class StatsGrid(QtWidgets.QWidget):
         self.stat_tooltips = {
             'tournaments': "Общее количество сыгранных турниров в выбранном периоде",
             'knockouts': "Суммарное количество нокаутов (выбитых игроков) за все турниры",
-            'avg_ko': "Среднее количество нокаутов за один турнир",
+            'avg_ko': "Среднее количество нокаутов за один турнир.\n"\
+                     "Во второй строке \u2014 среднее за турниры с FT",
             'roi': "Return On Investment - процент прибыли относительно вложенных средств.\nФормула: (Выигрыш - Бай-ин) / Бай-ин × 100%",
             'ko_contribution': "Показывает, какую часть ROI обеспечивают нокауты.\nС поправкой (adj) - учитывает везение в размерах KO",
             'itm': "In The Money - процент попаданий в призовые места (топ-3)",
