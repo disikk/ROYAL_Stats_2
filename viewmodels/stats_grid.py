@@ -202,6 +202,13 @@ class StatsGridViewModel:
         no_ft_places = [t.finish_place for t in tournaments 
                        if not t.reached_final_table and t.finish_place is not None]
         avg_no_ft = sum(no_ft_places) / len(no_ft_places) if no_ft_places else 0.0
+
+        ft_tournaments = [t for t in tournaments if t.reached_final_table]
+        avg_ko_ft = (
+            sum(t.ko_count for t in ft_tournaments) / len(ft_tournaments)
+            if ft_tournaments else 0.0
+        )
+        avg_ko_ft = round(avg_ko_ft, 2)
         
         # Создание карточек статистики
         stat_cards = {
@@ -215,7 +222,8 @@ class StatsGridViewModel:
             ),
             'avg_ko': StatCardViewModel(
                 title="Avg KO/Tour",
-                value=f"{overall_stats.avg_ko_per_tournament:.2f}"
+                value=f"{overall_stats.avg_ko_per_tournament:.2f}",
+                subtitle=f"{avg_ko_ft:.2f} за турнир с FT"
             ),
             'roi': StatCardViewModel.create_roi_card(roi_value),
             'ko_contribution': StatCardViewModel.create_ko_contribution_card(ko_contrib, ko_contrib_adj),

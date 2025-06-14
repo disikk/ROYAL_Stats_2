@@ -24,6 +24,7 @@ from datetime import datetime
 from services.app_config import app_config
 from services import AppFacade
 from models import OverallStats
+from db.repositories import FinalTableHandRepository
 
 # Импортируем функции стилизации
 from ui.app_style import (
@@ -247,7 +248,10 @@ class StatsGrid(QtWidgets.QWidget):
         # Настройки гистограммы стеков FT
         self.ft_stack_step = 200  # шаг интервалов в фишках
         self._current_tournaments = []  # сохраненные турниры для перерасчета
+        self._current_ft_hands = []  # сохраненные руки финалок
         self.ft_stack_roi_dist = {}  # распределение ROI по стекам FT
+        self.ft_stack_conv_dist = {}  # распределение конверсии по стекам FT
+        self.ko_attempts_dist = {}  # распределение попыток KO за руку
 
         self._init_ui()
         
@@ -355,7 +359,7 @@ class StatsGrid(QtWidgets.QWidget):
         self.cards = {
             'tournaments': StatCard("Турниров сыграно", "-"),
             'knockouts': StatCard("Всего нокаутов", "-"),
-            'avg_ko': StatCard("Среднее KO за турнир", "-"),
+            'avg_ko': SpecialStatCard("Среднее KO за турнир", "-"),
             'roi': StatCard("ROI", "-"),
             'ko_contribution': SpecialStatCard("Вклад KO в ROI", "-"),
             'itm': StatCard("ITM%", "-"),
@@ -382,7 +386,8 @@ class StatsGrid(QtWidgets.QWidget):
         self.stat_tooltips = {
             'tournaments': "Общее количество сыгранных турниров в выбранном периоде",
             'knockouts': "Суммарное количество нокаутов (выбитых игроков) за все турниры",
-            'avg_ko': "Среднее количество нокаутов за один турнир",
+            'avg_ko': "Среднее количество нокаутов за один турнир.\n"\
+                     "Во второй строке \u2014 среднее за турниры с FT",
             'roi': "Return On Investment - процент прибыли относительно вложенных средств.\nФормула: (Выигрыш - Бай-ин) / Бай-ин × 100%",
             'ko_contribution': "Показывает, какую часть ROI обеспечивают нокауты.\nС поправкой (adj) - учитывает везение в размерах KO",
             'itm': "In The Money - процент попаданий в призовые места (топ-3)",
@@ -463,6 +468,8 @@ class StatsGrid(QtWidgets.QWidget):
             "Все места",
             "Стек FT (фишки)",
             "ROI по стекам FT",
+            "Конверсия по стекам FT",
+            "Попытки KO",
         ])
         self.chart_selector.currentIndexChanged.connect(self._on_chart_selector_changed)
         self.chart_type = 'ft'
@@ -881,7 +888,14 @@ class StatsGrid(QtWidgets.QWidget):
                 start_time_from=date_from_str,
                 start_time_to=date_to_str,
             )
-            
+
+            tournament_ids = [t.tournament_id for t in tournaments]
+            ft_repo = FinalTableHandRepository()
+            ft_hands = ft_repo.get_hands_by_filters(
+                session_id=self.current_session_id,
+                tournament_ids=tournament_ids if tournament_ids else None
+            )
+
             # Новое распределение для стеков FT и медиана
             ft_stack_dist, ft_stack_median = self._calculate_ft_stack_distribution(
                 tournaments, step=self.ft_stack_step
@@ -890,12 +904,21 @@ class StatsGrid(QtWidgets.QWidget):
             ft_stack_roi_dist, _ = self._calculate_ft_stack_roi_distribution(
                 tournaments, step=self.ft_stack_step
             )
-            
+            # Распределение конверсии по стекам FT
+            ft_stack_conv_dist, _ = self._calculate_ft_stack_conversion_distribution(
+                tournaments, ft_hands, step=self.ft_stack_step
+            )
+            # Распределение попыток KO за руку
+            ko_attempts_dist = self._calculate_ko_attempts_distribution(ft_hands)
+
             result = {
                 'viewmodel': viewmodel,
                 'all_tournaments': tournaments,
                 'ft_stack_dist': ft_stack_dist,
                 'ft_stack_median': ft_stack_median,
+                'ft_stack_conv_dist': ft_stack_conv_dist,
+                'ko_attempts_dist': ko_attempts_dist,
+                'ft_hands': ft_hands,
             }
             self._data_cache[cache_key] = result
             self._cache_valid = True
@@ -1005,12 +1028,17 @@ class StatsGrid(QtWidgets.QWidget):
             self.place_dist_pre_ft = viewmodel.place_distributions.get('pre_ft', {}).place_distribution if 'pre_ft' in viewmodel.place_distributions else {}
             self.place_dist_all = viewmodel.place_distributions.get('all', {}).place_distribution if 'all' in viewmodel.place_distributions else {}
 
-            # Сохраняем турниры для возможного перерасчета распределения стеков
+            # Сохраняем данные для перерасчета распределений
             self._current_tournaments = all_tournaments
+            self._current_ft_hands = data.get('ft_hands', [])
             self.ft_stack_dist, self.ft_stack_median = data['ft_stack_dist'], data['ft_stack_median']
             self.ft_stack_roi_dist, _ = self._calculate_ft_stack_roi_distribution(
                 self._current_tournaments, step=self.ft_stack_step
             )
+            self.ft_stack_conv_dist, _ = self._calculate_ft_stack_conversion_distribution(
+                self._current_tournaments, self._current_ft_hands, step=self.ft_stack_step
+            )
+            self.ko_attempts_dist = data.get('ko_attempts_dist', {})
             self._update_chart(self._get_current_distribution())
             self.overallStatsChanged.emit(viewmodel.overall_stats)
 
@@ -1304,8 +1332,93 @@ class StatsGrid(QtWidgets.QWidget):
                 avg_roi_by_interval[key] = 0
         
         median_value = median(stack_values) if stack_values else None
-        
+
         return avg_roi_by_interval, median_value
+
+    def _calculate_ft_stack_conversion_distribution(self, tournaments, ft_hands, step: int = 200):
+        """Рассчитывает конверсию стека в ранние KO для интервалов стеков."""
+
+        conv_by_interval = {}
+        stack_values = []
+
+        def format_range(start, end):
+            if start >= 1000:
+                start_str = f"{start/1000:.1f}k".rstrip('0').rstrip('.')
+            else:
+                start_str = str(start)
+            if end >= 1000:
+                end_str = f"{end/1000:.1f}k".rstrip('0').rstrip('.')
+            else:
+                end_str = str(end)
+            return f"{start_str}-{end_str}"
+
+        interval_keys = ["≤800"]
+        current = 800
+        while current < 4000:
+            next_boundary = current + step
+            if next_boundary > 4000:
+                break
+            key = format_range(current, next_boundary)
+            interval_keys.append(key)
+            current = next_boundary
+        interval_keys.append("≥4k")
+
+        for key in interval_keys:
+            conv_by_interval[key] = []
+
+        hands_map = {}
+        for h in ft_hands:
+            hands_map.setdefault(h.tournament_id, []).append(h)
+
+        for t in tournaments:
+            if (
+                t.reached_final_table and
+                t.final_table_initial_stack_chips is not None and
+                t.final_table_start_players is not None
+            ):
+                chips = t.final_table_initial_stack_chips
+                stack_values.append(chips)
+
+                early_hands = [hh for hh in hands_map.get(t.tournament_id, []) if hh.is_early_final]
+                actual_ko = sum(h.hero_ko_this_hand - h.pre_ft_ko for h in early_hands)
+                possible_ko = max(0, t.final_table_start_players - 5)
+                expected_ko = (chips / 18000) * possible_ko
+                conv = actual_ko / expected_ko if expected_ko > 0 else 0.0
+
+                if chips <= 800:
+                    key = "≤800"
+                elif chips >= 4000:
+                    key = "≥4k"
+                else:
+                    interval_start = int((chips - 800) / step) * step + 800
+                    interval_end = interval_start + step
+                    if interval_end > 4000:
+                        key = "≥4k"
+                    else:
+                        key = format_range(interval_start, interval_end)
+                if key in conv_by_interval:
+                    conv_by_interval[key].append(conv)
+
+        avg_conv_by_interval = {}
+        for key in interval_keys:
+            vals = conv_by_interval[key]
+            avg_conv_by_interval[key] = sum(vals) / len(vals) if vals else 0.0
+
+        median_value = median(stack_values) if stack_values else None
+
+        return avg_conv_by_interval, median_value
+
+    def _calculate_ko_attempts_distribution(self, ft_hands):
+        """Рассчитывает распределение количества попыток KO в одной руке."""
+        # Игнорируем руки без попыток KO и объединяем все значения 5+
+        dist = {i: 0 for i in range(1, 6)}  # 1-4 и 5+
+        for hand in ft_hands:
+            attempts = hand.hero_ko_attempts or 0
+            if attempts == 0:
+                continue  # не учитываем руки без попыток
+            bucket = attempts if attempts < 5 else 5
+            dist[bucket] += 1
+        return dist
 
     def _clear_chart_overlays(self):
         """Удаляет вспомогательные элементы (метки и медианную линию) с графика."""
@@ -1383,16 +1496,16 @@ class StatsGrid(QtWidgets.QWidget):
             colors = colors_ft
         elif self.chart_type == 'pre_ft':
             colors = colors_pre_ft
-        elif self.chart_type in ['ft_stack', 'ft_stack_roi']:
+        elif self.chart_type in ['ft_stack', 'ft_stack_roi', 'ft_stack_conv']:
             colors = colors_ft_stack
         else:
             colors = colors_all
-        
-        # Подсчитываем общее количество финишей для расчета процентов
+
+        # Подсчитываем общее количество элементов для расчета процентов
         total_finishes = sum(place_dist.values())
 
         # Специальная сортировка для стеков FT
-        if self.chart_type in ['ft_stack', 'ft_stack_roi']:
+        if self.chart_type in ['ft_stack', 'ft_stack_roi', 'ft_stack_conv']:
             # Сохраняем порядок категорий, как они были сгенерированы
             # в _calculate_ft_stack_distribution
             categories = []
@@ -1425,9 +1538,15 @@ class StatsGrid(QtWidgets.QWidget):
         
         # Настройка оси X (категории)
         axis_x = QBarCategoryAxis()
-        axis_x.append([str(c) for c in categories])
-        if self.chart_type in ['ft_stack', 'ft_stack_roi']:
+        if self.chart_type == 'ko_attempts':
+            labels = ["5+" if c == 5 else str(c) for c in categories]
+        else:
+            labels = [str(c) for c in categories]
+        axis_x.append(labels)
+        if self.chart_type in ['ft_stack', 'ft_stack_roi', 'ft_stack_conv']:
             axis_x.setTitleText("Стек (фишки)")
+        elif self.chart_type == 'ko_attempts':
+            axis_x.setTitleText("Попытки KO")
         else:
             axis_x.setTitleText("Место")
         axis_x.setLabelsColor(QtGui.QColor("#E4E4E7"))
@@ -1439,13 +1558,17 @@ class StatsGrid(QtWidgets.QWidget):
             axis_y.setTitleText("Количество выходов на FT")
         elif self.chart_type == 'ft_stack_roi':
             axis_y.setTitleText("Средний ROI (%)")
+        elif self.chart_type == 'ft_stack_conv':
+            axis_y.setTitleText("Конверсия стека")
+        elif self.chart_type == 'ko_attempts':
+            axis_y.setTitleText("Количество рук")
         else:
             axis_y.setTitleText("Количество финишей")
         axis_y.setLabelsColor(QtGui.QColor("#E4E4E7"))
         axis_y.setGridLineColor(QtGui.QColor("#3F3F46"))
         axis_y.setMinorGridLineVisible(False)
         
-        # Специальная обработка для ROI графика
+        # Специальная обработка для ROI и конверсии
         if self.chart_type == 'ft_stack_roi':
             # Для ROI находим минимальное и максимальное значение
             roi_values = list(place_dist.values())
@@ -1490,6 +1613,45 @@ class StatsGrid(QtWidgets.QWidget):
                 axis_y.setRange(-100, 100)
                 axis_y.setTickCount(11)
                 axis_y.setLabelFormat("%.0f")
+        elif self.chart_type == 'ft_stack_conv':
+            conv_values = list(place_dist.values())
+            if conv_values:
+                min_conv = min(conv_values)
+                max_conv = max(conv_values)
+
+                def _nice_step_conv(value_range: float) -> float:
+                    if value_range == 0:
+                        return 0.1
+                    raw_step = value_range / 10
+                    magnitude = 10 ** int(math.floor(math.log10(abs(raw_step))))
+                    for m in (1, 2, 2.5, 5, 10):
+                        step = m * magnitude
+                        if abs(raw_step) <= step:
+                            break
+                    if step < 0.1:
+                        step = 0.1
+                    return step
+
+                value_range = max_conv - min_conv
+                if value_range > 0:
+                    step = _nice_step_conv(value_range)
+                    min_val = math.floor(min_conv / step) * step
+                    max_val = math.ceil(max_conv / step) * step
+                    min_val -= step * 0.5
+                    max_val += step * 0.5
+                else:
+                    step = 0.1
+                    min_val = min_conv - step
+                    max_val = max_conv + step
+
+                axis_y.setRange(min_val, max_val)
+                tick_count = int((max_val - min_val) / step) + 1
+                axis_y.setTickCount(min(tick_count, 11))
+                axis_y.setLabelFormat("%.2f")
+            else:
+                axis_y.setRange(0, 2)
+                axis_y.setTickCount(11)
+                axis_y.setLabelFormat("%.2f")
         else:
             max_count = max(place_dist.values()) if place_dist.values() else 1
 
@@ -1528,7 +1690,7 @@ class StatsGrid(QtWidgets.QWidget):
         self.chart_view.setChart(chart)
         
         # Добавляем кастомные текстовые метки с процентами после установки графика
-        if total_finishes > 0 or self.chart_type == 'ft_stack_roi':
+        if total_finishes > 0 or self.chart_type in ['ft_stack_roi', 'ft_stack_conv']:
             # Подключаем обработчик изменения геометрии
             self.chart_view.chart().plotAreaChanged.connect(
                 lambda: self._update_percentage_labels_position(chart, place_dist, total_finishes, self.chart_type)
@@ -1556,7 +1718,7 @@ class StatsGrid(QtWidgets.QWidget):
         plot_area = chart.plotArea()
         
         # Специальная сортировка для стеков FT
-        if chart_type in ['ft_stack', 'ft_stack_roi']:
+        if chart_type in ['ft_stack', 'ft_stack_roi', 'ft_stack_conv']:
             # Сохраняем порядок категорий, как они были сгенерированы
             categories = []
             for key in place_dist.keys():
@@ -1592,10 +1754,12 @@ class StatsGrid(QtWidgets.QWidget):
 
         for idx, place in enumerate(categories):
             count = place_dist.get(place, 0)
-            if count > 0 or (chart_type == 'ft_stack_roi' and count != 0):
-                # Для ROI графика показываем значение ROI, для остальных - проценты
+            if count > 0 or (chart_type in ['ft_stack_roi', 'ft_stack_conv'] and count != 0):
+                # Для ROI и конверсии показываем само значение, для остальных - проценты
                 if chart_type == 'ft_stack_roi':
                     text = QtWidgets.QGraphicsTextItem(f"{count:.0f}%")
+                elif chart_type == 'ft_stack_conv':
+                    text = QtWidgets.QGraphicsTextItem(f"{count:.2f}")
                 else:
                     percentage = (count / total_finishes) * 100
                     text = QtWidgets.QGraphicsTextItem(f"{percentage:.1f}%")
@@ -1618,20 +1782,29 @@ class StatsGrid(QtWidgets.QWidget):
                     else:
                         vertical_axes = chart.axes(QtCore.Qt.Orientation.Vertical)
                         axis_y = vertical_axes[0] if vertical_axes else None
-                    
+
                     y_min = float(axis_y.min()) if axis_y else 0
                     y_max = float(axis_y.max()) if axis_y else 0
                     y_range = y_max - y_min
-                    
-                    # Позиция нуля на графике
-                    zero_ratio = -y_min / y_range if y_range else 0.5
-                    zero_y = plot_area.bottom() - (plot_area.height() * zero_ratio)
-                    
-                    # Позиция верха бара
+
+                    # Позиция верха бара с учётом смещения оси
+                    value_ratio = (count - y_min) / y_range if y_range else 0
+                    bar_top = plot_area.bottom() - (plot_area.height() * value_ratio)
+                elif chart_type == 'ft_stack_conv':
+                    # Для конверсии также учитываем смещение оси Y
+                    if hasattr(chart, "axisY"):
+                        axis_y = chart.axisY()
+                    else:
+                        vertical_axes = chart.axes(QtCore.Qt.Orientation.Vertical)
+                        axis_y = vertical_axes[0] if vertical_axes else None
+
+                    y_min = float(axis_y.min()) if axis_y else 0
+                    y_max = float(axis_y.max()) if axis_y else 0
+                    y_range = y_max - y_min
                     value_ratio = (count - y_min) / y_range if y_range else 0
                     bar_top = plot_area.bottom() - (plot_area.height() * value_ratio)
                 else:
-                    # Для остальных графиков используем старую логику
+                    # Для остальных графиков используем простое соотношение
                     bar_height_ratio = count / y_max if y_max else 0
                     bar_top = plot_area.bottom() - (plot_area.height() * bar_height_ratio)
                 
@@ -1649,6 +1822,8 @@ class StatsGrid(QtWidgets.QWidget):
                     else:
                         # Для положительных значений стандартный отступ
                         y_pos = bar_top - label_height - 5
+                elif chart_type == 'ft_stack_conv':
+                    y_pos = bar_top - label_height - 5
                 else:
                     # Для остальных гистограмм используем адаптивную логику
                     inside_offset = 3
@@ -1773,10 +1948,14 @@ class StatsGrid(QtWidgets.QWidget):
             return getattr(self, 'ft_stack_dist', {})
         if self.chart_type == 'ft_stack_roi':
             return getattr(self, 'ft_stack_roi_dist', {})
+        if self.chart_type == 'ft_stack_conv':
+            return getattr(self, 'ft_stack_conv_dist', {})
+        if self.chart_type == 'ko_attempts':
+            return getattr(self, 'ko_attempts_dist', {})
         return getattr(self, 'place_dist_ft', {})
 
     def _on_chart_selector_changed(self, index: int):
-        types = ['ft', 'pre_ft', 'all', 'ft_stack', 'ft_stack_roi']
+        types = ['ft', 'pre_ft', 'all', 'ft_stack', 'ft_stack_roi', 'ft_stack_conv', 'ko_attempts']
         self.chart_type = types[index]
         if self.chart_type == 'ft':
             self.chart_header.setText("Распределение финишных мест на финальном столе")
@@ -1790,9 +1969,15 @@ class StatsGrid(QtWidgets.QWidget):
         elif self.chart_type == 'ft_stack':
             self.chart_header.setText("Распределение стеков выхода на FT (в фишках)")
             self.ft_stack_density_selector.setVisible(True)
-        else:  # ft_stack_roi
+        elif self.chart_type == 'ft_stack_roi':
             self.chart_header.setText("Средний ROI по стекам выхода на FT")
             self.ft_stack_density_selector.setVisible(True)
+        elif self.chart_type == 'ft_stack_conv':
+            self.chart_header.setText("Конверсия по стекам выхода на FT")
+            self.ft_stack_density_selector.setVisible(True)
+        else:  # ko_attempts
+            self.chart_header.setText("Попытки KO за раздачу")
+            self.ft_stack_density_selector.setVisible(False)
 
         self._update_chart(self._get_current_distribution())
 
@@ -1807,6 +1992,9 @@ class StatsGrid(QtWidgets.QWidget):
             self.ft_stack_roi_dist, _ = self._calculate_ft_stack_roi_distribution(
                 self._current_tournaments, step=self.ft_stack_step
             )
-        if self.chart_type in ['ft_stack', 'ft_stack_roi']:
+            self.ft_stack_conv_dist, _ = self._calculate_ft_stack_conversion_distribution(
+                self._current_tournaments, self._current_ft_hands, step=self.ft_stack_step
+            )
+        if self.chart_type in ['ft_stack', 'ft_stack_roi', 'ft_stack_conv']:
             self._update_chart(self._get_current_distribution())
 
