@@ -251,6 +251,7 @@ class StatsGrid(QtWidgets.QWidget):
         self._current_ft_hands = []  # сохраненные руки финалок
         self.ft_stack_roi_dist = {}  # распределение ROI по стекам FT
         self.ft_stack_conv_dist = {}  # распределение конверсии по стекам FT
+        self.ko_attempts_dist = {}  # распределение попыток KO за руку
 
         self._init_ui()
         
@@ -468,6 +469,7 @@ class StatsGrid(QtWidgets.QWidget):
             "Стек FT (фишки)",
             "ROI по стекам FT",
             "Конверсия по стекам FT",
+            "Попытки KO",
         ])
         self.chart_selector.currentIndexChanged.connect(self._on_chart_selector_changed)
         self.chart_type = 'ft'
@@ -906,6 +908,8 @@ class StatsGrid(QtWidgets.QWidget):
             ft_stack_conv_dist, _ = self._calculate_ft_stack_conversion_distribution(
                 tournaments, ft_hands, step=self.ft_stack_step
             )
+            # Распределение попыток KO за руку
+            ko_attempts_dist = self._calculate_ko_attempts_distribution(ft_hands)
 
             result = {
                 'viewmodel': viewmodel,
@@ -913,6 +917,7 @@ class StatsGrid(QtWidgets.QWidget):
                 'ft_stack_dist': ft_stack_dist,
                 'ft_stack_median': ft_stack_median,
                 'ft_stack_conv_dist': ft_stack_conv_dist,
+                'ko_attempts_dist': ko_attempts_dist,
                 'ft_hands': ft_hands,
             }
             self._data_cache[cache_key] = result
@@ -1033,6 +1038,7 @@ class StatsGrid(QtWidgets.QWidget):
             self.ft_stack_conv_dist, _ = self._calculate_ft_stack_conversion_distribution(
                 self._current_tournaments, self._current_ft_hands, step=self.ft_stack_step
             )
+            self.ko_attempts_dist = data.get('ko_attempts_dist', {})
             self._update_chart(self._get_current_distribution())
             self.overallStatsChanged.emit(viewmodel.overall_stats)
 
@@ -1402,6 +1408,15 @@ class StatsGrid(QtWidgets.QWidget):
 
         return avg_conv_by_interval, median_value
 
+    def _calculate_ko_attempts_distribution(self, ft_hands):
+        """Рассчитывает распределение количества попыток KO в одной руке."""
+        dist = {i: 0 for i in range(6)}  # 0-4 и 5+
+        for hand in ft_hands:
+            attempts = hand.hero_ko_attempts or 0
+            bucket = attempts if attempts < 5 else 5
+            dist[bucket] += 1
+        return dist
+
     def _clear_chart_overlays(self):
         """Удаляет вспомогательные элементы (метки и медианную линию) с графика."""
         current_chart = self.chart_view.chart()
@@ -1482,8 +1497,8 @@ class StatsGrid(QtWidgets.QWidget):
             colors = colors_ft_stack
         else:
             colors = colors_all
-        
-        # Подсчитываем общее количество финишей для расчета процентов
+
+        # Подсчитываем общее количество элементов для расчета процентов
         total_finishes = sum(place_dist.values())
 
         # Специальная сортировка для стеков FT
@@ -1523,6 +1538,8 @@ class StatsGrid(QtWidgets.QWidget):
         axis_x.append([str(c) for c in categories])
         if self.chart_type in ['ft_stack', 'ft_stack_roi', 'ft_stack_conv']:
             axis_x.setTitleText("Стек (фишки)")
+        elif self.chart_type == 'ko_attempts':
+            axis_x.setTitleText("Попытки KO")
         else:
             axis_x.setTitleText("Место")
         axis_x.setLabelsColor(QtGui.QColor("#E4E4E7"))
@@ -1536,6 +1553,8 @@ class StatsGrid(QtWidgets.QWidget):
             axis_y.setTitleText("Средний ROI (%)")
         elif self.chart_type == 'ft_stack_conv':
             axis_y.setTitleText("Конверсия стека")
+        elif self.chart_type == 'ko_attempts':
+            axis_y.setTitleText("Количество рук")
         else:
             axis_y.setTitleText("Количество финишей")
         axis_y.setLabelsColor(QtGui.QColor("#E4E4E7"))
@@ -1924,10 +1943,12 @@ class StatsGrid(QtWidgets.QWidget):
             return getattr(self, 'ft_stack_roi_dist', {})
         if self.chart_type == 'ft_stack_conv':
             return getattr(self, 'ft_stack_conv_dist', {})
+        if self.chart_type == 'ko_attempts':
+            return getattr(self, 'ko_attempts_dist', {})
         return getattr(self, 'place_dist_ft', {})
 
     def _on_chart_selector_changed(self, index: int):
-        types = ['ft', 'pre_ft', 'all', 'ft_stack', 'ft_stack_roi', 'ft_stack_conv']
+        types = ['ft', 'pre_ft', 'all', 'ft_stack', 'ft_stack_roi', 'ft_stack_conv', 'ko_attempts']
         self.chart_type = types[index]
         if self.chart_type == 'ft':
             self.chart_header.setText("Распределение финишных мест на финальном столе")
@@ -1944,9 +1965,12 @@ class StatsGrid(QtWidgets.QWidget):
         elif self.chart_type == 'ft_stack_roi':
             self.chart_header.setText("Средний ROI по стекам выхода на FT")
             self.ft_stack_density_selector.setVisible(True)
-        else:  # ft_stack_conv
+        elif self.chart_type == 'ft_stack_conv':
             self.chart_header.setText("Конверсия по стекам выхода на FT")
             self.ft_stack_density_selector.setVisible(True)
+        else:  # ko_attempts
+            self.chart_header.setText("Попытки KO за раздачу")
+            self.ft_stack_density_selector.setVisible(False)
 
         self._update_chart(self._get_current_distribution())
 
