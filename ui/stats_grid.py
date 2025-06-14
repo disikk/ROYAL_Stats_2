@@ -1756,20 +1756,29 @@ class StatsGrid(QtWidgets.QWidget):
                     else:
                         vertical_axes = chart.axes(QtCore.Qt.Orientation.Vertical)
                         axis_y = vertical_axes[0] if vertical_axes else None
-                    
+
                     y_min = float(axis_y.min()) if axis_y else 0
                     y_max = float(axis_y.max()) if axis_y else 0
                     y_range = y_max - y_min
-                    
-                    # Позиция нуля на графике
-                    zero_ratio = -y_min / y_range if y_range else 0.5
-                    zero_y = plot_area.bottom() - (plot_area.height() * zero_ratio)
-                    
-                    # Позиция верха бара
+
+                    # Позиция верха бара с учётом смещения оси
+                    value_ratio = (count - y_min) / y_range if y_range else 0
+                    bar_top = plot_area.bottom() - (plot_area.height() * value_ratio)
+                elif chart_type == 'ft_stack_conv':
+                    # Для конверсии также учитываем смещение оси Y
+                    if hasattr(chart, "axisY"):
+                        axis_y = chart.axisY()
+                    else:
+                        vertical_axes = chart.axes(QtCore.Qt.Orientation.Vertical)
+                        axis_y = vertical_axes[0] if vertical_axes else None
+
+                    y_min = float(axis_y.min()) if axis_y else 0
+                    y_max = float(axis_y.max()) if axis_y else 0
+                    y_range = y_max - y_min
                     value_ratio = (count - y_min) / y_range if y_range else 0
                     bar_top = plot_area.bottom() - (plot_area.height() * value_ratio)
                 else:
-                    # Для остальных графиков используем старую логику
+                    # Для остальных графиков используем простое соотношение
                     bar_height_ratio = count / y_max if y_max else 0
                     bar_top = plot_area.bottom() - (plot_area.height() * bar_height_ratio)
                 
